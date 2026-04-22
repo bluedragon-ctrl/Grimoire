@@ -1,0 +1,150 @@
+import { describe, it, expect } from "vitest";
+import { WireRendererAdapter, type WireDeps } from "../../src/render/wire-adapter.js";
+import type { Actor, GameEvent, Room } from "../../src/types.js";
+
+// Inject no-op deps so the adapter never touches a real canvas or RAF.
+// Tests drive state via apply() and observe getState() directly.
+function makeAdapter() {
+  const renders: unknown[] = [];
+  const deps: Partial<WireDeps> = {
+    init: () => {},
+    render: (s) => { renders.push(s); },
+    schedule: () => 0,
+    cancel: () => {},
+    runFrameLoop: false,
+  };
+  const adapter = new WireRendererAdapter(deps);
+  return { adapter, renders };
+}
+
+const room: Room = { w: 8, h: 6, doors: [{ dir: "E", pos: { x: 7, y: 3 } }], items: [], chests: [] };
+
+function hero(pos = { x: 1, y: 1 }): Actor {
+  return { id: "hero", kind: "hero", hp: 10, maxHp: 10, speed: 1, energy: 0, pos,
+           script: { main: [], handlers: [], funcs: [] }, alive: true };
+}
+function goblin(id: string, pos: { x: number; y: number }): Actor {
+  return { id, kind: "goblin", hp: 6, maxHp: 6, speed: 1, energy: 0, pos,
+           script: { main: [], handlers: [], funcs: [] }, alive: true };
+}
+
+function mount(adapter: WireRendererAdapter, actors: Actor[]) {
+  const el = document.createElement("div");
+  adapter.mount(el, room, actors);
+  return el;
+}
+
+describe("WireRendererAdapter — scripted runs", () => {
+  it("run 1: approach + attack — produces one move per step and a strike effect on hit", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 4, y: 1 })]);
+
+    const events: GameEvent[] = [
+      { type: "Moved", actor: "hero", from: { x: 1, y: 1 }, to: { x: 2, y: 1 } },
+      { type: "Moved", actor: "hero", from: { x: 2, y: 1 }, to: { x: 3, y: 1 } },
+      { type: "Attacked", attacker: "hero", defender: "g1", damage: 3 },
+      { type: "Hit", actor: "g1", attacker: "hero", damage: 3 },
+    ];
+    events.forEach(e => adapter.apply(e));
+
+    const s = adapter.getState()!;
+    expect(s.player!.x).toBe(3);
+    expect(s.player!.y).toBe(1);
+    // Two effect pushes (Attacked + Hit). Both are 'explosion' areas at goblin's tile.
+    expect(s.activeEffects.map(e => [e.kind, e.name])).toEqual([
+      ["area", "explosion"], ["area", "explosion"],
+    ]);
+    expect(s.activeEffects[0]!.at).toEqual({ x: 4, y: 1 });
+  });
+
+  it("run 2: missed attack via ActionFailed — emits no visual effect", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero(), goblin("g1", { x: 5, y: 1 })]);
+
+    adapter.apply({ type: "ActionFailed", actor: "hero", action: "attack", reason: "out_of_range" });
+    adapter.apply({ type: "Missed", actor: "hero", reason: "out_of_range" });
+
+    expect(adapter.getState()!.activeEffects).toEqual([]);
+  });
+
+  it("run 3: heal — pushes a 'healing' overlay attached to the actor", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "Healed", actor: "hero", amount: 5 });
+
+    const effs = adapter.getState()!.activeEffects;
+    expect(effs).toHaveLength(1);
+    expect(effs[0]!.kind).toBe("overlay");
+    expect(effs[0]!.name).toBe("healing");
+    expect(effs[0]!.attachTo).toBe("hero");
+  });
+
+  it("run 4: cast bolt at target — pushes a 'bolt' projectile from source to target", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 2, y: 2 }), goblin("g1", { x: 5, y: 2 })]);
+
+    adapter.apply({ type: "Cast", actor: "hero", spell: "bolt", target: "g1", amount: 4 });
+
+    const [eff, ...rest] = adapter.getState()!.activeEffects;
+    expect(rest).toEqual([]);
+    expect(eff!.kind).toBe("projectile");
+    expect(eff!.name).toBe("bolt");
+    expect(eff!.from).toEqual({ x: 2, y: 2 });
+    expect(eff!.to).toEqual({ x: 5, y: 2 });
+  });
+
+  it("run 5: death — marks dead, pushes deathBurst, corpse pruned after grace", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero(), goblin("g1", { x: 3, y: 1 })]);
+
+    adapter.apply({ type: "Died", actor: "g1" });
+
+    const sAfterDeath = adapter.getState()!;
+    const corpse = sAfterDeath.monsters.find(m => m.id === "g1")!;
+    expect(corpse.dead).toBe(true);
+    expect(sAfterDeath.activeEffects.map(e => e.name)).toEqual(["deathBurst"]);
+
+    // Step frames until the deathBurst drains and grace expires — the corpse drops.
+    for (let i = 0; i < 60; i++) {
+      adapter.stepFrame();
+      // Bump tick forward so the grace window (tick - deadAt < 2) elapses too.
+      (adapter.getState() as { tick: number }).tick += 1;
+    }
+    expect(adapter.getState()!.monsters.find(m => m.id === "g1")).toBeUndefined();
+  });
+
+  it("run 6: hero exits — pushes a 'sparkling' overlay on the hero", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "HeroExited", actor: "hero", door: "E" });
+
+    const effs = adapter.getState()!.activeEffects;
+    expect(effs).toHaveLength(1);
+    expect(effs[0]!.name).toBe("sparkling");
+    expect(effs[0]!.attachTo).toBe("hero");
+  });
+
+  it("teardown clears state and removes the canvas from the host", () => {
+    const { adapter } = makeAdapter();
+    const host = mount(adapter, [hero()]);
+    expect(host.querySelector("canvas")).not.toBeNull();
+
+    adapter.teardown();
+    expect(host.querySelector("canvas")).toBeNull();
+    expect(adapter.getState()).toBeNull();
+  });
+
+  it("Moved on a monster updates the monster slot, not the player", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 4, y: 4 })]);
+
+    adapter.apply({ type: "Moved", actor: "g1", from: { x: 4, y: 4 }, to: { x: 4, y: 3 } });
+
+    const s = adapter.getState()!;
+    expect(s.player!.x).toBe(1);
+    expect(s.monsters[0]!.x).toBe(4);
+    expect(s.monsters[0]!.y).toBe(3);
+  });
+});
