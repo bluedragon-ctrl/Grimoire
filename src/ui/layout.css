@@ -48,6 +48,16 @@ body {
 }
 .controls button:hover { background: #2b3040; }
 .controls button:disabled { color: var(--muted); cursor: default; }
+.controls .speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.controls .speed input[type="range"] { accent-color: var(--accent); width: 120px; }
+.controls .speed #speed-readout { min-width: 46px; text-align: right; }
 
 .grid {
   display: grid;
@@ -91,12 +101,16 @@ body {
 }
 #game-view {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  min-height: 0;
   color: var(--muted);
   background:
     radial-gradient(circle at center, #1a1d26 0, var(--panel) 70%);
+}
+#game-view:empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 #game-view:empty::before {
   content: "renderer slot — #game-view";

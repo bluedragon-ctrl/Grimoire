@@ -12,7 +12,13 @@
         <h1>Grimoire</h1>
         <div class="controls">
           <button id="btn-run">Run</button>
-          <button id="btn-stop">Stop</button>
+          <button id="btn-pause" disabled>Pause</button>
+          <button id="btn-stop" disabled>Stop</button>
+          <label class="speed">
+            Speed
+            <input id="speed-slider" type="range" min="50" max="1000" step="10" value="200" />
+            <span id="speed-readout">200ms</span>
+          </label>
         </div>
       </header>
       <main class="grid">
