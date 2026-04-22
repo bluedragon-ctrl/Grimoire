@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grimoire</title>
+    <link rel="stylesheet" href="/src/ui/layout.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Grimoire</h1>
+        <div class="controls">
+          <button id="btn-run">Run</button>
+          <button id="btn-stop">Stop</button>
+        </div>
+      </header>
+      <main class="grid">
+        <section class="pane editor">
+          <h2>Script</h2>
+          <textarea id="editor" readonly placeholder="// parser coming soon — demo uses hardcoded AST"></textarea>
+        </section>
+        <section class="pane game">
+          <h2>Game</h2>
+          <div id="game-view"></div>
+        </section>
+        <section class="pane log">
+          <h2>Events</h2>
+          <ul id="event-log"></ul>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/ui/main.ts"></script>
+  </body>
+</html>

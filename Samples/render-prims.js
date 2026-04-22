@@ -1,0 +1,65 @@
+// Batched canvas primitives. One beginPath/stroke per call shared across many
+// sub-shapes — meaningful perf win when shadowBlur > 0, since each stroke()
+// triggers a full blur pass.
+
+const TAU = Math.PI * 2;
+
+/** Stroke many dots sharing style. pts: [[x,y], ...]. */
+export function dots(ctx, pts, r) {
+  ctx.beginPath();
+  for (const [x, y] of pts) {
+    ctx.moveTo(x + r, y);
+    ctx.arc(x, y, r, 0, TAU);
+  }
+  ctx.stroke();
+}
+
+/** Stroke a mirrored pair of dots — eyes, symmetric markings. */
+export function eyePair(ctx, cx, cy, dx, r) {
+  ctx.beginPath();
+  ctx.moveTo(cx - dx + r, cy); ctx.arc(cx - dx, cy, r, 0, TAU);
+  ctx.moveTo(cx + dx + r, cy); ctx.arc(cx + dx, cy, r, 0, TAU);
+  ctx.stroke();
+}
+
+/** Stroke many disconnected segments. segs: [[x1,y1,x2,y2], ...]. */
+export function lines(ctx, segs) {
+  ctx.beginPath();
+  for (const [a, b, c, d] of segs) { ctx.moveTo(a, b); ctx.lineTo(c, d); }
+  ctx.stroke();
+}
+
+/** Stroke a connected polyline. pts: [[x,y], ...]. Closed if `closed`. */
+export function poly(ctx, pts, closed = false) {
+  if (pts.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  if (closed) ctx.closePath();
+  ctx.stroke();
+}
+
+/** Stroke a zigzag polyline by alternating xs,ys arrays flattened:
+ *  pts = [x0,y0, x1,y1, ...]. Shorthand for lightning/crack patterns. */
+export function zigzag(ctx, pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0], pts[1]);
+  for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.stroke();
+}
+
+/** Orbit particles — n dots around (cx,cy) with phase offset, one stroke.
+ *  rx/ry: elliptical radii, speed: angular velocity, size: dot radius.
+ *  Alpha flicker is intentionally omitted (single globalAlpha only) in
+ *  exchange for one stroke instead of n. */
+export function orbit(ctx, cx, cy, n, t, rx, ry, speed, size) {
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = t * speed + i * (TAU / n);
+    const x = cx + Math.cos(a) * rx;
+    const y = cy + Math.sin(a) * ry;
+    ctx.moveTo(x + size, y);
+    ctx.arc(x, y, size, 0, TAU);
+  }
+  ctx.stroke();
+}
