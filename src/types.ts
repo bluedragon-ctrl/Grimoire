@@ -1,5 +1,12 @@
 // Core types: AST, world/entities, events, pending actions.
 
+// ──────────────────────────── Source positions ────────────────────────────
+
+// Optional on every AST node so the parser can attach source locations for
+// editor integration (Phase 4 gutter highlight). Hand-written ASTs (tests,
+// demo, ast-helpers) simply omit it — consumers must treat as optional.
+export interface SourceLoc { line: number; col: number; }
+
 // ──────────────────────────── AST ────────────────────────────
 
 export type Stmt =
@@ -23,24 +30,24 @@ export type Expr =
   | UnaryOp
   | ArrayLit;
 
-export interface ExprStmt { t: "ExprStmt"; expr: Expr; }
-export interface Assign { t: "Assign"; target: Ident | Index | Member; value: Expr; }
-export interface If { t: "If"; cond: Expr; then: Stmt[]; else?: Stmt[]; }
-export interface While { t: "While"; cond: Expr; body: Stmt[]; }
-export interface For { t: "For"; name: string; iter: Expr; body: Stmt[]; }
-export interface FuncDef { t: "FuncDef"; name: string; params: string[]; body: Stmt[]; }
-export interface Return { t: "Return"; value?: Expr; }
-export interface Block { t: "Block"; body: Stmt[]; }
-export interface EventHandler { t: "EventHandler"; event: string; binding?: string; body: Stmt[]; }
+export interface ExprStmt { t: "ExprStmt"; expr: Expr; loc?: SourceLoc; }
+export interface Assign { t: "Assign"; target: Ident | Index | Member; value: Expr; loc?: SourceLoc; }
+export interface If { t: "If"; cond: Expr; then: Stmt[]; else?: Stmt[]; loc?: SourceLoc; }
+export interface While { t: "While"; cond: Expr; body: Stmt[]; loc?: SourceLoc; }
+export interface For { t: "For"; name: string; iter: Expr; body: Stmt[]; loc?: SourceLoc; }
+export interface FuncDef { t: "FuncDef"; name: string; params: string[]; body: Stmt[]; loc?: SourceLoc; }
+export interface Return { t: "Return"; value?: Expr; loc?: SourceLoc; }
+export interface Block { t: "Block"; body: Stmt[]; loc?: SourceLoc; }
+export interface EventHandler { t: "EventHandler"; event: string; binding?: string; body: Stmt[]; loc?: SourceLoc; }
 
-export interface Literal { t: "Literal"; value: number | string | boolean | null; }
-export interface Ident { t: "Ident"; name: string; }
-export interface Call { t: "Call"; callee: Expr; args: Expr[]; }
-export interface Index { t: "Index"; obj: Expr; key: Expr; }
-export interface Member { t: "Member"; obj: Expr; name: string; }
-export interface BinOp { t: "BinOp"; op: BinOpKind; a: Expr; b: Expr; }
-export interface UnaryOp { t: "UnaryOp"; op: UnaryOpKind; a: Expr; }
-export interface ArrayLit { t: "ArrayLit"; items: Expr[]; }
+export interface Literal { t: "Literal"; value: number | string | boolean | null; loc?: SourceLoc; }
+export interface Ident { t: "Ident"; name: string; loc?: SourceLoc; }
+export interface Call { t: "Call"; callee: Expr; args: Expr[]; loc?: SourceLoc; }
+export interface Index { t: "Index"; obj: Expr; key: Expr; loc?: SourceLoc; }
+export interface Member { t: "Member"; obj: Expr; name: string; loc?: SourceLoc; }
+export interface BinOp { t: "BinOp"; op: BinOpKind; a: Expr; b: Expr; loc?: SourceLoc; }
+export interface UnaryOp { t: "UnaryOp"; op: UnaryOpKind; a: Expr; loc?: SourceLoc; }
+export interface ArrayLit { t: "ArrayLit"; items: Expr[]; loc?: SourceLoc; }
 
 export type BinOpKind =
   | "+" | "-" | "*" | "/" | "%"
