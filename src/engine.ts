@@ -90,11 +90,20 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
 }
 
 function cloneActor(a: Actor): Actor {
+  const defaults = a.kind === "hero"
+    ? { mp: 20, maxMp: 20, atk: 3, def: 0, int: 5 }
+    : { mp: 0,  maxMp: 0,  atk: 1, def: 0, int: 0 };
   return {
     id: a.id, kind: a.kind,
     hp: a.hp, maxHp: a.maxHp, speed: a.speed, energy: 0,
     pos: { ...a.pos }, alive: a.hp > 0,
     script: a.script as Script, // AST is immutable — safe to share
+    mp:    a.mp    ?? defaults.mp,
+    maxMp: a.maxMp ?? defaults.maxMp,
+    atk:   a.atk   ?? defaults.atk,
+    def:   a.def   ?? defaults.def,
+    int:   a.int   ?? defaults.int,
+    effects: [],
   };
 }
 

@@ -83,6 +83,29 @@ export interface Actor {
   script: Script;
   // runtime (populated by interpreter/scheduler)
   alive: boolean;
+  // Phase 5 stats (optional on input; normalized to defaults by engine).
+  // `int` is reserved: Phase 6 spells will scale by floor(base * (1 + int/10)).
+  mp?: number;
+  maxMp?: number;
+  atk?: number;
+  def?: number;
+  int?: number;
+  effects?: Effect[];
+}
+
+// ──────────────────────────── Effects ────────────────────────────
+
+export type EffectKind = "burning" | "regen" | "haste" | "slow";
+
+export interface Effect {
+  id: string;
+  kind: EffectKind;
+  target: string;         // actor id
+  magnitude?: number;
+  duration: number;       // total ticks; Infinity for permanent
+  remaining: number;      // ticks left until expire
+  tickEvery: number;      // cadence between onTick calls
+  source?: string;        // optional: who applied it
 }
 
 export type Direction = "N" | "S" | "E" | "W";
@@ -124,7 +147,10 @@ export type GameEvent =
   | { type: "Halted"; actor: string }
   | { type: "Idled"; actor: string }
   | { type: "ActionFailed"; actor: string; action: string; reason: string }
-  | { type: "See"; actor: string; what: string };
+  | { type: "See"; actor: string; what: string }
+  | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: string }
+  | { type: "EffectTick"; actor: string; kind: EffectKind; magnitude?: number }
+  | { type: "EffectExpired"; actor: string; kind: EffectKind };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
