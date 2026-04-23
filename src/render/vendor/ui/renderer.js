@@ -52,9 +52,25 @@ export function render(state) {
     }
   }
 
-  // Update camera to center on player
-  const targetCamX = player.x * TILE - canvas.width / 2 + TILE / 2;
-  const targetCamY = player.y * TILE - canvas.height / 2 + TILE / 2;
+  // Update camera to center on player, clamped to world bounds.
+  // When the world is smaller than the canvas, center the world instead
+  // of tracking the player — keeps the whole room visible with no
+  // black bleed past the edges.
+  const worldPxW = state.width  * TILE;
+  const worldPxH = state.height * TILE;
+  let targetCamX, targetCamY;
+  if (worldPxW <= canvas.width) {
+    targetCamX = (worldPxW - canvas.width) / 2;
+  } else {
+    targetCamX = player.x * TILE - canvas.width / 2 + TILE / 2;
+    targetCamX = Math.max(0, Math.min(targetCamX, worldPxW - canvas.width));
+  }
+  if (worldPxH <= canvas.height) {
+    targetCamY = (worldPxH - canvas.height) / 2;
+  } else {
+    targetCamY = player.y * TILE - canvas.height / 2 + TILE / 2;
+    targetCamY = Math.max(0, Math.min(targetCamY, worldPxH - canvas.height));
+  }
   cameraX += (targetCamX - cameraX) * CAMERA_DAMPING;
   cameraY += (targetCamY - cameraY) * CAMERA_DAMPING;
 

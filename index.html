@@ -4,25 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grimoire</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
     <link rel="stylesheet" href="/src/ui/layout.css" />
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <h1>Grimoire</h1>
-        <div class="controls">
-          <button id="btn-run">Run</button>
-          <button id="btn-pause" disabled>Pause</button>
-          <button id="btn-step" disabled>Step</button>
-          <button id="btn-resume" disabled>Resume</button>
-          <button id="btn-stop" disabled>Stop</button>
-          <button id="btn-reset">Reset</button>
-          <label class="speed">
-            Speed
-            <input id="speed-slider" type="range" min="50" max="1000" step="10" value="200" />
-            <span id="speed-readout">200ms</span>
-          </label>
-        </div>
       </header>
       <main class="grid">
         <section class="pane editor">
@@ -31,9 +21,23 @@
             <pre class="gutter" id="gutter" aria-hidden="true"></pre>
             <textarea id="editor" spellcheck="false"></textarea>
           </div>
+          <div class="controls">
+            <div class="controls-row">
+              <button id="btn-run">Run</button>
+              <button id="btn-pause" disabled>Pause</button>
+              <button id="btn-step" disabled>Step</button>
+              <button id="btn-resume" disabled>Resume</button>
+              <button id="btn-stop" disabled>Stop</button>
+              <button id="btn-reset">Reset</button>
+            </div>
+            <label class="speed">
+              Speed
+              <input id="speed-slider" type="range" min="50" max="1000" step="10" value="200" />
+              <span id="speed-readout">200ms</span>
+            </label>
+          </div>
         </section>
         <section class="pane game">
-          <h2>Game</h2>
           <div id="game-view"></div>
         </section>
         <section class="pane log">
