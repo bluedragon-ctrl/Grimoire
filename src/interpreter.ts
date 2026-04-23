@@ -97,6 +97,8 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
         const name = s.expr.callee.name;
         const args = s.expr.args.map(a => evalExpr(a, env, ctx));
         const action = buildPendingAction(name, args);
+        if (s.loc) action.loc = s.loc;
+        action.locals = snapshotEnv(env);
         yield action;
         return;
       }
@@ -258,6 +260,18 @@ function callUserFunc(fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx): u
     if (e instanceof ReturnSignal) return e.value;
     throw e;
   }
+}
+
+// Flatten the live env chain into a plain object (innermost wins). Used by
+// the debugger's inspect() to surface locals without leaking Env internals.
+export function snapshotEnv(env: Env): Record<string, unknown> {
+  const chain: Env[] = [];
+  for (let e: Env | null = env; e; e = e.parent) chain.push(e);
+  const out: Record<string, unknown> = {};
+  for (let i = chain.length - 1; i >= 0; i--) {
+    for (const [k, v] of chain[i]!.vars) out[k] = v;
+  }
+  return out;
 }
 
 function truthy(v: unknown): boolean {

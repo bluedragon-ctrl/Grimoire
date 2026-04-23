@@ -1,7 +1,13 @@
-// Public engine API: runRoom(setup) → { log, abort, world }.
+// Public engine API. Two flavors:
+//   runRoom(setup, opts)   — synchronous, runs to completion, existing API.
+//   startRoom(setup, opts) — returns a DebugHandle for step-by-step execution.
 
-import type { Actor, Room, World, EventLog } from "./types.js";
-import { runLoop, type RunOptions } from "./scheduler.js";
+import type {
+  Actor, Room, World, EventLog, GameEvent, SourceLoc, Script,
+} from "./types.js";
+import {
+  createScheduler, stepOne, type RunOptions, type SchedulerState, type StepResult,
+} from "./scheduler.js";
 
 export interface RoomSetup {
   room: Room;
@@ -14,24 +20,168 @@ export interface EngineHandle {
   abort(): void;
 }
 
-// Synchronous. For MVP the engine runs to completion before returning.
-// The `abort` callback is only useful if the scheduler is driven tick-at-a-
-// time later; for now it flips the flag and the loop will exit on the next
-// check. Exposed so the UI wiring stays stable when we switch to async.
-export function runRoom(setup: RoomSetup, opts: RunOptions = {}): EngineHandle {
-  const world: World = {
+export interface ActorSummary { id: string; kind: string; pos: { x: number; y: number }; hp: number; }
+export interface ItemSummary { id: string; kind: string; pos: { x: number; y: number }; }
+
+export interface InspectSnapshot {
+  locals: Record<string, unknown>;
+  visible: {
+    enemies: ActorSummary[];
+    items: ItemSummary[];
+    hp: number;
+    maxHp: number;
+    pos: { x: number; y: number };
+  };
+}
+
+export interface DebugHandle extends EngineHandle {
+  step(): StepResult;
+  run(): void;
+  pause(): void;
+  reset(): void;
+  inspect(actorId: string): InspectSnapshot | null;
+  readonly currentLoc: SourceLoc | null;
+  readonly paused: boolean;
+  readonly done: boolean;
+}
+
+// Turn a live actor ref into a read-only summary for the inspector.
+function summarizeActor(a: Actor): ActorSummary {
+  return { id: a.id, kind: a.kind, pos: { ...a.pos }, hp: a.hp };
+}
+
+// Best-effort JSON-safe projection of a local value. Recognizes actor-like
+// objects and stringifies them as summaries; otherwise copies primitives and
+// plain structures shallowly to avoid leaking live world references.
+function jsonSafe(v: unknown): unknown {
+  if (v === null || v === undefined) return v;
+  const t = typeof v;
+  if (t === "number" || t === "string" || t === "boolean") return v;
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (t === "object") {
+    const obj = v as any;
+    if (typeof obj.id === "string" && typeof obj.kind === "string"
+        && obj.pos && typeof obj.pos.x === "number" && typeof obj.hp === "number") {
+      return summarizeActor(obj as Actor);
+    }
+    if (obj.pos && typeof obj.pos.x === "number") {
+      return { ...obj, pos: { ...obj.pos } };
+    }
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(obj)) out[k] = jsonSafe(obj[k]);
+    return out;
+  }
+  return String(v);
+}
+
+// Snapshot the setup so reset() can rebuild a fresh world from the initial
+// values, even after the live world has been mutated by a run.
+function snapshotSetup(setup: RoomSetup): RoomSetup {
+  return {
+    room: {
+      w: setup.room.w,
+      h: setup.room.h,
+      doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
+      items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
+      chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
+    },
+    actors: setup.actors.map(a => cloneActor(a)),
+  };
+}
+
+function cloneActor(a: Actor): Actor {
+  return {
+    id: a.id, kind: a.kind,
+    hp: a.hp, maxHp: a.maxHp, speed: a.speed, energy: 0,
+    pos: { ...a.pos }, alive: a.hp > 0,
+    script: a.script as Script, // AST is immutable — safe to share
+  };
+}
+
+function buildWorld(setup: RoomSetup): World {
+  return {
     tick: 0,
-    room: setup.room,
-    actors: setup.actors.map(a => ({ ...a, alive: a.hp > 0 })),
+    room: {
+      w: setup.room.w, h: setup.room.h,
+      doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
+      items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
+      chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
+    },
+    actors: setup.actors.map(a => cloneActor(a)),
     log: [],
     aborted: false,
     ended: false,
   };
-  const handle: EngineHandle = {
-    log: world.log,
-    world,
-    abort() { world.aborted = true; },
+}
+
+// ──────────────────────────── public entry points ────────────────────────────
+
+export function runRoom(setup: RoomSetup, opts: RunOptions = {}): EngineHandle {
+  const h = startRoom(setup, opts);
+  h.run();
+  return { log: h.log, world: h.world, abort: h.abort };
+}
+
+export function startRoom(setup: RoomSetup, opts: RunOptions = {}): DebugHandle {
+  const snapshot = snapshotSetup(setup);
+
+  let world: World = buildWorld(snapshot);
+  let sched: SchedulerState = createScheduler(world, opts);
+  let paused = false;
+  let done = false;
+
+  const handle: DebugHandle = {
+    get log() { return world.log; },
+    get world() { return world; },
+    get currentLoc() { return sched.lastFiredLoc; },
+    get paused() { return paused; },
+    get done() { return done; },
+
+    abort() { world.aborted = true; done = true; },
+
+    step(): StepResult {
+      if (done) return { events: [], done: true };
+      const r = stepOne(world, sched);
+      if (r.done) done = true;
+      return r;
+    },
+
+    run() {
+      paused = false;
+      while (!done && !paused) {
+        const r = stepOne(world, sched);
+        if (r.done) { done = true; break; }
+      }
+    },
+
+    pause() { paused = true; },
+
+    inspect(actorId: string): InspectSnapshot | null {
+      const actor = world.actors.find(a => a.id === actorId);
+      if (!actor) return null;
+      const rt = sched.runtimes.find(r => r.actor.id === actorId);
+      const frame = rt && rt.stack.length > 0 ? rt.stack[rt.stack.length - 1]! : null;
+      const rawLocals = frame?.pending?.locals ?? {};
+      const locals: Record<string, unknown> = {};
+      for (const k of Object.keys(rawLocals)) locals[k] = jsonSafe(rawLocals[k]);
+      return {
+        locals,
+        visible: {
+          enemies: world.actors.filter(a => a.alive && a.id !== actorId).map(summarizeActor),
+          items: world.room.items.map(i => ({ id: i.id, kind: i.kind, pos: { ...i.pos } })),
+          hp: actor.hp,
+          maxHp: actor.maxHp,
+          pos: { ...actor.pos },
+        },
+      };
+    },
+
+    reset() {
+      world = buildWorld(snapshot);
+      sched = createScheduler(world, opts);
+      paused = false;
+      done = false;
+    },
   };
-  runLoop(world, opts);
   return handle;
 }

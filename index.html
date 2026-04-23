@@ -13,7 +13,10 @@
         <div class="controls">
           <button id="btn-run">Run</button>
           <button id="btn-pause" disabled>Pause</button>
+          <button id="btn-step" disabled>Step</button>
+          <button id="btn-resume" disabled>Resume</button>
           <button id="btn-stop" disabled>Stop</button>
+          <button id="btn-reset">Reset</button>
           <label class="speed">
             Speed
             <input id="speed-slider" type="range" min="50" max="1000" step="10" value="200" />
@@ -24,7 +27,10 @@
       <main class="grid">
         <section class="pane editor">
           <h2>Script</h2>
-          <textarea id="editor" spellcheck="false"></textarea>
+          <div class="editor-wrap">
+            <pre class="gutter" id="gutter" aria-hidden="true"></pre>
+            <textarea id="editor" spellcheck="false"></textarea>
+          </div>
         </section>
         <section class="pane game">
           <h2>Game</h2>
@@ -33,6 +39,12 @@
         <section class="pane log">
           <h2>Events</h2>
           <ul id="event-log"></ul>
+        </section>
+        <section class="pane inspector">
+          <h2>Inspector</h2>
+          <div id="inspector">
+            <div class="inspector-empty">Not paused.</div>
+          </div>
         </section>
       </main>
     </div>

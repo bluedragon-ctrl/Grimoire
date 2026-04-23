@@ -5,7 +5,8 @@
 // Optional on every AST node so the parser can attach source locations for
 // editor integration (Phase 4 gutter highlight). Hand-written ASTs (tests,
 // demo, ast-helpers) simply omit it — consumers must treat as optional.
-export interface SourceLoc { line: number; col: number; }
+export interface SourcePos { line: number; col: number; }
+export interface SourceLoc { start: SourcePos; end: SourcePos; }
 
 // ──────────────────────────── AST ────────────────────────────
 
@@ -131,13 +132,13 @@ export type EventLog = LogEntry[];
 // ──────────────────────────── Pending actions ────────────────────────────
 
 export type PendingAction =
-  | { kind: "approach"; cost: number; target: unknown }
-  | { kind: "flee"; cost: number; target: unknown }
-  | { kind: "attack"; cost: number; target: unknown }
-  | { kind: "cast"; cost: number; spell: string; target: unknown }
-  | { kind: "wait"; cost: number }
-  | { kind: "exit"; cost: number; door: Direction }
-  | { kind: "halt"; cost: 0 };
+  | { kind: "approach"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "flee"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> };
 
 // ──────────────────────────── Target resolution seam ────────────────────────────
 
