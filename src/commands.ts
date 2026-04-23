@@ -2,10 +2,11 @@
 // Target resolution goes through a single seam: `resolveTarget`.
 
 import type {
-  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ResolveFailureMode,
+  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, ResolveFailureMode,
 } from "./types.js";
 import { hasEffect, listEffects } from "./effects.js";
 import { castSpell } from "./spells/cast.js";
+import { useItem, onHitHook } from "./items/execute.js";
 
 // ──────────────────────────── cost table ────────────────────────────
 
@@ -17,6 +18,7 @@ export const COST = {
   wait: 5,
   exit: 10,
   halt: 0,
+  use: 15,
 } as const;
 
 const DAMAGE_BY_KIND: Record<string, number> = {
@@ -236,7 +238,33 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
       events.push({ type: "HeroDied", actor: target.id });
     }
   }
+  // Phase 7: on-hit proc from attacker's dagger (if any). Skipped if defender
+  // died — onHitHook re-checks alive internally, so this is belt-and-braces.
+  events.push(...onHitHook(world, self, target));
   return events;
+}
+
+// Phase 7: consumable use. Accepts an ItemInstance or a bare defId (string).
+// defId lookup picks the first matching instance in the bag (deterministic
+// by insertion order).
+export function doUse(world: World, self: Actor, itemRef: unknown): GameEvent[] {
+  let instance: ItemInstance | null = null;
+  if (itemRef && typeof itemRef === "object") {
+    const r = itemRef as ItemInstance;
+    if (typeof r.id === "string" && typeof r.defId === "string") instance = r;
+  } else if (typeof itemRef === "string") {
+    const bag = self.inventory?.consumables ?? [];
+    const hit = bag.find(i => i.defId === itemRef);
+    if (hit) instance = hit;
+    else return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `No '${itemRef}' in bag.` }];
+  }
+  if (!instance) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: "no item" }];
+  return useItem(world, self, instance);
+}
+
+// Mirrors castFailedCleanly: failed use() emits only ActionFailed → refund.
+export function useFailedCleanly(events: GameEvent[]): boolean {
+  return events.length === 1 && events[0]!.type === "ActionFailed";
 }
 
 export function doCast(

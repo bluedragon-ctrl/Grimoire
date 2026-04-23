@@ -12,7 +12,7 @@ import { COST, queries } from "./commands.js";
 
 // Command names that, when used at statement level, yield a PendingAction.
 const COMMAND_NAMES = new Set([
-  "approach", "flee", "attack", "cast", "wait", "exit", "halt",
+  "approach", "flee", "attack", "cast", "wait", "exit", "halt", "use",
 ]);
 
 // ──────────────────────────── environment ────────────────────────────
@@ -290,6 +290,7 @@ function buildPendingAction(name: string, args: unknown[]): PendingAction {
     case "wait":     return { kind: "wait",     cost: COST.wait };
     case "exit":     return { kind: "exit",     cost: COST.exit,     door: (args[0] as Direction) };
     case "halt":     return { kind: "halt",     cost: 0 };
+    case "use":      return { kind: "use",      cost: COST.use,      item: args[0] };
   }
   // Unreachable: COMMAND_NAMES is the authoritative set.
   throw new Error(`unknown command ${name}`);

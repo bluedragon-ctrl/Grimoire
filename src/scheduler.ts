@@ -9,7 +9,8 @@ import type {
 } from "./types.js";
 import { compile, type CompiledScript } from "./interpreter.js";
 import {
-  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, castFailedCleanly,
+  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
+  castFailedCleanly, useFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
 import { tickClouds } from "./clouds.js";
@@ -82,6 +83,10 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       const events = fireAction(world, rt.actor, action);
       // Phase 6: failed casts don't cost energy (actor tries again next tick).
       if (action.kind === "cast" && castFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
+      // Phase 7: failed use() mirrors the cast refund policy.
+      if (action.kind === "use" && useFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
       dispatch(world, s.runtimes, events);
@@ -194,6 +199,7 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "wait":     return doWait(world, self);
     case "exit":     return doExit(world, self, action.door);
     case "halt":     return doHalt(world, self);
+    case "use":      return doUse(world, self, action.item);
   }
 }
 
@@ -266,6 +272,10 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "CloudTicked": return `[t=${t}] cloud.${event.id}.ticked — ${event.appliedTo.length} affected`;
     case "CloudExpired": return `[t=${t}] cloud.${event.id}.expired`;
     case "VisualBurst": return `[t=${t}] burst — ${event.visual} @(${event.pos.x},${event.pos.y})`;
+    case "ItemUsed": return `[t=${t}] ${event.actor}.itemUsed — ${event.defId}`;
+    case "ItemEquipped": return `[t=${t}] ${event.actor}.itemEquipped — ${event.defId} (${event.slot})`;
+    case "ItemUnequipped": return `[t=${t}] ${event.actor}.itemUnequipped — ${event.defId} (${event.slot})`;
+    case "OnHitTriggered": return `[t=${t}] ${event.attacker}.onHit — ${event.defId} → ${event.defender}`;
   }
 }
 
