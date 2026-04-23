@@ -11,6 +11,7 @@ import { compile, type CompiledScript } from "./interpreter.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt,
 } from "./commands.js";
+import { tickEffects, effectiveStats } from "./effects.js";
 
 interface Frame {
   gen: Generator<PendingAction, void, void>;
@@ -96,8 +97,20 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     world.tick += 1;
     s.opts.onTick?.(world);
     if (world.aborted) return { events: [], done: true };
-    for (const a of world.actors) if (a.alive) a.energy += a.speed;
+    for (const a of world.actors) if (a.alive) a.energy += effectiveStats(a).speed;
+    // Effect phase: runs after the prior tick's actions. Any emitted events
+    // (EffectTick, Died, Healed, HeroDied) flow through dispatch so handlers
+    // (e.g. on hit) see them uniformly.
+    const effectEvents: GameEvent[] = [];
+    for (const a of world.actors) effectEvents.push(...tickEffects(world, a));
+    if (effectEvents.length > 0) {
+      dispatch(world, s.runtimes, effectEvents);
+      if (effectEvents.some(e => e.type === "HeroDied" || e.type === "HeroExited")) {
+        world.ended = true;
+      }
+    }
     for (const r of s.runtimes) ensurePending(r);
+    if (world.ended || world.aborted) return { events: effectEvents, done: true };
 
     if (!anyLiveWork(s)) return { events: [], done: true };
   }
