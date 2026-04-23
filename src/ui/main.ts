@@ -1,15 +1,14 @@
-// UI wiring. Run parses the textarea, swaps the resulting Script into the
-// demo's hero, runs the engine synchronously, then hands handle.log to the
-// playback controller which paces events through the WireRendererAdapter.
-// The event-log panel streams lines as each event is actually applied, so
-// the log and visuals stay in sync.
+// UI wiring. Run parses the textarea, starts a DebugHandle on the demo setup,
+// then drives handle.step() through a setTimeout loop to pace events through
+// the WireRendererAdapter. Pause freezes the loop; Step fires one action;
+// Reset rebuilds from the initial snapshot.
 
-import { runRoom, type EngineHandle } from "../engine.js";
+import { startRoom, type DebugHandle } from "../engine.js";
 import { formatLogEntry } from "../scheduler.js";
 import { demoSetup } from "../demo.js";
+import type { RoomSetup } from "../engine.js";
 import { parse, ParseError, formatError } from "../lang/index.js";
 import { WireRendererAdapter } from "../render/wire-adapter.js";
-import { createPlayback, type Playback } from "../render/mount.js";
 
 const btnRun    = document.getElementById("btn-run")    as HTMLButtonElement;
 const btnPause  = document.getElementById("btn-pause")  as HTMLButtonElement;
@@ -43,9 +42,14 @@ editorEl.readOnly = false;
 editorEl.placeholder = "# Your script here";
 if (editorEl.value.trim() === "") editorEl.value = DEFAULT_SCRIPT;
 
-let currentHandle: EngineHandle | null = null;
+type Mode = "idle" | "playing" | "paused" | "done";
+
+let currentHandle: DebugHandle | null = null;
 let currentAdapter: WireRendererAdapter | null = null;
-let currentPlayback: Playback | null = null;
+let currentSetup: RoomSetup | null = null;
+let applyCursor = 0;           // next log index yet to apply to the adapter
+let playTimer: ReturnType<typeof setTimeout> | null = null;
+let mode: Mode = "idle";
 
 function appendLine(text: string, cls?: string): void {
   const li = document.createElement("li");
@@ -56,34 +60,67 @@ function appendLine(text: string, cls?: string): void {
 }
 function clearLog(): void { logEl.innerHTML = ""; }
 
-function setControlsForIdle() {
-  btnRun.disabled = false;
-  btnPause.disabled = true;
-  btnStop.disabled = true;
-  btnPause.textContent = "Pause";
+function setControls(m: Mode) {
+  mode = m;
+  btnRun.disabled    = m === "playing" || m === "paused";
+  btnPause.disabled  = m !== "playing";
+  btnStep.disabled   = m !== "paused";
+  btnResume.disabled = m !== "paused";
+  btnStop.disabled   = m === "idle" || m === "done";
 }
-function setControlsForPlaying() {
-  btnRun.disabled = true;
-  btnPause.disabled = false;
-  btnStop.disabled = false;
-  btnPause.textContent = "Pause";
-}
-function setControlsForPaused() {
-  btnPause.textContent = "Resume";
+
+function clearPlayTimer() {
+  if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
 }
 
 function teardownCurrent() {
-  if (currentPlayback) currentPlayback.stop();      // tears the adapter down too
-  else if (currentAdapter) currentAdapter.teardown();
-  currentPlayback = null;
+  clearPlayTimer();
+  if (currentAdapter) currentAdapter.teardown();
   currentAdapter = null;
   currentHandle = null;
+  currentSetup = null;
+  applyCursor = 0;
+  setActiveGutterLine(null);
+  renderInspectorEmpty();
 }
 
-btnRun.addEventListener("click", () => {
+// Apply every log entry from applyCursor onward to the adapter and the UI.
+function drainLogToAdapter(): void {
+  if (!currentHandle || !currentAdapter) return;
+  const log = currentHandle.log;
+  while (applyCursor < log.length) {
+    const entry = log[applyCursor++]!;
+    currentAdapter.apply(entry.event);
+    appendLine(formatLogEntry(entry), entry.event.type === "ActionFailed" ? "fail" : undefined);
+  }
+}
+
+function refreshDebugView(): void {
+  if (!currentHandle) return;
+  const loc = currentHandle.currentLoc;
+  setActiveGutterLine(loc?.start.line ?? null);
+  const snap = currentHandle.inspect("hero");
+  if (snap) renderInspector(snap);
+}
+
+function playTick(): void {
+  playTimer = null;
+  if (mode !== "playing" || !currentHandle) return;
+  const r = currentHandle.step();
+  drainLogToAdapter();
+  if (r.done || currentHandle.done) {
+    appendLine(`— done (tick=${currentHandle.world.tick}) —`);
+    setActiveGutterLine(null);
+    renderInspectorEmpty("Done.");
+    setControls("done");
+    return;
+  }
+  playTimer = setTimeout(playTick, Number(speedEl.value));
+}
+
+function startFromSource(): boolean {
   teardownCurrent();
   clearLog();
-
   const source = editorEl.value;
   let heroScript;
   try {
@@ -92,7 +129,7 @@ btnRun.addEventListener("click", () => {
     if (err instanceof ParseError) {
       appendLine("— parse error —", "fail");
       for (const line of formatError(source, err).split("\n")) appendLine(line, "fail");
-      return;
+      return false;
     }
     throw err;
   }
@@ -100,54 +137,78 @@ btnRun.addEventListener("click", () => {
   appendLine("— run —");
   const setup = demoSetup();
   setup.actors[0]!.script = heroScript;
+  currentSetup = setup;
 
-  const handle = runRoom(setup, { maxTicks: 2000 });
+  const handle = startRoom(setup, { maxTicks: 2000 });
   currentHandle = handle;
 
   const adapter = new WireRendererAdapter();
-  adapter.mount(gameEl, setup.room, setup.actors);
+  adapter.mount(gameEl, handle.world.room, handle.world.actors);
   currentAdapter = adapter;
+  applyCursor = 0;
+  return true;
+}
 
-  const playback = createPlayback(handle, adapter, {
-    speedMs: Number(speedEl.value),
-    onEvent: (_event, idx) => {
-      const entry = handle.log[idx]!;
-      appendLine(formatLogEntry(entry), entry.event.type === "ActionFailed" ? "fail" : undefined);
-    },
-    onComplete: () => {
-      appendLine(`— done (tick=${handle.world.tick}) —`);
-      setControlsForIdle();
-    },
-  });
-  currentPlayback = playback;
-
-  playback.play();
-  setControlsForPlaying();
+btnRun.addEventListener("click", () => {
+  if (!startFromSource()) return;
+  setControls("playing");
+  playTimer = setTimeout(playTick, Number(speedEl.value));
 });
 
 btnPause.addEventListener("click", () => {
-  if (!currentPlayback) return;
-  if (currentPlayback.status() === "playing") {
-    currentPlayback.pause();
-    setControlsForPaused();
-  } else if (currentPlayback.status() === "paused") {
-    currentPlayback.resume();
-    setControlsForPlaying();
+  if (mode !== "playing" || !currentHandle) return;
+  clearPlayTimer();
+  currentHandle.pause();
+  refreshDebugView();
+  setControls("paused");
+});
+
+btnStep.addEventListener("click", () => {
+  if (mode !== "paused" || !currentHandle) return;
+  const r = currentHandle.step();
+  drainLogToAdapter();
+  refreshDebugView();
+  if (r.done || currentHandle.done) {
+    appendLine(`— done (tick=${currentHandle.world.tick}) —`);
+    setActiveGutterLine(null);
+    renderInspectorEmpty("Done.");
+    setControls("done");
   }
+});
+
+btnResume.addEventListener("click", () => {
+  if (mode !== "paused" || !currentHandle) return;
+  setActiveGutterLine(null);
+  setControls("playing");
+  playTimer = setTimeout(playTick, Number(speedEl.value));
 });
 
 btnStop.addEventListener("click", () => {
   if (!currentHandle) return;
   currentHandle.abort();
-  teardownCurrent();
+  clearPlayTimer();
   appendLine("— stop —");
-  setControlsForIdle();
+  setActiveGutterLine(null);
+  renderInspectorEmpty("Stopped.");
+  setControls("done");
+});
+
+btnReset.addEventListener("click", () => {
+  // Reset always reparses current source — Phase 4 spec says reset restarts
+  // the interpreter on the initial state, and edits-then-reset should use
+  // the new source.
+  if (!startFromSource()) return;
+  setControls("idle");
 });
 
 speedEl.addEventListener("input", () => {
   const ms = Number(speedEl.value);
   speedOut.textContent = `${ms}ms`;
-  if (currentPlayback) currentPlayback.setSpeed(ms);
+  // If we're mid-playback, the next scheduled tick will use the new speed.
+  if (mode === "playing") {
+    clearPlayTimer();
+    playTimer = setTimeout(playTick, ms);
+  }
 });
 
 // ──────────────────────────── gutter ────────────────────────────
@@ -217,6 +278,6 @@ function escapeHtml(s: string): string {
 }
 
 // Initial state.
-setControlsForIdle();
+setControls("idle");
 speedOut.textContent = `${speedEl.value}ms`;
 renderInspectorEmpty();
