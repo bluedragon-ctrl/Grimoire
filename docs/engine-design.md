@@ -155,6 +155,79 @@ index.html
 tests/             vitest specs (one per scenario in the brief)
 ```
 
+## Phase 6: data-driven spells + clouds
+
+### Spell validation order (castSpell)
+
+`castSpell(world, caster, name, target)` runs six checks in order; the first
+failure short-circuits with a single `ActionFailed` event. **No mana is
+deducted on failure, and no primitives run.** The scheduler additionally
+refunds the cast's energy cost when the result is only `ActionFailed` — so
+failed casts don't consume the actor's action slot.
+
+1. **Known spell?** — `SPELLS[name]` must exist. Suggests nearest via
+   `didYouMean`: `"Unknown spell 'bolr'. Did you mean 'bolt'?"`.
+2. **Caster learned it?** — `caster.knownSpells` must include the name.
+3. **Target type valid?** — `"self"` resolves to caster; `"tile"` accepts
+   either a position or an actor (actor → actor.pos); `"ally"` requires same
+   faction and alive; `"enemy"` requires opposing faction and alive; `"any"`
+   requires any live actor.
+4. **In range?** — Chebyshev distance ≤ `spell.range`.
+5. **Sufficient mana?** — `caster.mp >= spell.mpCost`.
+6. **All clear** — deduct `mpCost`, emit `Cast`, then run each `body` op
+   through the primitive registry in order.
+
+### Primitive registry
+
+Spell bodies are declarative `SpellOp[]`. Each op names a primitive and a
+plain args bag. Phase 6 ships four implemented primitives (`project`,
+`inflict`, `heal`, `spawn_cloud`) and four stubs (`explode`, `summon`,
+`teleport`, `push`). Stubs are callable — they emit an
+`ActionFailed { reason: "Primitive 'X' is not implemented yet" }` and, for
+`explode`, a `VisualBurst` so later renderers can still hook the effect
+site. Nothing throws.
+
+Primitives may accept `visual?: string` and `element?: string` args. These
+pass through unchanged onto emitted events (`Cast.visual`,
+`CloudSpawned.visual`, `VisualBurst.visual`). The engine never reads them —
+the Phase 8 renderer will resolve preset names against
+`src/content/visuals.ts`.
+
+INT-based magnitude scaling lives in a single function, `scale(base, int)`
+in `src/content/scaling.ts`. Primitives apply it to damage, heal amounts,
+and effect durations; never to range or mpCost.
+
+### Cloud lifecycle
+
+`room.clouds` is a first-class map feature. Each cloud carries
+`{ id, pos, kind, duration, remaining, source? }`. The cloud's `kind` names
+an entry in `CLOUD_KINDS` (content), which specifies the effect re-applied
+to any actor on the tile.
+
+Each scheduler tick, `tickClouds(world)` runs **after `tickEffects` and
+before the next actor action slot**:
+
+1. For each cloud, find live actors whose position matches the cloud's
+   position, and call `applyEffect` with the configured effect. Phase 5
+   stacking semantics (refresh duration to max; magnitude doesn't stack)
+   handle repeat ticks and re-entry.
+2. Emit `CloudTicked { id, appliedTo }` if at least one actor was hit.
+3. Decrement `remaining`; at ≤ 0 emit `CloudExpired` and splice out.
+
+Multiple clouds on the same tile tick independently and all apply. Clouds
+do **not** block movement in Phase 6.
+
+### Tick order
+
+Within a scheduler tick, when no action is ready and time advances:
+
+1. `world.tick += 1`; `onTick` hook; actors accrue energy by
+   `effectiveStats.speed`.
+2. **Effects phase:** `tickEffects(world, actor)` for each live actor.
+3. **Clouds phase:** `tickClouds(world)` — cloud applications + decays.
+4. Dispatch all phase events through handler routing.
+5. Return to action-readiness check.
+
 ## Open questions (flagging, not blocking)
 
 - Do queries see a snapshot of world state at yield time, or live state each evaluation? **Proposed: live** — simpler, and scripts are single-threaded per actor so no race.
