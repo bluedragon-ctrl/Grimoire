@@ -11,14 +11,19 @@ import { parse, ParseError, formatError } from "../lang/index.js";
 import { WireRendererAdapter } from "../render/wire-adapter.js";
 import { createPlayback, type Playback } from "../render/mount.js";
 
-const btnRun   = document.getElementById("btn-run")   as HTMLButtonElement;
-const btnPause = document.getElementById("btn-pause") as HTMLButtonElement;
-const btnStop  = document.getElementById("btn-stop")  as HTMLButtonElement;
-const speedEl  = document.getElementById("speed-slider")  as HTMLInputElement;
-const speedOut = document.getElementById("speed-readout") as HTMLSpanElement;
-const logEl    = document.getElementById("event-log") as HTMLUListElement;
-const editorEl = document.getElementById("editor")    as HTMLTextAreaElement;
-const gameEl   = document.getElementById("game-view") as HTMLDivElement;
+const btnRun    = document.getElementById("btn-run")    as HTMLButtonElement;
+const btnPause  = document.getElementById("btn-pause")  as HTMLButtonElement;
+const btnStep   = document.getElementById("btn-step")   as HTMLButtonElement;
+const btnResume = document.getElementById("btn-resume") as HTMLButtonElement;
+const btnStop   = document.getElementById("btn-stop")   as HTMLButtonElement;
+const btnReset  = document.getElementById("btn-reset")  as HTMLButtonElement;
+const speedEl   = document.getElementById("speed-slider")  as HTMLInputElement;
+const speedOut  = document.getElementById("speed-readout") as HTMLSpanElement;
+const logEl     = document.getElementById("event-log") as HTMLUListElement;
+const editorEl  = document.getElementById("editor")    as HTMLTextAreaElement;
+const gutterEl  = document.getElementById("gutter")    as HTMLPreElement;
+const gameEl    = document.getElementById("game-view") as HTMLDivElement;
+const inspectorEl = document.getElementById("inspector") as HTMLDivElement;
 
 const DEFAULT_SCRIPT = [
   "# Hero script — edit and click Run.",
@@ -26,7 +31,7 @@ const DEFAULT_SCRIPT = [
   "  approach(enemies()[0])",
   "  attack(enemies()[0])",
   "",
-  "while me.pos.x != doors()[0].pos.x or me.pos.y != doors()[0].pos.y:",
+  "while not at(doors()[0]):",
   "  approach(doors()[0])",
   "",
   "exit(\"N\")",
@@ -145,6 +150,73 @@ speedEl.addEventListener("input", () => {
   if (currentPlayback) currentPlayback.setSpeed(ms);
 });
 
+// ──────────────────────────── gutter ────────────────────────────
+
+let activeGutterLine: number | null = null;
+
+function renderGutter(): void {
+  const lines = editorEl.value.split("\n").length;
+  // Build one <span> per line so we can highlight individually.
+  const rows: string[] = [];
+  for (let i = 1; i <= lines; i++) {
+    const cls = i === activeGutterLine ? "gutter-line gutter-active" : "gutter-line";
+    rows.push(`<span class="${cls}">${i}</span>`);
+  }
+  gutterEl.innerHTML = rows.join("");
+  gutterEl.scrollTop = editorEl.scrollTop;
+}
+
+export function setActiveGutterLine(line: number | null): void {
+  activeGutterLine = line;
+  renderGutter();
+}
+
+editorEl.addEventListener("input", renderGutter);
+editorEl.addEventListener("scroll", () => { gutterEl.scrollTop = editorEl.scrollTop; });
+renderGutter();
+
+// ──────────────────────────── inspector rendering ────────────────────────────
+
+export function renderInspectorEmpty(msg = "Not paused."): void {
+  inspectorEl.innerHTML = `<div class="inspector-empty">${msg}</div>`;
+}
+
+export function renderInspector(snap: {
+  locals: Record<string, unknown>;
+  visible: { enemies: unknown[]; items: unknown[]; hp: number; maxHp: number; pos: { x: number; y: number } };
+}): void {
+  const rows: string[] = [];
+  rows.push("<h3>Hero</h3><table>");
+  rows.push(kv("hp", `${snap.visible.hp} / ${snap.visible.maxHp}`));
+  rows.push(kv("pos", `(${snap.visible.pos.x}, ${snap.visible.pos.y})`));
+  rows.push(kv("enemies", String(snap.visible.enemies.length)));
+  rows.push(kv("items", String(snap.visible.items.length)));
+  rows.push("</table>");
+  const localKeys = Object.keys(snap.locals);
+  if (localKeys.length > 0) {
+    rows.push("<h3>Locals</h3><table>");
+    for (const k of localKeys) rows.push(kv(k, fmt(snap.locals[k])));
+    rows.push("</table>");
+  } else {
+    rows.push("<h3>Locals</h3><div class=\"inspector-empty\">(none)</div>");
+  }
+  inspectorEl.innerHTML = rows.join("");
+}
+
+function kv(k: string, v: string): string {
+  return `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${escapeHtml(v)}</td></tr>`;
+}
+function fmt(v: unknown): string {
+  if (v === null || v === undefined) return String(v);
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+}
+
 // Initial state.
 setControlsForIdle();
 speedOut.textContent = `${speedEl.value}ms`;
+renderInspectorEmpty();
