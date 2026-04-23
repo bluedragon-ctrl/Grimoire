@@ -5,7 +5,7 @@
 // preempting main with a handler doesn't discard main's pending.
 
 import type {
-  Actor, World, PendingAction, GameEvent, EventLog,
+  Actor, World, PendingAction, GameEvent, EventLog, SourceLoc,
 } from "./types.js";
 import { compile, type CompiledScript } from "./interpreter.js";
 import {
@@ -32,85 +32,90 @@ export interface RunOptions {
   onTick?: (world: World) => void; // called at the start of each tick
 }
 
-export function runLoop(world: World, opts: RunOptions = {}): void {
-  const maxTicks = opts.maxTicks ?? 5000;
+export interface SchedulerState {
+  runtimes: ActorRuntime[];
+  opts: RunOptions;
+  maxTicks: number;
+  lastFiredLoc: SourceLoc | null;
+}
 
+export function createScheduler(world: World, opts: RunOptions = {}): SchedulerState {
   const runtimes: ActorRuntime[] = world.actors.map(actor => {
     const compiled = compile(actor.script, { world, self: actor });
     const mainFrame: Frame = { gen: compiled.makeMain(), pending: null };
-    return {
-      actor,
-      compiled,
-      stack: [mainFrame],
-      eventQueue: [],
-      halted: false,
-    };
+    return { actor, compiled, stack: [mainFrame], eventQueue: [], halted: false };
   });
-
   for (const rt of runtimes) ensurePending(rt);
+  return { runtimes, opts, maxTicks: opts.maxTicks ?? 5000, lastFiredLoc: null };
+}
 
-  while (!world.aborted && !world.ended) {
-    if (world.tick >= maxTicks) break;
-    world.tick += 1;
+export interface StepResult {
+  events: GameEvent[];
+  done: boolean;
+}
 
-    opts.onTick?.(world);
-    if (world.aborted) break;
+// Advance the scheduler until exactly one actor-action fires, and return the
+// events bundle from that action (cascading events — e.g. Attacked+Hit+Died —
+// all come from one fire and count as one step).
+export function stepOne(world: World, s: SchedulerState): StepResult {
+  while (true) {
+    if (world.aborted || world.ended) return { events: [], done: true };
 
-    for (const a of world.actors) if (a.alive) a.energy += a.speed;
+    const ready = s.runtimes
+      .filter(rt => rt.actor.alive && activeFrame(rt)?.pending != null
+                    && rt.actor.energy >= activeFrame(rt)!.pending!.cost)
+      .sort((a, b) => {
+        if (b.actor.energy !== a.actor.energy) return b.actor.energy - a.actor.energy;
+        return a.actor.id.localeCompare(b.actor.id);
+      });
 
-    let innerGuard = 0;
-    while (!world.aborted && !world.ended) {
-      innerGuard++;
-      if (innerGuard > 10_000) break;
-
-      const ready = runtimes
-        .filter(rt => rt.actor.alive && activeFrame(rt)?.pending != null
-                      && rt.actor.energy >= activeFrame(rt)!.pending!.cost)
-        .sort((a, b) => {
-          if (b.actor.energy !== a.actor.energy) return b.actor.energy - a.actor.energy;
-          return a.actor.id.localeCompare(b.actor.id);
-        });
-
-      if (ready.length === 0) break;
-
+    if (ready.length > 0) {
       const rt = ready[0]!;
       const frame = activeFrame(rt)!;
       const action = frame.pending!;
       rt.actor.energy -= action.cost;
       frame.pending = null;
+      s.lastFiredLoc = action.loc ?? null;
 
       const events = fireAction(world, rt.actor, action);
-      dispatch(world, runtimes, events);
+      dispatch(world, s.runtimes, events);
 
       if (events.some(e => e.type === "HeroExited" || e.type === "HeroDied")) {
         world.ended = true;
-        break;
       }
+      if (action.kind === "halt") { rt.stack = []; rt.halted = true; }
+      if (!rt.actor.alive)        { rt.stack = []; rt.halted = true; }
 
-      if (action.kind === "halt") {
-        rt.stack = [];
-        rt.halted = true;
-      }
-
-      if (!rt.actor.alive) {
-        rt.stack = [];
-        rt.halted = true;
-      }
-
-      // Advance any runtime with no pending on its active frame.
-      for (const r of runtimes) ensurePending(r);
-
-      const anyReady = runtimes.some(r =>
-        r.actor.alive && activeFrame(r)?.pending != null
-        && r.actor.energy >= activeFrame(r)!.pending!.cost);
-      if (!anyReady) break;
+      for (const r of s.runtimes) ensurePending(r);
+      const done = world.ended || world.aborted || !anyLiveWork(s);
+      return { events, done };
     }
 
-    const anyLiveWork = runtimes.some(r =>
-      r.actor.alive && !r.halted && r.stack.length > 0);
-    if (!anyLiveWork) break;
+    // Nothing ready this instant — advance one tick, accrue energy.
+    if (world.tick >= s.maxTicks) return { events: [], done: true };
+    world.tick += 1;
+    s.opts.onTick?.(world);
+    if (world.aborted) return { events: [], done: true };
+    for (const a of world.actors) if (a.alive) a.energy += a.speed;
+    for (const r of s.runtimes) ensurePending(r);
+
+    if (!anyLiveWork(s)) return { events: [], done: true };
   }
 }
+
+function anyLiveWork(s: SchedulerState): boolean {
+  return s.runtimes.some(r => r.actor.alive && !r.halted && r.stack.length > 0);
+}
+
+export function runLoop(world: World, opts: RunOptions = {}): void {
+  const s = createScheduler(world, opts);
+  while (true) {
+    const r = stepOne(world, s);
+    if (r.done) break;
+  }
+  return;
+}
+
 
 function activeFrame(rt: ActorRuntime): Frame | null {
   return rt.stack.length > 0 ? rt.stack[rt.stack.length - 1]! : null;

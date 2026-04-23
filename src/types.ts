@@ -132,13 +132,13 @@ export type EventLog = LogEntry[];
 // ──────────────────────────── Pending actions ────────────────────────────
 
 export type PendingAction =
-  | { kind: "approach"; cost: number; target: unknown }
-  | { kind: "flee"; cost: number; target: unknown }
-  | { kind: "attack"; cost: number; target: unknown }
-  | { kind: "cast"; cost: number; spell: string; target: unknown }
-  | { kind: "wait"; cost: number }
-  | { kind: "exit"; cost: number; door: Direction }
-  | { kind: "halt"; cost: 0 };
+  | { kind: "approach"; cost: number; target: unknown; loc?: SourceLoc }
+  | { kind: "flee"; cost: number; target: unknown; loc?: SourceLoc }
+  | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc }
+  | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc }
+  | { kind: "wait"; cost: number; loc?: SourceLoc }
+  | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc }
+  | { kind: "halt"; cost: 0; loc?: SourceLoc };
 
 // ──────────────────────────── Target resolution seam ────────────────────────────
 

@@ -97,6 +97,7 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
         const name = s.expr.callee.name;
         const args = s.expr.args.map(a => evalExpr(a, env, ctx));
         const action = buildPendingAction(name, args);
+        if (s.loc) action.loc = s.loc;
         yield action;
         return;
       }
