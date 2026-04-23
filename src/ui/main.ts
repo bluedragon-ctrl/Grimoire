@@ -9,6 +9,7 @@ import { demoSetup } from "../demo.js";
 import type { RoomSetup } from "../engine.js";
 import { parse, ParseError, formatError } from "../lang/index.js";
 import { WireRendererAdapter } from "../render/wire-adapter.js";
+import { mountInventoryPanel, type InventoryController } from "./inventory.js";
 
 const btnRun    = document.getElementById("btn-run")    as HTMLButtonElement;
 const btnPause  = document.getElementById("btn-pause")  as HTMLButtonElement;
@@ -23,6 +24,7 @@ const editorEl  = document.getElementById("editor")    as HTMLTextAreaElement;
 const gutterEl  = document.getElementById("gutter")    as HTMLPreElement;
 const gameEl    = document.getElementById("game-view") as HTMLDivElement;
 const inspectorEl = document.getElementById("inspector") as HTMLDivElement;
+const inventoryEl = document.getElementById("inventory") as HTMLDivElement;
 const gridEl = document.querySelector("main.grid") as HTMLElement;
 
 const DEFAULT_SCRIPT = [
@@ -48,6 +50,10 @@ type Mode = "idle" | "playing" | "paused" | "done";
 let currentHandle: DebugHandle | null = null;
 let currentAdapter: WireRendererAdapter | null = null;
 let currentSetup: RoomSetup | null = null;
+let inventoryCtl: InventoryController | null = null;
+// The hero actor the inventory panel edits. Prep-phase edits mutate this
+// ref; the real `startRoom` clones it when Run fires.
+let prepSetup: RoomSetup = demoSetup();
 let applyCursor = 0;           // next log index yet to apply to the adapter
 let playTimer: ReturnType<typeof setTimeout> | null = null;
 let mode: Mode = "idle";
@@ -71,6 +77,11 @@ function setControls(m: Mode) {
   // Inspector is only useful while paused/stepping — hide otherwise so the
   // idle/playing layout gets the full width.
   gridEl.classList.toggle("no-inspector", m !== "paused");
+  // Inventory panel is a prep-phase tool: visible only before the first Run
+  // or after a Reset lands back in idle. Editable in idle, read-only in
+  // done (so the player can see what they had after the run).
+  gridEl.classList.toggle("no-inventory", !(m === "idle" || m === "done"));
+  if (inventoryCtl) inventoryCtl.setEditable(m === "idle");
 }
 
 function clearPlayTimer() {
@@ -139,7 +150,9 @@ function startFromSource(): boolean {
   }
 
   appendLine("— run —");
-  const setup = demoSetup();
+  // Use the prep-phase setup (edited via the inventory panel) and stamp
+  // the current hero script onto it. startRoom clones before mutating.
+  const setup = prepSetup;
   setup.actors[0]!.script = heroScript;
   currentSetup = setup;
 
@@ -282,6 +295,7 @@ function escapeHtml(s: string): string {
 }
 
 // Initial state.
+inventoryCtl = mountInventoryPanel(inventoryEl, () => prepSetup.actors[0] ?? null);
 setControls("idle");
 speedOut.textContent = `${speedEl.value}ms`;
 renderInspectorEmpty();
