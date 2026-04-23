@@ -152,6 +152,24 @@ export const queries = {
     if (!a) return [];
     return listEffects(a);
   },
+  clouds: (world: World, _self: Actor): { id: string; pos: Pos; kind: string; remaining: number }[] => {
+    const cs = world.room.clouds ?? [];
+    return cs.map(c => ({ id: c.id, pos: { ...c.pos }, kind: c.kind, remaining: c.remaining }));
+  },
+  cloud_at: (world: World, _self: Actor, target: unknown): string | null => {
+    const p = resolvePos(world, target);
+    if (!p) return null;
+    const cs = world.room.clouds ?? [];
+    // Topmost = most recently spawned (last in array).
+    for (let i = cs.length - 1; i >= 0; i--) {
+      const c = cs[i]!;
+      if (c.pos.x === p.x && c.pos.y === p.y) return c.kind;
+    }
+    return null;
+  },
+  mp: (_world: World, self: Actor): number => self.mp ?? 0,
+  max_mp: (_world: World, self: Actor): number => self.maxMp ?? 0,
+  known_spells: (_world: World, self: Actor): string[] => [...(self.knownSpells ?? [])],
 };
 
 // ──────────────────────────── command impls ────────────────────────────
