@@ -38,6 +38,7 @@ export const KNOWN_NAMES = [
   "cast", "attack", "approach", "flee", "move", "wait", "exit", "halt",
   "heal", "bolt", "length",
   "at", "distance",
+  "has_effect", "effects", "mp", "atk", "def", "int",
 ] as const;
 
 export function didYouMean(name: string, candidates: readonly string[] = KNOWN_NAMES): string | null {

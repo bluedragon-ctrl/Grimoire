@@ -103,7 +103,7 @@ function cloneActor(a: Actor): Actor {
     atk:   a.atk   ?? defaults.atk,
     def:   a.def   ?? defaults.def,
     int:   a.int   ?? defaults.int,
-    effects: [],
+    effects: (a.effects ?? []).map(e => ({ ...e })),
   };
 }
 

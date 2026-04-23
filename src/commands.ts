@@ -4,6 +4,7 @@
 import type {
   Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ResolveFailureMode,
 } from "./types.js";
+import { hasEffect, listEffects } from "./effects.js";
 
 // ──────────────────────────── cost table ────────────────────────────
 
@@ -138,6 +139,17 @@ export const queries = {
     const pb = resolvePos(_world, b);
     if (!pa || !pb) return 0;
     return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+  },
+  has_effect: (world: World, _self: Actor, target: unknown, kind: unknown): boolean => {
+    const a = resolveActor(world, target);
+    if (!a) return false;
+    if (typeof kind !== "string") return false;
+    return hasEffect(a, kind);
+  },
+  effects: (world: World, _self: Actor, target: unknown): string[] => {
+    const a = resolveActor(world, target);
+    if (!a) return [];
+    return listEffects(a);
   },
 };
 
