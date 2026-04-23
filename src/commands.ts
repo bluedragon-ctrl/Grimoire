@@ -127,6 +127,18 @@ export const queries = {
   items: (world: World, self: Actor): Item[] => sortByDistance(self, world.room.items),
   chests: (world: World, self: Actor): Chest[] => sortByDistance(self, world.room.chests),
   doors: (world: World, self: Actor): Door[] => sortByDistance(self, world.room.doors),
+  at: (_world: World, self: Actor, target: unknown): boolean => {
+    const p = resolvePos(_world, target);
+    if (!p) return false;
+    return self.pos.x === p.x && self.pos.y === p.y;
+  },
+  // Chebyshev distance — matches approach()'s 8-directional, one-tile-per-tick movement.
+  distance: (_world: World, _self: Actor, a: unknown, b: unknown): number => {
+    const pa = resolvePos(_world, a);
+    const pb = resolvePos(_world, b);
+    if (!pa || !pb) return 0;
+    return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+  },
 };
 
 // ──────────────────────────── command impls ────────────────────────────
