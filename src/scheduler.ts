@@ -12,6 +12,7 @@ import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, castFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
+import { tickClouds } from "./clouds.js";
 
 interface Frame {
   gen: Generator<PendingAction, void, void>;
@@ -107,6 +108,9 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     // (e.g. on hit) see them uniformly.
     const effectEvents: GameEvent[] = [];
     for (const a of world.actors) effectEvents.push(...tickEffects(world, a));
+    // Cloud phase: after effects, before next action. Emits its own events
+    // (CloudTicked, CloudExpired) and may also emit EffectApplied/Died/etc.
+    effectEvents.push(...tickClouds(world));
     if (effectEvents.length > 0) {
       dispatch(world, s.runtimes, effectEvents);
       if (effectEvents.some(e => e.type === "HeroDied" || e.type === "HeroExited")) {
