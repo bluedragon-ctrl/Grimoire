@@ -5,6 +5,7 @@ import {
   script, ident, call, lit, while_, bin, member, index, exprStmt,
   cApproach, cAttack, cExit, cHalt,
 } from "./ast-helpers.js";
+import { emptyEquipped } from "./content/items.js";
 
 const enemiesLen = member(call("enemies"), "length");
 const firstEnemy = index(call("enemies"), lit(0));
@@ -48,6 +49,18 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
     id: "hero", kind: "hero", hp: 20, maxHp: 20,
     speed: 12, energy: 0, pos: { x: 1, y: 5 },
     script: heroScript, alive: true,
+    // Starting inventory — editable in the prep-phase panel before Run.
+    inventory: {
+      consumables: [
+        { id: "hp1", defId: "health_potion" },
+        { id: "mp1", defId: "mana_crystal" },
+      ],
+      equipped: {
+        ...emptyEquipped(),
+        staff: { id: "ws1", defId: "wooden_staff" },
+        robe:  { id: "lr1", defId: "leather_robe" },
+      },
+    },
   };
   const gob: Actor = {
     id: "gob1", kind: "goblin", hp: 5, maxHp: 5,

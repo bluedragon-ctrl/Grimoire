@@ -11,9 +11,13 @@
 //   - Every collaborator is injectable so adapter tests can run headless
 //     without a real canvas, a real RAF clock, or a real render().
 
-import type { Actor, GameEvent, Pos, Room } from "../types.js";
+import type { Actor, EffectKind, GameEvent, Pos, Room } from "../types.js";
 import type { RendererAdapter } from "./adapter.js";
 import { initRenderer as vendorInit, render as vendorRender } from "./vendor/ui/renderer.js";
+import {
+  PROJECTILE_PRESETS, BURST_PRESETS, CLOUD_PRESETS, ELEMENT_DEFAULTS,
+  type ProjectilePreset, type BurstPreset,
+} from "../content/visuals.js";
 
 // ── VisualState shape (mirrors what the vendor renderer reads) ──────────
 
@@ -44,6 +48,17 @@ export interface VisualEffect {
   at?: Pos;
   radius?: number;
   tiles?: Pos[];
+  /** Present on overlays spawned by EffectApplied — matched on EffectExpired. */
+  effectKind?: EffectKind;
+}
+
+export interface VisualCloud {
+  id: string;
+  kind: string;                 // CLOUD_DEFS key (fire/frost/…)
+  tiles: Pos[];                 // per-cell positions
+  duration: number;             // ticks remaining
+  maxDuration: number;          // ticks at spawn
+  colors?: { color: string; color2: string };
 }
 
 export interface VisualState {
@@ -51,7 +66,7 @@ export interface VisualState {
   monsters: VisualEntity[];
   floorItems: unknown[];
   floorObjects: unknown[];
-  clouds: unknown[];
+  clouds: VisualCloud[];
   activeEffects: VisualEffect[];
   width: number;
   height: number;
@@ -68,6 +83,47 @@ const D_HEAL   = 0.55;
 const D_CAST   = 0.40;
 const D_DEATH  = 0.45;
 const D_EXIT   = 0.60;
+const D_BURST  = 0.45;
+const D_ITEM   = 0.55;
+const D_ONHIT  = 0.35;
+// Overlay durations for status effects are open-ended; the adapter drops them
+// on EffectExpired. Use a long nominal duration so elapsed/duration stays <1
+// for the whole effect lifetime.
+const D_STATUS = 999;
+
+/** Resolve a Cast event's visual/element fields to a projectile preset. */
+function resolveProjectile(visual?: string, element?: string): ProjectilePreset | undefined {
+  if (visual && PROJECTILE_PRESETS[visual]) return PROJECTILE_PRESETS[visual];
+  if (element) {
+    const name = ELEMENT_DEFAULTS[element];
+    if (name && PROJECTILE_PRESETS[name]) return PROJECTILE_PRESETS[name];
+  }
+  return undefined;
+}
+
+/** Resolve a VisualBurst event's visual to a burst preset. */
+function resolveBurst(visual?: string, element?: string): BurstPreset | undefined {
+  if (visual && BURST_PRESETS[visual]) return BURST_PRESETS[visual];
+  if (element) {
+    // Map element → canonical burst name.
+    const map: Record<string, string> = { fire: "burst_ember", frost: "burst_frost", arcane: "burst_arcane" };
+    const name = map[element];
+    if (name && BURST_PRESETS[name]) return BURST_PRESETS[name];
+  }
+  return undefined;
+}
+
+/** Map an EffectKind to the overlay renderer name + fallback colors. */
+function overlayForEffect(kind: EffectKind): { name: string; colors?: { color: string; color2: string } } | undefined {
+  switch (kind) {
+    case "burning": return { name: "burning",   colors: { color: "#ff6622", color2: "#ffcc33" } };
+    case "poison":  return { name: "dripping",  colors: { color: "#33aa55", color2: "#aaff88" } };
+    case "regen":   return { name: "healing",   colors: { color: "#66ff99", color2: "#ccffcc" } };
+    case "haste":   return { name: "sparkling", colors: { color: "#ffff99", color2: "#ffffff" } };
+    case "slow":    return { name: "cloudWavy", colors: { color: "#6688aa", color2: "#aaccee" } };
+    default:        return undefined;
+  }
+}
 
 function spriteForKind(kind: Actor["kind"]): string {
   switch (kind) {
@@ -189,16 +245,19 @@ export class WireRendererAdapter implements RendererAdapter {
       case "Cast": {
         const src = this.findEntity(event.actor);
         const tgt = event.target ? this.findEntity(event.target) : undefined;
+        const preset = resolveProjectile(event.visual, event.element);
+        const name = preset?.projectile ?? "bolt";
+        const colors = preset?.colors ?? { color: "#ff6622", color2: "#ffdd66" };
         if (src && tgt) {
           this.pushEffect({
-            kind: "projectile", name: "bolt", duration: D_CAST, elapsed: 0, delay: 0,
+            kind: "projectile", name, duration: D_CAST, elapsed: 0, delay: 0,
             from: { x: src.x, y: src.y }, to: { x: tgt.x, y: tgt.y },
-            colors: { color: "#ff6622", color2: "#ffdd66" },
+            colors,
           });
         } else if (src) {
           this.pushEffect({
             kind: "overlay", name: "sparkling", duration: D_CAST, elapsed: 0, delay: 0,
-            attachTo: src.id,
+            attachTo: src.id, colors,
           });
         }
         break;
@@ -231,6 +290,76 @@ export class WireRendererAdapter implements RendererAdapter {
         });
         break;
       }
+      case "EffectApplied": {
+        const target = this.findEntity(event.actor);
+        const ov = overlayForEffect(event.kind);
+        if (target && ov) {
+          // Tag the effect with effectKind so EffectExpired can drop the match.
+          this.pushEffect({
+            kind: "overlay", name: ov.name, duration: D_STATUS, elapsed: 0, delay: 0,
+            attachTo: target.id, colors: ov.colors, effectKind: event.kind,
+          });
+        }
+        break;
+      }
+      case "EffectExpired": {
+        s.activeEffects = s.activeEffects.filter(
+          e => !(e.attachTo === event.actor && e.effectKind === event.kind),
+        );
+        break;
+      }
+      case "EffectTick":
+        // Per-tick pulse is handled by the overlay itself; no new effect spawned.
+        break;
+      case "CloudSpawned": {
+        const preset = event.visual ? CLOUD_PRESETS[event.visual] : undefined;
+        this.addCloud({
+          id: event.id,
+          kind: event.kind,
+          tiles: [{ x: event.pos.x, y: event.pos.y }],
+          duration: 1,      // refined by CloudTicked; vendor fades when duration<=1
+          maxDuration: 1,
+          colors: preset?.colors,
+        });
+        break;
+      }
+      case "CloudTicked":
+        // Engine drives per-tick remaining; adapter tracks via CloudExpired.
+        // Could decrement here if payload included it, but current payload only
+        // lists affected actors — safe no-op.
+        break;
+      case "CloudExpired": {
+        this.removeCloud(event.id);
+        break;
+      }
+      case "VisualBurst": {
+        const preset = resolveBurst(event.visual, event.element);
+        this.pushEffect({
+          kind: "area", name: "blobExplosion", duration: D_BURST, elapsed: 0, delay: 0,
+          at: { x: event.pos.x, y: event.pos.y }, radius: 0.9,
+          colors: preset?.colors,
+        });
+        break;
+      }
+      case "ItemUsed": {
+        const e = this.findEntity(event.actor);
+        if (e) this.pushEffect({
+          kind: "overlay", name: "sparkling", duration: D_ITEM, elapsed: 0, delay: 0,
+          attachTo: e.id,
+        });
+        break;
+      }
+      case "OnHitTriggered": {
+        const d = this.findEntity(event.defender);
+        if (d) this.pushEffect({
+          kind: "area", name: "blobExplosion", duration: D_ONHIT, elapsed: 0, delay: 0,
+          at: { x: d.x, y: d.y }, radius: 0.55,
+        });
+        break;
+      }
+      // ── Equip changes ripple through the inventory panel, not the canvas ──
+      case "ItemEquipped":
+      case "ItemUnequipped":
       // ── No-visual events (logged by the event panel only) ──
       case "Missed":
       case "Waited":
@@ -238,11 +367,6 @@ export class WireRendererAdapter implements RendererAdapter {
       case "Idled":
       case "ActionFailed":
       case "See":
-      // Phase 7 item events — Phase 8 renderer will wire these.
-      case "ItemUsed":
-      case "ItemEquipped":
-      case "ItemUnequipped":
-      case "OnHitTriggered":
         break;
     }
     s.tick++;
@@ -279,6 +403,21 @@ export class WireRendererAdapter implements RendererAdapter {
 
   private pushEffect(eff: VisualEffect): void {
     this.state?.activeEffects.push(eff);
+  }
+
+  private addCloud(cloud: VisualCloud): void {
+    const s = this.state;
+    if (!s) return;
+    // Replace if id already present (CloudSpawned is idempotent on re-emit).
+    const idx = s.clouds.findIndex(c => c.id === cloud.id);
+    if (idx >= 0) s.clouds[idx] = cloud;
+    else s.clouds.push(cloud);
+  }
+
+  private removeCloud(id: string): void {
+    const s = this.state;
+    if (!s) return;
+    s.clouds = s.clouds.filter(c => c.id !== id);
   }
 
   private startFrameLoop(): void {

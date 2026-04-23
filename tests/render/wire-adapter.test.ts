@@ -148,3 +148,86 @@ describe("WireRendererAdapter — scripted runs", () => {
     expect(s.monsters[0]!.y).toBe(3);
   });
 });
+
+describe("WireRendererAdapter — Phase 5/6/7 events", () => {
+  it("Cast with visual='beam_frost' picks the frost beam preset", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 4, y: 1 })]);
+
+    adapter.apply({ type: "Cast", actor: "hero", spell: "frost", target: "g1", amount: 3, visual: "beam_frost" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.kind).toBe("projectile");
+    expect(eff.name).toBe("beam");
+    expect(eff.colors?.color).toBe("#66ccff");
+  });
+
+  it("Cast with element='fire' falls back through ELEMENT_DEFAULTS", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 4, y: 1 })]);
+
+    adapter.apply({ type: "Cast", actor: "hero", spell: "fireball", target: "g1", amount: 3, element: "fire" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.name).toBe("bolt");
+    expect(eff.colors?.color).toBe("#ff6622");
+  });
+
+  it("EffectApplied spawns overlay; EffectExpired drops matching overlay", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "EffectApplied", actor: "hero", kind: "burning" });
+    adapter.apply({ type: "EffectApplied", actor: "hero", kind: "haste" });
+
+    let effs = adapter.getState()!.activeEffects;
+    expect(effs).toHaveLength(2);
+    expect(effs.map(e => e.name).sort()).toEqual(["burning", "sparkling"]);
+
+    adapter.apply({ type: "EffectExpired", actor: "hero", kind: "burning" });
+    effs = adapter.getState()!.activeEffects;
+    expect(effs).toHaveLength(1);
+    expect(effs[0]!.name).toBe("sparkling");
+  });
+
+  it("CloudSpawned adds to state.clouds; CloudExpired removes it", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "CloudSpawned", id: "c1", pos: { x: 3, y: 2 }, kind: "fire", visual: "cloud_fire" });
+    let clouds = adapter.getState()!.clouds;
+    expect(clouds).toHaveLength(1);
+    expect(clouds[0]!.kind).toBe("fire");
+    expect(clouds[0]!.tiles).toEqual([{ x: 3, y: 2 }]);
+
+    adapter.apply({ type: "CloudExpired", id: "c1" });
+    clouds = adapter.getState()!.clouds;
+    expect(clouds).toHaveLength(0);
+  });
+
+  it("VisualBurst pushes an area effect at the requested position", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "VisualBurst", pos: { x: 5, y: 6 }, visual: "burst_frost", element: "frost" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.kind).toBe("area");
+    expect(eff.at).toEqual({ x: 5, y: 6 });
+    expect(eff.colors?.color).toBe("#66ccff");
+  });
+
+  it("ItemUsed sparkles the actor; OnHitTriggered bursts at defender", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 3, y: 3 })]);
+
+    adapter.apply({ type: "ItemUsed", actor: "hero", item: "p1", defId: "health_potion" });
+    adapter.apply({ type: "OnHitTriggered", attacker: "hero", defender: "g1", item: "d1", defId: "venom_dagger" });
+
+    const effs = adapter.getState()!.activeEffects;
+    expect(effs[0]!.name).toBe("sparkling");
+    expect(effs[0]!.attachTo).toBe("hero");
+    expect(effs[1]!.kind).toBe("area");
+    expect(effs[1]!.at).toEqual({ x: 3, y: 3 });
+  });
+});
