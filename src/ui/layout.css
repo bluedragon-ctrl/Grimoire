@@ -1,19 +1,63 @@
+/* ────────────────────────────────────────────────────────────────
+   Grimoire UI — 80s amber-phosphor monitor / Battlezone vector look.
+   Palette draws from the in-game renderer (samples/render-context.js):
+     wall       #ff8800      → primary amber
+     wallHi     #ffaa33      → accent / highlight
+     bg         #0a0600      → darkest base
+     floor      #0d0700      → panel bg
+     floorLine  #804400      → border
+   Fonts: VT323 (bitmap-y CRT) for headings + Share Tech Mono for body.
+   A subtle scanline overlay + text glow complete the CRT feel.
+─────────────────────────────────────────────────────────────────── */
+
 :root {
-  --bg: #0e0f12;
-  --panel: #161820;
-  --border: #2a2d36;
-  --fg: #d7d7da;
-  --accent: #7aa2f7;
-  --muted: #8b8d97;
-  --fail: #e06c75;
-  font-family: ui-monospace, "JetBrains Mono", "Fira Code", Consolas, monospace;
+  --bg:       #050200;
+  --panel:    #0d0700;
+  --panel-2:  #140a02;
+  --border:   #6b3800;
+  --border-hi:#9b5400;
+  --fg:       #ffb040;   /* primary amber phosphor */
+  --fg-hi:    #ffd488;   /* highlighted amber */
+  --accent:   #ffaa33;   /* Battlezone wall-hi */
+  --muted:    #a0601a;
+  --dim:      #6b4010;
+  --fail:     #ff4422;
+  --good:     #66ff44;   /* terminal green (stat bonuses) */
+  --magic:    #cc88ff;   /* rare/magic (on-hit effects) */
+
+  --glow: 0 0 4px rgba(255, 170, 51, 0.55);
+  --glow-strong: 0 0 6px rgba(255, 170, 51, 0.85), 0 0 14px rgba(255, 136, 0, 0.4);
+
+  font-family: "Share Tech Mono", "IBM Plex Mono", "Consolas", ui-monospace, monospace;
 }
 
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-size: 13px;
+  font-size: 14px;
+  text-shadow: var(--glow);
+  /* Soft amber vignette around a near-black base, mirroring the renderer bg. */
+  background-image:
+    radial-gradient(circle at 50% 45%, #1a0c02 0%, #050200 75%);
+}
+
+/* CRT scanlines — a faint repeating dark band overlay. Pointer-events none
+   so it never steals clicks. Kept subtle so pixel art stays legible. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.18) 2px,
+    rgba(0, 0, 0, 0.18) 3px
+  );
+  mix-blend-mode: multiply;
 }
 
 #app {
@@ -22,47 +66,95 @@ body {
   height: 100vh;
 }
 
+/* Minimal topbar: the GRIMOIRE wordmark as a thin phosphor strip so the
+   game canvas below can stretch nearly to the top of the viewport. */
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  background: var(--panel);
+  justify-content: flex-start;
+  padding: 0 12px;
+  height: 22px;
+  background: linear-gradient(180deg, #1a0d02, #0d0700);
   border-bottom: 1px solid var(--border);
 }
 .topbar h1 {
   margin: 0;
-  font-size: 16px;
-  letter-spacing: 0.5px;
-  color: var(--accent);
+  font-family: "VT323", monospace;
+  font-size: 18px;
+  letter-spacing: 6px;
+  color: var(--fg-hi);
+  text-shadow: var(--glow-strong);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* Controls live under the editor pane now. Compact row + speed slider. */
+.editor .controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: #120902;
+}
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
 }
 .controls button {
-  background: #222631;
+  background: #0d0700;
   color: var(--fg);
   border: 1px solid var(--border);
-  padding: 5px 14px;
+  padding: 3px 8px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   cursor: pointer;
-  margin-left: 6px;
+  flex: 1 1 auto;
+  text-shadow: var(--glow);
+  transition: background 80ms, color 80ms, border-color 80ms;
 }
-.controls button:hover { background: #2b3040; }
-.controls button:disabled { color: var(--muted); cursor: default; }
+.controls button:hover:not(:disabled) {
+  background: var(--fg);
+  color: #0a0400;
+  border-color: var(--fg-hi);
+  text-shadow: none;
+}
+.controls button:disabled {
+  color: var(--dim);
+  border-color: #3a1f00;
+  cursor: default;
+  text-shadow: none;
+}
 .controls .speed {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: 12px;
   font-size: 12px;
   color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
-.controls .speed input[type="range"] { accent-color: var(--accent); width: 120px; }
-.controls .speed #speed-readout { min-width: 46px; text-align: right; }
+.controls .speed input[type="range"] {
+  accent-color: var(--accent);
+  flex: 1;
+  min-width: 0;
+  filter: drop-shadow(0 0 2px rgba(255, 170, 51, 0.55));
+}
+.controls .speed #speed-readout {
+  min-width: 52px;
+  text-align: right;
+  color: var(--fg);
+  text-shadow: var(--glow);
+}
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(260px, 28%) minmax(0, 1fr) minmax(220px, 22%);
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr) minmax(200px, 20%);
+  /* game row stretches; inventory is auto; log is a short fixed-ish band. */
+  grid-template-rows: minmax(0, 1fr) auto minmax(100px, 160px);
   grid-template-areas:
     "editor game      inspector"
     "editor inventory inspector"
@@ -73,7 +165,7 @@ body {
 }
 /* Hide inspector column unless paused/stepping. */
 .grid.no-inspector {
-  grid-template-columns: minmax(260px, 28%) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr);
   grid-template-areas:
     "editor game"
     "editor inventory"
@@ -82,7 +174,7 @@ body {
 .grid.no-inspector .inspector { display: none; }
 /* Hide inventory unless in prep/idle phase. */
 .grid.no-inventory {
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(100px, 160px);
   grid-template-areas:
     "editor game inspector"
     "editor log  inspector";
@@ -98,15 +190,19 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  box-shadow: inset 0 0 40px rgba(255, 136, 0, 0.035);
 }
 .pane h2 {
   margin: 0;
-  padding: 6px 10px;
-  font-size: 11px;
+  padding: 4px 10px 2px;
+  font-family: "VT323", monospace;
+  font-size: 18px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
+  letter-spacing: 3px;
+  color: var(--accent);
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #180c02, transparent);
+  text-shadow: var(--glow);
 }
 .editor { grid-area: editor; }
 .game { grid-area: game; }
@@ -119,32 +215,33 @@ body {
   position: relative;
   display: flex;
   min-height: 0;
-  background: #0b0c10;
+  background: #050200;
 }
+/* Subtle, borderless line numbers — barely visible unless the debugger
+   highlights a line. Narrow (~1.8em) so the editor keeps its width. */
 .editor-wrap .gutter {
   margin: 0;
-  padding: 10px 6px 10px 8px;
-  color: var(--muted);
-  background: #0b0c10;
-  border-right: 1px solid var(--border);
+  padding: 10px 2px 10px 4px;
+  color: rgba(255, 176, 64, 0.22);
+  background: transparent;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
   overflow: hidden;
-  min-width: 2.5em;
+  width: 1.8em;
+  min-width: 1.8em;
   text-align: right;
   user-select: none;
   white-space: pre;
+  text-shadow: none;
 }
 .editor-wrap .gutter .gutter-line {
   display: block;
-  padding: 0 4px;
-  border-right: 2px solid transparent;
+  padding: 0 2px;
 }
 .editor-wrap .gutter .gutter-line.gutter-active {
-  background: rgba(122, 162, 247, 0.18);
-  color: var(--accent);
-  border-right-color: var(--accent);
+  color: var(--fg-hi);
+  text-shadow: var(--glow);
 }
 .editor-wrap textarea {
   flex: 1;
@@ -153,28 +250,33 @@ body {
   border: none;
   padding: 10px;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
   resize: none;
   outline: none;
   white-space: pre;
   overflow: auto;
+  caret-color: var(--fg-hi);
+  text-shadow: var(--glow);
 }
+.editor-wrap textarea::selection { background: rgba(255, 170, 51, 0.35); color: var(--fg-hi); }
 
 .inspector #inspector {
   flex: 1;
   overflow: auto;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .inspector-empty { color: var(--muted); font-style: italic; }
 .inspector h3 {
   margin: 8px 0 4px;
-  font-size: 11px;
+  font-family: "VT323", monospace;
+  font-size: 15px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: var(--glow);
 }
 .inspector table {
   width: 100%;
@@ -185,14 +287,29 @@ body {
   vertical-align: top;
 }
 .inspector td.k { color: var(--muted); width: 40%; white-space: nowrap; }
-.inspector td.v { color: var(--fg); word-break: break-word; font-family: inherit; }
+.inspector td.v {
+  color: var(--fg-hi);
+  word-break: break-word;
+  font-family: inherit;
+  text-shadow: var(--glow);
+}
 #game-view {
   flex: 1;
   position: relative;
   min-height: 0;
+  overflow: auto;
   color: var(--muted);
+  /* Mirror the in-game renderer floor: radial warm amber on near-black. */
   background:
-    radial-gradient(circle at center, #1a1d26 0, var(--panel) 70%);
+    radial-gradient(circle at 50% 50%, #1a0c02 0%, #050200 80%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 30px rgba(255, 136, 0, 0.08);
+}
+.game-canvas-wrap {
+  /* Wrap enforces a world-size minimum; the vendor renderer sizes the
+     canvas to this parent so it never squishes below the room size. */
+  position: relative;
+  display: block;
 }
 #game-view:empty {
   display: flex;
@@ -200,22 +317,36 @@ body {
   justify-content: center;
 }
 #game-view:empty::before {
-  content: "renderer slot — #game-view";
-  color: var(--muted);
-  font-size: 12px;
+  content: "> AWAITING RUN SIGNAL <";
+  color: var(--dim);
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  letter-spacing: 3px;
 }
 
 .log ul {
   flex: 1;
   margin: 0;
-  padding: 6px 10px;
+  padding: 4px 8px;
   list-style: none;
   overflow-y: auto;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.4;
+  background: #070300;
 }
-.log li { white-space: pre-wrap; }
-.log li.fail { color: var(--fail); }
+.log li {
+  white-space: pre-wrap;
+  color: var(--fg);
+  padding-left: 10px;
+  position: relative;
+}
+.log li::before {
+  content: ">";
+  position: absolute;
+  left: 0;
+  color: var(--dim);
+}
+.log li.fail { color: var(--fail); text-shadow: 0 0 4px rgba(255, 68, 34, 0.6); }
 
 /* ─────── Inventory panel (prep-phase) ─────── */
 .inventory #inventory {
@@ -225,10 +356,12 @@ body {
 }
 .inventory h3 {
   margin: 6px 0 4px;
-  font-size: 10px;
+  font-family: "VT323", monospace;
+  font-size: 15px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: var(--glow);
 }
 .inventory .inv-row {
   display: flex;
@@ -238,7 +371,7 @@ body {
 .inv-cell {
   width: 64px;
   padding: 3px;
-  background: #0b0c10;
+  background: #050200;
   color: var(--fg);
   border: 1px solid var(--border);
   display: flex;
@@ -248,16 +381,25 @@ body {
   cursor: pointer;
   font-family: inherit;
   font-size: 10px;
+  transition: border-color 80ms, background 80ms;
 }
-.inv-cell:hover:not(:disabled) { background: #181b24; border-color: var(--accent); }
-.inv-cell:disabled { cursor: default; opacity: 0.7; }
+.inv-cell:hover:not(:disabled) {
+  background: #150a02;
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 170, 51, 0.35);
+}
+.inv-cell:disabled { cursor: default; opacity: 0.55; }
 .inv-cell canvas {
   display: block;
   width: 40px;
   height: 40px;
   image-rendering: pixelated;
+  background: #020100;
 }
-.inv-cell.inv-empty canvas { opacity: 0.15; background: repeating-linear-gradient(45deg, #111, #111 4px, #1a1a1a 4px, #1a1a1a 8px); }
+.inv-cell.inv-empty canvas {
+  opacity: 0.2;
+  background: repeating-linear-gradient(45deg, #0a0500, #0a0500 4px, #140900 4px, #140900 8px);
+}
 .inv-cap {
   display: block;
   width: 100%;
@@ -269,25 +411,99 @@ body {
 }
 .inventory-empty { color: var(--muted); font-style: italic; padding: 6px 2px; }
 
+/* Two-column layout: slots | stats. */
+.inv-layout {
+  display: grid;
+  grid-template-columns: 1fr minmax(140px, auto);
+  gap: 12px;
+  align-items: start;
+}
+.inv-slots, .inv-stats { min-width: 0; }
+.inv-stats-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.inv-stats-tbl td { padding: 1px 4px; vertical-align: top; }
+.inv-stats-tbl td.k {
+  color: var(--muted);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.inv-stats-tbl td.v {
+  color: var(--fg-hi);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--glow);
+}
+.inv-bonus {
+  color: var(--good);
+  margin-left: 4px;
+  text-shadow: 0 0 4px rgba(102, 255, 68, 0.55);
+}
+.inv-perm {
+  margin: 2px 0 0;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.inv-perm li {
+  color: var(--magic);
+  text-shadow: 0 0 4px rgba(204, 136, 255, 0.45);
+}
+
 .inv-picker {
   z-index: 100;
   background: var(--panel);
   border: 1px solid var(--accent);
-  min-width: 160px;
+  min-width: 180px;
   max-height: 240px;
   overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(255, 170, 51, 0.2),
+    0 4px 18px rgba(255, 100, 0, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.8);
 }
 .inv-picker-row {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 5px 10px;
+  padding: 4px 10px;
   background: transparent;
   color: var(--fg);
   border: none;
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-shadow: var(--glow);
 }
-.inv-picker-row:hover { background: #1f232e; color: var(--accent); }
+.inv-picker-row:hover { background: var(--fg); color: #0a0400; text-shadow: none; }
+
+/* ─────── Scrollbars — amber phosphor ─────── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hi) transparent;
+}
+/* WebKit / Blink */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #080300;
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--border-hi), var(--border));
+  border: 1px solid #3a1f00;
+  box-shadow: inset 0 0 4px rgba(255, 170, 51, 0.25);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--fg), var(--border-hi));
+  box-shadow: inset 0 0 6px rgba(255, 220, 150, 0.45);
+}
+::-webkit-scrollbar-corner { background: #080300; }

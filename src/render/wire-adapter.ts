@@ -14,6 +14,7 @@
 import type { Actor, EffectKind, GameEvent, Pos, Room } from "../types.js";
 import type { RendererAdapter } from "./adapter.js";
 import { initRenderer as vendorInit, render as vendorRender } from "./vendor/ui/renderer.js";
+import { TILE } from "./context.js";
 import {
   PROJECTILE_PRESETS, BURST_PRESETS, CLOUD_PRESETS, ELEMENT_DEFAULTS,
   type ProjectilePreset, type BurstPreset,
@@ -183,6 +184,7 @@ export class WireRendererAdapter implements RendererAdapter {
   private host: HTMLElement | null = null;
   private frameHandle = 0;
   private running = false;
+  private resizeObs: ResizeObserver | null = null;
 
   constructor(deps: Partial<WireDeps> = {}) {
     this.deps = { ...DEFAULT_DEPS, ...deps };
@@ -190,11 +192,25 @@ export class WireRendererAdapter implements RendererAdapter {
 
   mount(el: HTMLElement, room: Room, actors: Actor[]): void {
     this.host = el;
+    // Two-level mount: the host (#game-view) can scroll; the inner wrapper
+    // is at-least world-size so the canvas never shrinks below the full
+    // room. On wide screens the wrapper fills 100% and the canvas expands
+    // to fit; on narrow screens the wrapper forces a minimum and the host
+    // shows amber scrollbars.
+    const worldW = room.w * TILE;
+    const worldH = room.h * TILE;
+    const wrap = document.createElement("div");
+    wrap.className = "game-canvas-wrap";
+    wrap.style.minWidth = `${worldW}px`;
+    wrap.style.minHeight = `${worldH}px`;
+    wrap.style.width = "100%";
+    wrap.style.height = "100%";
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
-    el.replaceChildren(this.canvas);
+    wrap.appendChild(this.canvas);
+    el.replaceChildren(wrap);
     this.deps.init(this.canvas);
 
     const player = actors.find(a => a.kind === "hero");
@@ -212,6 +228,17 @@ export class WireRendererAdapter implements RendererAdapter {
       width: room.w, height: room.h, tick: 0,
       map: buildMap(room),
     };
+
+    // The vendor renderer only resizes its canvas on window-resize events.
+    // Our layout toggles (inventory show/hide, inspector show/hide) change
+    // the container size without firing window-resize, which stretches the
+    // canvas bitmap. Observe the host and dispatch a resize on change.
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObs = new ResizeObserver(() => {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("resize"));
+      });
+      this.resizeObs.observe(el);
+    }
 
     if (this.deps.runFrameLoop) this.startFrameLoop();
   }
@@ -376,9 +403,9 @@ export class WireRendererAdapter implements RendererAdapter {
     this.running = false;
     if (this.frameHandle) this.deps.cancel(this.frameHandle);
     this.frameHandle = 0;
-    if (this.canvas && this.canvas.parentElement) {
-      this.canvas.parentElement.removeChild(this.canvas);
-    }
+    if (this.resizeObs) { this.resizeObs.disconnect(); this.resizeObs = null; }
+    // Clear the host; this also drops the canvas wrapper we inserted on mount.
+    if (this.host) this.host.replaceChildren();
     this.canvas = null;
     this.state = null;
     this.host = null;
