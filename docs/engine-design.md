@@ -57,6 +57,38 @@ Notes:
 - Tiebreak: descending energy, ascending `id` — deterministic.
 - A terminated main generator with no handlers queued → actor idles forever. The scheduler still ticks energy for them (cheap, keeps logic uniform) but they never show up in `ready`.
 
+## Effects and stat resolution (Phase 5)
+
+An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tickEvery, source? }` record attached to an actor. Four kinds ship in Phase 5: `burning` (DoT), `regen` (HoT), `haste` (speed ×1.5), `slow` (speed ×0.5). All spells, item procs, clouds, weapon on-hit, and statuses will sit on this abstraction — the engine only knows about the four verbs `apply`, `onApply`, `onTick`, `onExpire`.
+
+**Stacking.** Same kind on the same target from any source → refresh `remaining` to `max(existing, new)`; magnitude does not stack. Different kinds stack independently. `haste + slow` coexist, yielding effective `floor(base * 1.5 * 0.5) = floor(base * 0.75)`, clamped to min 1.
+
+**Tick ordering per scheduler tick.**
+
+```
+on tick T → T+1 transition:
+  world.tick += 1
+  onTick user callback
+  energy += effectiveStats(actor).speed    # uses modified speed
+  for each actor: tickEffects(actor)       # effect phase — AFTER prior tick's actions
+    for each effect on actor:
+      if finite duration: remaining -= 1
+      elapsed = duration - remaining    (or monotonic counter for permanent)
+      if spec.onTick and elapsed % tickEvery == 0: fire onTick
+      if finite and remaining <= 0: onExpire + remove
+  dispatch effect events (log + handler routing)
+  ensurePending
+  back to top: ready actions fire
+```
+
+Placing the effect phase AFTER the prior tick's actions (i.e., at tick-transition, before new actions for the upcoming tick) keeps the rule "actions first, statuses resolve after" consistent — a burning actor who just struck and killed an enemy still ticks the burn.
+
+**Stat resolution.** `effectiveStats(actor)` is a pure fold over `actor.effects` returning `{ hp, maxHp, speed, atk, def, mp, maxMp, int }`. Modifier effects (haste/slow) are read-only on base stats — no mutation. Damage and healing still mutate `hp` directly — they're not modifiers, they're direct changes.
+
+**Reserved formula (Phase 6).** Spell effects will scale magnitude by `floor(base * (1 + int / 10))`. Phase 5 adds the `int` stat (hero default 5, goblin 0) but no mechanic reads it yet — the contract is reserved so Phase 6 inherits it.
+
+**Design choice: regen at full HP skips the tick** — no `EffectTick` event when nothing healed. Rationale: consumers observe ticks as "something happened"; emitting a magnitude-0 event is noise.
+
 ## Commands and action resolution
 
 Commands live in `commands.ts`, each a pure `(world, actor, args) → { ok, damage?, log, ... }`. The scheduler calls them when firing a pending action and translates the result into events.
