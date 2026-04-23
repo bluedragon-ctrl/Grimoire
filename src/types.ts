@@ -91,6 +91,20 @@ export interface Actor {
   def?: number;
   int?: number;
   effects?: Effect[];
+  // Phase 6: list of spell names the actor has learned. Default hero = ["bolt","heal"],
+  // default goblin = []. Cast validation rejects unknown/unlearned names.
+  knownSpells?: string[];
+}
+
+// ──────────────────────────── Clouds (Phase 6) ────────────────────────────
+
+export interface Cloud {
+  id: string;
+  pos: Pos;
+  kind: string;         // matches a key in CLOUD_KINDS (fire, frost, ...)
+  duration: number;     // total ticks at spawn (post-scaling)
+  remaining: number;    // ticks left until expire
+  source?: string;      // actor id who spawned it
 }
 
 // ──────────────────────────── Effects ────────────────────────────
@@ -120,6 +134,7 @@ export interface Room {
   doors: Door[];
   items: Item[];
   chests: Chest[];
+  clouds?: Cloud[];
 }
 
 export interface World {
@@ -138,7 +153,7 @@ export type GameEvent =
   | { type: "Attacked"; attacker: string; defender: string; damage: number }
   | { type: "Hit"; actor: string; attacker: string; damage: number }
   | { type: "Missed"; actor: string; reason: string }
-  | { type: "Cast"; actor: string; spell: string; target?: string; amount: number }
+  | { type: "Cast"; actor: string; spell: string; target?: string; amount: number; visual?: string; element?: string }
   | { type: "Healed"; actor: string; amount: number }
   | { type: "Waited"; actor: string }
   | { type: "Died"; actor: string }
@@ -150,7 +165,11 @@ export type GameEvent =
   | { type: "See"; actor: string; what: string }
   | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: string }
   | { type: "EffectTick"; actor: string; kind: EffectKind; magnitude?: number }
-  | { type: "EffectExpired"; actor: string; kind: EffectKind };
+  | { type: "EffectExpired"; actor: string; kind: EffectKind }
+  | { type: "CloudSpawned"; id: string; pos: Pos; kind: string; visual?: string; element?: string }
+  | { type: "CloudTicked"; id: string; appliedTo: string[] }
+  | { type: "CloudExpired"; id: string }
+  | { type: "VisualBurst"; pos: Pos; visual: string; element?: string };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];

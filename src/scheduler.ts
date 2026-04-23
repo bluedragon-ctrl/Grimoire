@@ -251,6 +251,13 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "Idled": return `[t=${t}] ${event.actor}.idled`;
     case "ActionFailed": return `[t=${t}] ${event.actor}.actionFailed — ${event.action}: ${event.reason}`;
     case "See": return `[t=${t}] ${event.actor}.see — ${event.what}`;
+    case "EffectApplied": return `[t=${t}] ${event.actor}.effectApplied — ${event.kind}`;
+    case "EffectTick": return `[t=${t}] ${event.actor}.effectTick — ${event.kind}${event.magnitude !== undefined ? ` (${event.magnitude})` : ""}`;
+    case "EffectExpired": return `[t=${t}] ${event.actor}.effectExpired — ${event.kind}`;
+    case "CloudSpawned": return `[t=${t}] cloud.${event.id}.spawned — ${event.kind} @(${event.pos.x},${event.pos.y})`;
+    case "CloudTicked": return `[t=${t}] cloud.${event.id}.ticked — ${event.appliedTo.length} affected`;
+    case "CloudExpired": return `[t=${t}] cloud.${event.id}.expired`;
+    case "VisualBurst": return `[t=${t}] burst — ${event.visual} @(${event.pos.x},${event.pos.y})`;
   }
 }
 
