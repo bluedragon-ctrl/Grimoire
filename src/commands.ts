@@ -5,6 +5,7 @@ import type {
   Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ResolveFailureMode,
 } from "./types.js";
 import { hasEffect, listEffects } from "./effects.js";
+import { castSpell } from "./spells/cast.js";
 
 // ──────────────────────────── cost table ────────────────────────────
 
@@ -226,33 +227,18 @@ export function doCast(
   spell: string,
   targetRef: unknown,
 ): GameEvent[] {
-  if (spell === "bolt") {
-    const target = resolveActor(world, targetRef);
-    if (!target) return [fail(self, "cast", "no target")];
-    const dmg = 4;
-    target.hp -= dmg;
-    const events: GameEvent[] = [
-      { type: "Cast", actor: self.id, spell, target: target.id, amount: dmg },
-      { type: "Hit", actor: target.id, attacker: self.id, damage: dmg },
-    ];
-    if (target.hp <= 0) {
-      target.alive = false;
-      events.push({ type: "Died", actor: target.id });
-      if (target.kind === "hero") events.push({ type: "HeroDied", actor: target.id });
-    }
-    return events;
+  // Heal defaults to self when called without target (cCast("heal") / legacy scripts).
+  if (spell === "heal" && (targetRef === null || targetRef === undefined)) {
+    targetRef = self;
   }
-  if (spell === "heal") {
-    const target = resolveActor(world, targetRef) ?? self;
-    const before = target.hp;
-    target.hp = Math.min(target.maxHp, target.hp + 5);
-    const amount = target.hp - before;
-    return [
-      { type: "Cast", actor: self.id, spell, target: target.id, amount },
-      { type: "Healed", actor: target.id, amount },
-    ];
-  }
-  return [fail(self, "cast", `unknown spell ${spell}`)];
+  return castSpell(world, self, spell, targetRef);
+}
+
+// True when a cast emitted only an ActionFailed and no other effects — used
+// by the scheduler to refund the cast cost (Phase 6 policy: failed spells
+// don't consume the action slot).
+export function castFailedCleanly(events: GameEvent[]): boolean {
+  return events.length === 1 && events[0]!.type === "ActionFailed";
 }
 
 export function doWait(world: World, self: Actor): GameEvent[] {

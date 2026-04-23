@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 import { compile, type CompiledScript } from "./interpreter.js";
 import {
-  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt,
+  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, castFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
 
@@ -79,6 +79,10 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       s.lastFiredLoc = action.loc ?? null;
 
       const events = fireAction(world, rt.actor, action);
+      // Phase 6: failed casts don't cost energy (actor tries again next tick).
+      if (action.kind === "cast" && castFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
       dispatch(world, s.runtimes, events);
 
       if (events.some(e => e.type === "HeroExited" || e.type === "HeroDied")) {
