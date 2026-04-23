@@ -23,6 +23,7 @@ const editorEl  = document.getElementById("editor")    as HTMLTextAreaElement;
 const gutterEl  = document.getElementById("gutter")    as HTMLPreElement;
 const gameEl    = document.getElementById("game-view") as HTMLDivElement;
 const inspectorEl = document.getElementById("inspector") as HTMLDivElement;
+const gridEl = document.querySelector("main.grid") as HTMLElement;
 
 const DEFAULT_SCRIPT = [
   "# Hero script — edit and click Run.",
@@ -67,6 +68,9 @@ function setControls(m: Mode) {
   btnStep.disabled   = m !== "paused";
   btnResume.disabled = m !== "paused";
   btnStop.disabled   = m === "idle" || m === "done";
+  // Inspector is only useful while paused/stepping — hide otherwise so the
+  // idle/playing layout gets the full width.
+  gridEl.classList.toggle("no-inspector", m !== "paused");
 }
 
 function clearPlayTimer() {

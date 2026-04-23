@@ -61,14 +61,23 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(260px, 28%) 1fr minmax(220px, 22%);
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: minmax(260px, 28%) minmax(0, 1fr) minmax(220px, 22%);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
     "editor game inspector"
     "editor log  inspector";
   gap: 1px;
   background: var(--border);
+  min-height: 0;
 }
+/* Hide inspector column unless paused/stepping. */
+.grid.no-inspector {
+  grid-template-columns: minmax(260px, 28%) minmax(0, 1fr);
+  grid-template-areas:
+    "editor game"
+    "editor log";
+}
+.grid.no-inspector .inspector { display: none; }
 .pane {
   background: var(--panel);
   display: flex;
