@@ -94,6 +94,35 @@ export interface Actor {
   // Phase 6: list of spell names the actor has learned. Default hero = ["bolt","heal"],
   // default goblin = []. Cast validation rejects unknown/unlearned names.
   knownSpells?: string[];
+  // Phase 7: inventory. Consumables are a small bag (BAG_SIZE); equipped is
+  // one slot per Slot, always present (null when empty).
+  inventory?: Inventory;
+}
+
+// ──────────────────────────── Items (Phase 7) ────────────────────────────
+
+export type Slot = "hat" | "robe" | "staff" | "dagger" | "focus";
+
+export interface ItemInstance {
+  id: string;      // instance id (unique per spawn)
+  defId: string;   // key into ITEMS
+}
+
+export interface Inventory {
+  consumables: ItemInstance[];
+  equipped: Record<Slot, ItemInstance | null>;
+}
+
+export type ItemCategory = "consumable" | "wearable";
+
+export interface ItemDef {
+  id: string;
+  name: string;
+  description: string;
+  category: ItemCategory;
+  slot?: Slot;            // required when category === "wearable"
+  script: string;         // item-script source; parsed at registry load
+  visualPreset?: string;  // key into ITEM_VISUAL_PRESETS (default: id)
 }
 
 // ──────────────────────────── Clouds (Phase 6) ────────────────────────────
@@ -109,7 +138,7 @@ export interface Cloud {
 
 // ──────────────────────────── Effects ────────────────────────────
 
-export type EffectKind = "burning" | "regen" | "haste" | "slow";
+export type EffectKind = "burning" | "regen" | "haste" | "slow" | "poison";
 
 export interface Effect {
   id: string;
@@ -169,7 +198,11 @@ export type GameEvent =
   | { type: "CloudSpawned"; id: string; pos: Pos; kind: string; visual?: string; element?: string }
   | { type: "CloudTicked"; id: string; appliedTo: string[] }
   | { type: "CloudExpired"; id: string }
-  | { type: "VisualBurst"; pos: Pos; visual: string; element?: string };
+  | { type: "VisualBurst"; pos: Pos; visual: string; element?: string }
+  | { type: "ItemUsed"; actor: string; item: string; defId: string }
+  | { type: "ItemEquipped"; actor: string; item: string; defId: string; slot: Slot }
+  | { type: "ItemUnequipped"; actor: string; item: string; defId: string; slot: Slot }
+  | { type: "OnHitTriggered"; attacker: string; defender: string; item: string; defId: string };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -182,6 +215,7 @@ export type PendingAction =
   | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "use"; cost: number; item: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> };
 
