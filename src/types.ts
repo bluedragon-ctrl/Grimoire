@@ -132,13 +132,13 @@ export type EventLog = LogEntry[];
 // ──────────────────────────── Pending actions ────────────────────────────
 
 export type PendingAction =
-  | { kind: "approach"; cost: number; target: unknown; loc?: SourceLoc }
-  | { kind: "flee"; cost: number; target: unknown; loc?: SourceLoc }
-  | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc }
-  | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc }
-  | { kind: "wait"; cost: number; loc?: SourceLoc }
-  | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc }
-  | { kind: "halt"; cost: 0; loc?: SourceLoc };
+  | { kind: "approach"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "flee"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> };
 
 // ──────────────────────────── Target resolution seam ────────────────────────────
 

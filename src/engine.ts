@@ -20,14 +20,58 @@ export interface EngineHandle {
   abort(): void;
 }
 
+export interface ActorSummary { id: string; kind: string; pos: { x: number; y: number }; hp: number; }
+export interface ItemSummary { id: string; kind: string; pos: { x: number; y: number }; }
+
+export interface InspectSnapshot {
+  locals: Record<string, unknown>;
+  visible: {
+    enemies: ActorSummary[];
+    items: ItemSummary[];
+    hp: number;
+    maxHp: number;
+    pos: { x: number; y: number };
+  };
+}
+
 export interface DebugHandle extends EngineHandle {
   step(): StepResult;
   run(): void;
   pause(): void;
   reset(): void;
+  inspect(actorId: string): InspectSnapshot | null;
   readonly currentLoc: SourceLoc | null;
   readonly paused: boolean;
   readonly done: boolean;
+}
+
+// Turn a live actor ref into a read-only summary for the inspector.
+function summarizeActor(a: Actor): ActorSummary {
+  return { id: a.id, kind: a.kind, pos: { ...a.pos }, hp: a.hp };
+}
+
+// Best-effort JSON-safe projection of a local value. Recognizes actor-like
+// objects and stringifies them as summaries; otherwise copies primitives and
+// plain structures shallowly to avoid leaking live world references.
+function jsonSafe(v: unknown): unknown {
+  if (v === null || v === undefined) return v;
+  const t = typeof v;
+  if (t === "number" || t === "string" || t === "boolean") return v;
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (t === "object") {
+    const obj = v as any;
+    if (typeof obj.id === "string" && typeof obj.kind === "string"
+        && obj.pos && typeof obj.pos.x === "number" && typeof obj.hp === "number") {
+      return summarizeActor(obj as Actor);
+    }
+    if (obj.pos && typeof obj.pos.x === "number") {
+      return { ...obj, pos: { ...obj.pos } };
+    }
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(obj)) out[k] = jsonSafe(obj[k]);
+    return out;
+  }
+  return String(v);
 }
 
 // Snapshot the setup so reset() can rebuild a fresh world from the initial
@@ -111,6 +155,26 @@ export function startRoom(setup: RoomSetup, opts: RunOptions = {}): DebugHandle 
     },
 
     pause() { paused = true; },
+
+    inspect(actorId: string): InspectSnapshot | null {
+      const actor = world.actors.find(a => a.id === actorId);
+      if (!actor) return null;
+      const rt = sched.runtimes.find(r => r.actor.id === actorId);
+      const frame = rt && rt.stack.length > 0 ? rt.stack[rt.stack.length - 1]! : null;
+      const rawLocals = frame?.pending?.locals ?? {};
+      const locals: Record<string, unknown> = {};
+      for (const k of Object.keys(rawLocals)) locals[k] = jsonSafe(rawLocals[k]);
+      return {
+        locals,
+        visible: {
+          enemies: world.actors.filter(a => a.alive && a.id !== actorId).map(summarizeActor),
+          items: world.room.items.map(i => ({ id: i.id, kind: i.kind, pos: { ...i.pos } })),
+          hp: actor.hp,
+          maxHp: actor.maxHp,
+          pos: { ...actor.pos },
+        },
+      };
+    },
 
     reset() {
       world = buildWorld(snapshot);
