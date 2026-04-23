@@ -84,6 +84,7 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
       doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
       items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
+      clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
     },
     actors: setup.actors.map(a => cloneActor(a)),
   };
@@ -91,8 +92,8 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
 
 function cloneActor(a: Actor): Actor {
   const defaults = a.kind === "hero"
-    ? { mp: 20, maxMp: 20, atk: 3, def: 0, int: 5 }
-    : { mp: 0,  maxMp: 0,  atk: 1, def: 0, int: 0 };
+    ? { mp: 20, maxMp: 20, atk: 3, def: 0, int: 0, knownSpells: ["bolt", "heal"] }
+    : { mp: 0,  maxMp: 0,  atk: 1, def: 0, int: 0, knownSpells: [] as string[] };
   return {
     id: a.id, kind: a.kind,
     hp: a.hp, maxHp: a.maxHp, speed: a.speed, energy: 0,
@@ -104,6 +105,7 @@ function cloneActor(a: Actor): Actor {
     def:   a.def   ?? defaults.def,
     int:   a.int   ?? defaults.int,
     effects: (a.effects ?? []).map(e => ({ ...e })),
+    knownSpells: a.knownSpells ? [...a.knownSpells] : [...defaults.knownSpells],
   };
 }
 
@@ -115,6 +117,7 @@ function buildWorld(setup: RoomSetup): World {
       doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
       items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
+      clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
     },
     actors: setup.actors.map(a => cloneActor(a)),
     log: [],

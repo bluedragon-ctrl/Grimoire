@@ -1,0 +1,186 @@
+// Primitive registry. Spells are declared as a sequence of primitive
+// invocations (SpellOp[]). Each primitive takes the caster, a resolved
+// target ref (Actor or Pos), and a raw args bag — returns GameEvent[].
+//
+// Phase 6 ships 4 real primitives + 4 stubs. Stubs are callable (no throw)
+// so spell content using them doesn't crash; they emit ActionFailed plus,
+// for explode, a VisualBurst so visual adapters can still hook the effect
+// site.
+
+import type { Actor, Cloud, GameEvent, Pos, World, EffectKind } from "../types.js";
+import { scale } from "../content/scaling.js";
+import { applyEffect } from "../effects.js";
+
+export type PrimitiveTargetType = "actor" | "tile" | "self";
+export type PrimitiveName =
+  | "project" | "inflict" | "heal" | "spawn_cloud"
+  | "explode" | "summon" | "teleport" | "push";
+
+export type TargetRef = Actor | Pos;
+
+export interface Primitive {
+  name: PrimitiveName;
+  targetType: PrimitiveTargetType;
+  execute(
+    world: World,
+    caster: Actor,
+    target: TargetRef,
+    args: Record<string, unknown>,
+  ): GameEvent[];
+}
+
+function asActor(t: TargetRef): Actor | null {
+  if (t && typeof (t as Actor).id === "string" && typeof (t as Actor).hp === "number") {
+    return t as Actor;
+  }
+  return null;
+}
+
+function asPos(t: TargetRef): Pos | null {
+  if (!t) return null;
+  if (typeof (t as Actor).id === "string" && (t as Actor).pos) return (t as Actor).pos;
+  if (typeof (t as Pos).x === "number" && typeof (t as Pos).y === "number") {
+    return { x: (t as Pos).x, y: (t as Pos).y };
+  }
+  return null;
+}
+
+// ──────────────────────────── implemented ────────────────────────────
+
+const project: Primitive = {
+  name: "project",
+  targetType: "actor",
+  execute(_world, caster, target, args) {
+    const t = asActor(target);
+    if (!t) return [];
+    const base = Number(args.damage ?? 0);
+    const dmg = scale(base, caster.int ?? 0);
+    t.hp -= dmg;
+    const events: GameEvent[] = [
+      { type: "Hit", actor: t.id, attacker: caster.id, damage: dmg },
+    ];
+    if (t.hp <= 0 && t.alive) {
+      t.alive = false;
+      events.push({ type: "Died", actor: t.id });
+      if (t.kind === "hero") events.push({ type: "HeroDied", actor: t.id });
+    }
+    return events;
+  },
+};
+
+const inflict: Primitive = {
+  name: "inflict",
+  targetType: "actor",
+  execute(world, caster, target, args) {
+    const t = asActor(target);
+    if (!t) return [];
+    const kind = String(args.kind) as EffectKind;
+    const baseDuration = Number(args.duration ?? 0);
+    const duration = scale(baseDuration, caster.int ?? 0);
+    const magnitude = args.magnitude !== undefined ? Number(args.magnitude) : undefined;
+    return applyEffect(world, t.id, kind, duration, {
+      source: caster.id,
+      ...(magnitude !== undefined ? { magnitude } : {}),
+    });
+  },
+};
+
+const heal: Primitive = {
+  name: "heal",
+  targetType: "actor",
+  execute(_world, caster, target, args) {
+    const t = asActor(target);
+    if (!t) return [];
+    const base = Number(args.amount ?? 0);
+    const amount = scale(base, caster.int ?? 0);
+    const before = t.hp;
+    t.hp = Math.min(t.maxHp, t.hp + amount);
+    const actual = t.hp - before;
+    return [{ type: "Healed", actor: t.id, amount: actual }];
+  },
+};
+
+let nextCloudId = 1;
+function genCloudId(): string { return `cl${nextCloudId++}`; }
+
+const spawn_cloud: Primitive = {
+  name: "spawn_cloud",
+  targetType: "tile",
+  execute(world, caster, target, args) {
+    const pos = asPos(target);
+    if (!pos) return [];
+    const kind = String(args.kind);
+    const baseDur = Number(args.duration ?? 0);
+    const duration = scale(baseDur, caster.int ?? 0);
+    const cloud: Cloud = {
+      id: genCloudId(),
+      pos: { ...pos },
+      kind,
+      duration,
+      remaining: duration,
+      source: caster.id,
+    };
+    const clouds = world.room.clouds ?? (world.room.clouds = []);
+    clouds.push(cloud);
+    const ev: GameEvent = {
+      type: "CloudSpawned",
+      id: cloud.id,
+      pos: { ...cloud.pos },
+      kind,
+      ...(typeof args.visual === "string" ? { visual: args.visual as string } : {}),
+      ...(typeof args.element === "string" ? { element: args.element as string } : {}),
+    };
+    return [ev];
+  },
+};
+
+// ──────────────────────────── stubs ────────────────────────────
+
+function stubActionFailed(caster: Actor, name: PrimitiveName): GameEvent {
+  return {
+    type: "ActionFailed",
+    actor: caster.id,
+    action: "cast",
+    reason: `Primitive '${name}' is not implemented yet`,
+  };
+}
+
+const explode: Primitive = {
+  name: "explode",
+  targetType: "tile",
+  execute(_world, caster, target, args) {
+    const out: GameEvent[] = [stubActionFailed(caster, "explode")];
+    const pos = asPos(target);
+    if (pos && typeof args.visual === "string") {
+      out.push({
+        type: "VisualBurst",
+        pos: { ...pos },
+        visual: args.visual as string,
+        ...(typeof args.element === "string" ? { element: args.element as string } : {}),
+      });
+    }
+    return out;
+  },
+};
+
+const summon: Primitive = {
+  name: "summon",
+  targetType: "tile",
+  execute(_world, caster) { return [stubActionFailed(caster, "summon")]; },
+};
+
+const teleport: Primitive = {
+  name: "teleport",
+  targetType: "tile",
+  execute(_world, caster) { return [stubActionFailed(caster, "teleport")]; },
+};
+
+const push: Primitive = {
+  name: "push",
+  targetType: "actor",
+  execute(_world, caster) { return [stubActionFailed(caster, "push")]; },
+};
+
+export const PRIMITIVES: Record<PrimitiveName, Primitive> = {
+  project, inflict, heal, spawn_cloud, explode, summon, teleport, push,
+};

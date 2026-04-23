@@ -9,9 +9,10 @@ import type {
 } from "./types.js";
 import { compile, type CompiledScript } from "./interpreter.js";
 import {
-  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt,
+  doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, castFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
+import { tickClouds } from "./clouds.js";
 
 interface Frame {
   gen: Generator<PendingAction, void, void>;
@@ -79,6 +80,10 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       s.lastFiredLoc = action.loc ?? null;
 
       const events = fireAction(world, rt.actor, action);
+      // Phase 6: failed casts don't cost energy (actor tries again next tick).
+      if (action.kind === "cast" && castFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
       dispatch(world, s.runtimes, events);
 
       if (events.some(e => e.type === "HeroExited" || e.type === "HeroDied")) {
@@ -103,6 +108,9 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     // (e.g. on hit) see them uniformly.
     const effectEvents: GameEvent[] = [];
     for (const a of world.actors) effectEvents.push(...tickEffects(world, a));
+    // Cloud phase: after effects, before next action. Emits its own events
+    // (CloudTicked, CloudExpired) and may also emit EffectApplied/Died/etc.
+    effectEvents.push(...tickClouds(world));
     if (effectEvents.length > 0) {
       dispatch(world, s.runtimes, effectEvents);
       if (effectEvents.some(e => e.type === "HeroDied" || e.type === "HeroExited")) {
@@ -251,6 +259,13 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "Idled": return `[t=${t}] ${event.actor}.idled`;
     case "ActionFailed": return `[t=${t}] ${event.actor}.actionFailed — ${event.action}: ${event.reason}`;
     case "See": return `[t=${t}] ${event.actor}.see — ${event.what}`;
+    case "EffectApplied": return `[t=${t}] ${event.actor}.effectApplied — ${event.kind}`;
+    case "EffectTick": return `[t=${t}] ${event.actor}.effectTick — ${event.kind}${event.magnitude !== undefined ? ` (${event.magnitude})` : ""}`;
+    case "EffectExpired": return `[t=${t}] ${event.actor}.effectExpired — ${event.kind}`;
+    case "CloudSpawned": return `[t=${t}] cloud.${event.id}.spawned — ${event.kind} @(${event.pos.x},${event.pos.y})`;
+    case "CloudTicked": return `[t=${t}] cloud.${event.id}.ticked — ${event.appliedTo.length} affected`;
+    case "CloudExpired": return `[t=${t}] cloud.${event.id}.expired`;
+    case "VisualBurst": return `[t=${t}] burst — ${event.visual} @(${event.pos.x},${event.pos.y})`;
   }
 }
 
