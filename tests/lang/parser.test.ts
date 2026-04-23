@@ -186,10 +186,11 @@ describe("parser", () => {
     ]);
   });
 
-  it("loc is attached to every node", () => {
+  it("loc span is attached to every node", () => {
     const s = parse("x = 1\n");
     const assign = s.main[0]!;
-    expect(assign.loc).toEqual({ line: 1, col: 1 });
-    expect((assign as any).value.loc).toEqual({ line: 1, col: 5 });
+    expect(assign.loc?.start).toEqual({ line: 1, col: 1 });
+    expect(assign.loc?.end.line).toBe(1);
+    expect((assign as any).value.loc?.start).toEqual({ line: 1, col: 5 });
   });
 });

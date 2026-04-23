@@ -5,7 +5,7 @@
 import type {
   Script, Stmt, Expr, Ident, Call, Index, Member, BinOp, UnaryOp, ArrayLit,
   Literal, If, While, For, ExprStmt, Assign, EventHandler, FuncDef, BinOpKind,
-  SourceLoc,
+  SourceLoc, SourcePos,
 } from "../types.js";
 import { tokenize, type Token } from "./tokenizer.js";
 import { ParseError, didYouMean, KNOWN_NAMES } from "./errors.js";
@@ -53,9 +53,17 @@ class Parser {
     throw new ParseError(t.line, t.col, message, hint);
   }
 
-  private locHere(): SourceLoc {
+  private posHere(): SourcePos {
     const t = this.peek();
     return { line: t.line, col: t.col };
+  }
+
+  // Build a span from a recorded start position to the end of the last
+  // consumed token (end col is token-start col + token length).
+  private span(start: SourcePos): SourceLoc {
+    const last = this.tokens[this.pos - 1] ?? this.tokens[this.pos]!;
+    const len = (last.value ?? "").length || 1;
+    return { start, end: { line: last.line, col: last.col + len } };
   }
 
   // Skip stray NEWLINE tokens (blank-line resilience — tokenizer already
@@ -104,7 +112,7 @@ class Parser {
   }
 
   private simpleStatement(): Stmt {
-    const start = this.locHere();
+    const start = this.posHere();
     const startTok = this.peek();
     const expr = this.expression();
 
@@ -117,11 +125,11 @@ class Parser {
       }
       const value = this.expression();
       this.consumeNewline(startTok);
-      return { t: "Assign", target: expr as any, value, loc: start };
+      return { t: "Assign", target: expr as any, value, loc: this.span(start) };
     }
 
     this.consumeNewline(startTok);
-    return { t: "ExprStmt", expr, loc: start };
+    return { t: "ExprStmt", expr, loc: this.span(start) };
   }
 
   // If the statement started with a NAME close to a keyword, surface a
@@ -142,7 +150,7 @@ class Parser {
   }
 
   private ifStmt(): If {
-    const start = this.locHere();
+    const start = this.posHere();
     this.advance(); // 'if'
     const cond = this.expression();
     this.expectColon("if");
@@ -157,22 +165,23 @@ class Parser {
       this.expectColon("else");
       elseBlock = this.block();
     }
+    const loc = this.span(start);
     return elseBlock
-      ? { t: "If", cond, then: thenBlock, else: elseBlock, loc: start }
-      : { t: "If", cond, then: thenBlock, loc: start };
+      ? { t: "If", cond, then: thenBlock, else: elseBlock, loc }
+      : { t: "If", cond, then: thenBlock, loc };
   }
 
   private whileStmt(): While {
-    const start = this.locHere();
+    const start = this.posHere();
     this.advance();
     const cond = this.expression();
     this.expectColon("while");
     const body = this.block();
-    return { t: "While", cond, body, loc: start };
+    return { t: "While", cond, body, loc: this.span(start) };
   }
 
   private forStmt(): For {
-    const start = this.locHere();
+    const start = this.posHere();
     this.advance();
     const nameTok = this.expect("NAME", undefined, "I expected a variable name after `for`.");
     if (!this.match("KEYWORD", "in")) {
@@ -182,11 +191,11 @@ class Parser {
     const iter = this.expression();
     this.expectColon("for");
     const body = this.block();
-    return { t: "For", name: nameTok.value, iter, body, loc: start };
+    return { t: "For", name: nameTok.value, iter, body, loc: this.span(start) };
   }
 
   private onHandler(): EventHandler {
-    const start = this.locHere();
+    const start = this.posHere();
     this.advance(); // 'on'
     if (!this.check("NAME")) {
       const t = this.peek();
@@ -200,22 +209,24 @@ class Parser {
     }
     this.expectColon("on");
     const body = this.block();
+    const loc = this.span(start);
     return binding
-      ? { t: "EventHandler", event, binding, body, loc: start }
-      : { t: "EventHandler", event, body, loc: start };
+      ? { t: "EventHandler", event, binding, body, loc }
+      : { t: "EventHandler", event, body, loc };
   }
 
   private returnStmt(): Stmt {
-    const start = this.locHere();
+    const start = this.posHere();
     this.advance(); // 'return'
     let value: Expr | undefined;
     if (!this.check("NEWLINE") && !this.atEOF()) {
       value = this.expression();
     }
     this.consumeNewline();
+    const loc = this.span(start);
     return value !== undefined
-      ? { t: "Return", value, loc: start }
-      : { t: "Return", loc: start };
+      ? { t: "Return", value, loc }
+      : { t: "Return", loc };
   }
 
   private expectColon(after: string): void {
@@ -269,9 +280,11 @@ class Parser {
   }
 
   private notExpr(): Expr {
-    if (this.match("KEYWORD", "not")) {
+    if (this.check("KEYWORD", "not")) {
+      const startTok = this.advance();
+      const start: SourcePos = { line: startTok.line, col: startTok.col };
       const a = this.notExpr();
-      return { t: "UnaryOp", op: "!", a, loc: locOf(a) };
+      return { t: "UnaryOp", op: "!", a, loc: this.span(start) };
     }
     return this.cmpExpr();
   }
@@ -309,8 +322,9 @@ class Parser {
   private unaryExpr(): Expr {
     if (this.check("OP", "-")) {
       const tok = this.advance();
+      const start: SourcePos = { line: tok.line, col: tok.col };
       const a = this.unaryExpr();
-      return { t: "UnaryOp", op: "-", a, loc: { line: tok.line, col: tok.col } };
+      return { t: "UnaryOp", op: "-", a, loc: this.span(start) };
     }
     return this.postfixExpr();
   }
@@ -318,16 +332,17 @@ class Parser {
   private postfixExpr(): Expr {
     let expr = this.atom();
     while (true) {
+      const start = startOf(expr) ?? this.posHere();
       if (this.match("OP", ".")) {
         const name = this.expect("NAME", undefined, "I expected a member name after `.`.");
-        expr = { t: "Member", obj: expr, name: name.value, loc: locOf(expr) };
+        expr = { t: "Member", obj: expr, name: name.value, loc: this.span(start) };
       } else if (this.match("OP", "[")) {
         const key = this.expression();
         if (!this.match("OP", "]")) {
           const t = this.peek();
           throw new ParseError(t.line, t.col, "I expected `]` to close this index.");
         }
-        expr = { t: "Index", obj: expr, key, loc: locOf(expr) };
+        expr = { t: "Index", obj: expr, key, loc: this.span(start) };
       } else if (this.match("OP", "(")) {
         const args: Expr[] = [];
         if (!this.check("OP", ")")) {
@@ -338,7 +353,7 @@ class Parser {
           const t = this.peek();
           throw new ParseError(t.line, t.col, "I expected `)` to close this call — did you miss a matching `(`?");
         }
-        expr = { t: "Call", callee: expr, args, loc: locOf(expr) };
+        expr = { t: "Call", callee: expr, args, loc: this.span(start) };
       } else break;
     }
     return expr;
@@ -346,26 +361,27 @@ class Parser {
 
   private atom(): Expr {
     const t = this.peek();
-    const loc: SourceLoc = { line: t.line, col: t.col };
+    const start: SourcePos = { line: t.line, col: t.col };
 
     if (t.kind === "NUMBER") {
       this.advance();
-      return { t: "Literal", value: Number(t.value), loc };
+      return { t: "Literal", value: Number(t.value), loc: this.span(start) };
     }
     if (t.kind === "STRING") {
       this.advance();
-      return { t: "Literal", value: t.value, loc };
+      return { t: "Literal", value: t.value, loc: this.span(start) };
     }
     if (t.kind === "NAME") {
       this.advance();
-      return { t: "Ident", name: t.value, loc };
+      return { t: "Ident", name: t.value, loc: this.span(start) };
     }
     if (t.kind === "KEYWORD") {
-      if (t.value === "true") { this.advance(); return { t: "Literal", value: true, loc }; }
-      if (t.value === "false") { this.advance(); return { t: "Literal", value: false, loc }; }
-      if (t.value === "me") { this.advance(); return { t: "Ident", name: "me", loc }; }
+      if (t.value === "true") { this.advance(); return { t: "Literal", value: true, loc: this.span(start) }; }
+      if (t.value === "false") { this.advance(); return { t: "Literal", value: false, loc: this.span(start) }; }
+      if (t.value === "me") { this.advance(); return { t: "Ident", name: "me", loc: this.span(start) }; }
       if (t.value === "halt") {
         this.advance();
+        const loc = this.span(start);
         // If followed by '(', treat as a plain identifier and let postfix
         // apply the call. Otherwise, produce halt() directly.
         if (this.check("OP", "(")) return { t: "Ident", name: "halt", loc };
@@ -397,7 +413,7 @@ class Parser {
         const nt = this.peek();
         throw new ParseError(nt.line, nt.col, "I expected `]` to close this list.");
       }
-      return { t: "ArrayLit", items, loc };
+      return { t: "ArrayLit", items, loc: this.span(start) };
     }
 
     throw new ParseError(t.line, t.col,
@@ -422,11 +438,12 @@ function isCmpOp(v: string): boolean {
 
 function mkBin(op: BinOpKind, a: Expr, b: Expr): BinOp {
   const base: BinOp = { t: "BinOp", op, a, b };
-  const loc = locOf(a);
-  if (loc) base.loc = loc;
+  const s = a.loc?.start;
+  const e = b.loc?.end ?? a.loc?.end;
+  if (s && e) base.loc = { start: s, end: e };
   return base;
 }
 
-function locOf(e: Expr): SourceLoc | undefined {
-  return e.loc;
+function startOf(e: Expr): SourcePos | undefined {
+  return e.loc?.start;
 }

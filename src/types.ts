@@ -5,7 +5,8 @@
 // Optional on every AST node so the parser can attach source locations for
 // editor integration (Phase 4 gutter highlight). Hand-written ASTs (tests,
 // demo, ast-helpers) simply omit it — consumers must treat as optional.
-export interface SourceLoc { line: number; col: number; }
+export interface SourcePos { line: number; col: number; }
+export interface SourceLoc { start: SourcePos; end: SourcePos; }
 
 // ──────────────────────────── AST ────────────────────────────
 
