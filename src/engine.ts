@@ -8,6 +8,10 @@ import type {
 import {
   createScheduler, stepOne, type RunOptions, type SchedulerState, type StepResult,
 } from "./scheduler.js";
+// Side-effect import: registers equipment-bonus wiring into effects.ts so
+// effectiveStats() picks up equipped-item bonuses. Must land before any run.
+import "./items/execute.js";
+import { emptyEquipped } from "./content/items.js";
 
 export interface RoomSetup {
   room: Room;
@@ -106,6 +110,10 @@ function cloneActor(a: Actor): Actor {
     int:   a.int   ?? defaults.int,
     effects: (a.effects ?? []).map(e => ({ ...e })),
     knownSpells: a.knownSpells ? [...a.knownSpells] : [...defaults.knownSpells],
+    inventory: a.inventory ? {
+      consumables: a.inventory.consumables.map(i => ({ ...i })),
+      equipped: { ...a.inventory.equipped },
+    } : { consumables: [], equipped: emptyEquipped() },
   };
 }
 

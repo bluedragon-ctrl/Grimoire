@@ -84,8 +84,31 @@ const slow: EffectSpec = {
   tickEvery: 1,
 };
 
+// Phase 7: poison — weaker, longer burn. Separate kind so cleanse can remove
+// it independently and so the venom_dagger on_hit proc doesn't overwrite a
+// target's unrelated burning.
+const poison: EffectSpec = {
+  kind: "poison",
+  defaultDuration: 30,
+  defaultMagnitude: 1,
+  tickEvery: 15,
+  onTick: (_w, eff, actor) => {
+    const dmg = eff.magnitude ?? 1;
+    actor.hp -= dmg;
+    const events: GameEvent[] = [
+      { type: "EffectTick", actor: actor.id, kind: "poison", magnitude: dmg },
+    ];
+    if (actor.hp <= 0 && actor.alive) {
+      actor.alive = false;
+      events.push({ type: "Died", actor: actor.id });
+      if (actor.kind === "hero") events.push({ type: "HeroDied", actor: actor.id });
+    }
+    return events;
+  },
+};
+
 export const REGISTRY: Record<EffectKind, EffectSpec> = {
-  burning, regen, haste, slow,
+  burning, regen, haste, slow, poison,
 };
 
 // ──────────────────────────── apply ────────────────────────────
@@ -193,7 +216,8 @@ export interface EffectiveStats {
   int: number;
 }
 
-// Pure fold over active effects. Base stats are not mutated.
+// Pure fold over active effects + equipment bonuses. Base stats are not
+// mutated. Equipment uses monotone-max aggregation (see items/execute.ts).
 export function effectiveStats(actor: Actor): EffectiveStats {
   const base: EffectiveStats = {
     hp: actor.hp,
@@ -205,6 +229,17 @@ export function effectiveStats(actor: Actor): EffectiveStats {
     maxMp: actor.maxMp ?? 0,
     int: actor.int ?? 0,
   };
+  // Equipment bonuses — injected by items/execute.ts at module load time
+  // (see wireEquipmentBonuses). Monotone-max aggregation per stat.
+  if (actor.inventory && _equipmentBonuses) {
+    const bonuses = _equipmentBonuses(actor);
+    if (bonuses.atk)   base.atk   += bonuses.atk;
+    if (bonuses.def)   base.def   += bonuses.def;
+    if (bonuses.int)   base.int   += bonuses.int;
+    if (bonuses.maxHp) base.maxHp += bonuses.maxHp;
+    if (bonuses.maxMp) base.maxMp += bonuses.maxMp;
+    if (bonuses.speed) base.speed += bonuses.speed;
+  }
   const effects = actor.effects ?? [];
   let speedMul = 1;
   for (const e of effects) {
@@ -212,9 +247,18 @@ export function effectiveStats(actor: Actor): EffectiveStats {
     else if (e.kind === "slow") speedMul *= 0.5;
   }
   if (speedMul !== 1) {
-    base.speed = Math.max(1, Math.floor(actor.speed * speedMul));
+    base.speed = Math.max(1, Math.floor(base.speed * speedMul));
   }
   return base;
+}
+
+// Equipment-bonus injection: items/execute.ts calls wireEquipmentBonuses at
+// module load. Kept as a one-way hook to avoid a hard effects→items import,
+// since execute.ts already imports applyEffect from here.
+type StatBonuses = Partial<Record<"atk" | "def" | "int" | "speed" | "maxHp" | "maxMp", number>>;
+let _equipmentBonuses: ((a: Actor) => StatBonuses) | null = null;
+export function wireEquipmentBonuses(fn: (a: Actor) => StatBonuses): void {
+  _equipmentBonuses = fn;
 }
 
 export function hasEffect(actor: Actor, kind: string): boolean {

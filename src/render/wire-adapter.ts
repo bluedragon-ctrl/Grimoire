@@ -238,6 +238,11 @@ export class WireRendererAdapter implements RendererAdapter {
       case "Idled":
       case "ActionFailed":
       case "See":
+      // Phase 7 item events — Phase 8 renderer will wire these.
+      case "ItemUsed":
+      case "ItemEquipped":
+      case "ItemUnequipped":
+      case "OnHitTriggered":
         break;
     }
     s.tick++;
