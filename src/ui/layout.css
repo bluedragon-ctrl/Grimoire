@@ -323,6 +323,140 @@ body::before {
   font-size: 16px;
   letter-spacing: 3px;
 }
+.pane.game[data-phase="prep"] #game-view,
+.pane.game[data-phase="recap"] #game-view {
+  background: #000;
+}
+.pane.game[data-phase="recap"] #game-view:empty::before {
+  content: "> ROOM CLEARED <";
+  color: var(--accent);
+  text-shadow: var(--glow-strong);
+}
+
+/* ─────── Script pane — level/attempts badge in the h2 ─────── */
+.run-meta {
+  margin-left: 10px;
+  font-family: "VT323", monospace;
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--fg);
+  text-shadow: var(--glow);
+  text-transform: none;
+}
+
+/* ─────── Inspector/Help tab strip ─────── */
+.tab-strip {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #180c02, transparent);
+}
+.tab-strip .tab {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 4px 10px;
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--glow);
+}
+.tab-strip .tab:last-child { border-right: none; }
+.tab-strip .tab.active {
+  color: var(--accent);
+  background: #150a02;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.tab-strip .tab:disabled { color: var(--dim); cursor: default; text-shadow: none; }
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tab-panel[hidden] { display: none; }
+#help {
+  padding: 8px 12px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+#help h3 {
+  margin: 10px 0 4px;
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: var(--glow);
+}
+#help p { margin: 0; color: var(--muted); }
+
+/* ─────── Recap modal ─────── */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal[hidden] { display: none; }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 2, 0, 0.75);
+  backdrop-filter: blur(1px);
+}
+.modal-box {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(255, 170, 51, 0.25),
+    0 6px 22px rgba(255, 100, 0, 0.4),
+    0 12px 34px rgba(0, 0, 0, 0.85);
+  padding: 20px 28px;
+  min-width: 260px;
+  text-align: center;
+}
+.modal-box h2 {
+  margin: 0 0 14px;
+  font-family: "VT323", monospace;
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: var(--fg-hi);
+  text-transform: uppercase;
+  text-shadow: var(--glow-strong);
+}
+.recap-stats {
+  margin: 0 auto 16px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.recap-stats td { padding: 2px 12px; }
+.recap-stats td.k { color: var(--muted); text-transform: uppercase; letter-spacing: 2px; text-align: right; }
+.recap-stats td.v { color: var(--fg-hi); text-align: left; font-variant-numeric: tabular-nums; text-shadow: var(--glow); }
+.modal-actions button {
+  background: #0d0700;
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  padding: 5px 18px;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--glow);
+}
+.modal-actions button:hover {
+  background: var(--fg);
+  color: #0a0400;
+  text-shadow: none;
+}
 
 .log ul {
   flex: 1;
