@@ -10,7 +10,7 @@ import type {
 import { ITEMS, BAG_SIZE } from "../content/items.js";
 import { lootTableFor } from "../content/loot.js";
 import { worldRandom, worldRandInt } from "../rng.js";
-import { ensureInventory, mintInstance } from "./execute.js";
+import { ensureInventory } from "./execute.js";
 
 // ──────────────────────────── floor-item bookkeeping ────────────────────────────
 
@@ -53,11 +53,9 @@ export function spawnFloorItem(
 // instances on the actor's tile. Events are appended in the order rolled,
 // matching scheduler expectations (one bundle per step).
 export function rollDeathDrops(world: World, actor: Actor): GameEvent[] {
-  // Phase 11: prefer the explicit template key (createActor sets this from
-  // MONSTER_TEMPLATES[id].loot); fall back to actor.kind for hand-rolled
-  // test actors whose LOOT_TABLES entry is keyed by kind.
-  const key = actor.lootTable ?? actor.kind;
-  const table = lootTableFor(key);
+  // Phase 11+: use the explicit template key set by createActor from
+  // MONSTER_TEMPLATES[id].loot. Actors with no lootTable drop nothing.
+  const table = actor.lootTable ? lootTableFor(actor.lootTable) : [];
   if (table.length === 0) return [];
   const out: GameEvent[] = [];
   for (const entry of table) {
@@ -168,5 +166,4 @@ export function spawnOverflowDrop(world: World, actor: Actor, inst: ItemInstance
   return spawnFloorItem(world, inst.defId, actor.pos, "overflow", actor.id);
 }
 
-// Silence unused-import warnings for mintInstance in no-op builds.
-void mintInstance;
+

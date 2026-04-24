@@ -113,8 +113,11 @@ export const REGISTRY: Record<EffectKind, EffectSpec> = {
 
 // ──────────────────────────── apply ────────────────────────────
 
-let nextEffectId = 1;
-function genId(kind: EffectKind): string { return `e${nextEffectId++}_${kind}`; }
+function genId(world: World, kind: EffectKind): string {
+  const n = (world.effectSeq ?? 0) + 1;
+  world.effectSeq = n;
+  return `e${n}_${kind}`;
+}
 
 export interface ApplyOpts {
   magnitude?: number;
@@ -146,7 +149,7 @@ export function applyEffect(
   }
 
   const eff: Effect = {
-    id: genId(kind),
+    id: genId(world, kind),
     kind,
     target: actor.id,
     magnitude: opts.magnitude ?? spec.defaultMagnitude,
