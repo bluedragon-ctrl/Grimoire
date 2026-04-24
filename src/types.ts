@@ -139,6 +139,8 @@ export interface ItemDef {
   slot?: Slot;            // required when category === "wearable"
   script: string;         // item-script source; parsed at registry load
   visualPreset?: string;  // key into ITEM_VISUAL_PRESETS (default: id)
+  /** Phase 12: optional help override. If absent, help auto-generates from other fields. */
+  help?: import("./ui/help/types.js").HelpMeta;
 }
 
 // ──────────────────────────── Clouds (Phase 6) ────────────────────────────

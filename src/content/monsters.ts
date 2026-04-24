@@ -11,6 +11,7 @@
 // code should go through this helper — do not hand-build monster Actors.
 
 import type { Actor, Pos, Script } from "../types.js";
+import type { HelpMeta } from "../ui/help/types.js";
 import { parse } from "../lang/parser.js";
 
 export interface MonsterStats {
@@ -34,6 +35,8 @@ export interface MonsterTemplate {
   ai: string;                        // DSL source — parsed at load time
   loot?: string;                     // key into LOOT_TABLES (Phase 9)
   colors?: Record<string, string>;   // optional renderer tint
+  /** Phase 12: optional help override. If absent, help auto-generates from stats + AI. */
+  help?: HelpMeta;
 }
 
 // ──────────────────────────── AI scripts ────────────────────────────
