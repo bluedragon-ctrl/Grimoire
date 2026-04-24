@@ -15,6 +15,7 @@ export interface CloudKindSpec {
 }
 
 export const CLOUD_KINDS: Record<string, CloudKindSpec> = {
-  fire:  { effect: { kind: "burning", duration: 10 }, visual: "cloud_fire"  },
-  frost: { effect: { kind: "slow",    duration: 10 }, visual: "cloud_frost" },
+  fire:   { effect: { kind: "burning", duration: 10 }, visual: "cloud_fire"   },
+  frost:  { effect: { kind: "slow",    duration: 10 }, visual: "cloud_frost"  },
+  poison: { effect: { kind: "poison",  duration: 10 }, visual: "cloud_poison" },
 };
