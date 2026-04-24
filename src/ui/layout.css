@@ -244,7 +244,7 @@ body::before {
   text-shadow: var(--glow);
 }
 .editor { grid-area: editor; }
-.game { grid-area: game; }
+.game { grid-area: game; position: relative; }
 .log { grid-area: log; }
 .inspector { grid-area: inspector; }
 .inventory { grid-area: inventory; }
@@ -344,6 +344,58 @@ body::before {
   border: 1px solid var(--border);
   box-shadow: inset 0 0 30px rgba(255, 136, 0, 0.08);
 }
+#hero-hud {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 8px;
+  background: rgba(5, 2, 0, 0.78);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 10px rgba(255, 136, 0, 0.1);
+  pointer-events: none;
+  font-size: 11px;
+}
+#hero-hud[hidden] { display: none; }
+.hud-bar {
+  display: grid;
+  grid-template-columns: 22px 110px auto;
+  align-items: center;
+  gap: 6px;
+}
+.hud-label {
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.hud-track {
+  position: relative;
+  height: 8px;
+  background: #0a0400;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.hud-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+.hud-hp .hud-fill { background: linear-gradient(90deg, #ff5522, #ffaa33); }
+.hud-mp .hud-fill { background: linear-gradient(90deg, #3366ff, #66aaff); }
+.hud-val {
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  color: var(--fg-hi);
+  font-variant-numeric: tabular-nums;
+  text-shadow: var(--glow);
+}
+
 .game-canvas-wrap {
   /* Wrap enforces a world-size minimum; the vendor renderer sizes the
      canvas to this parent so it never squishes below the room size. */

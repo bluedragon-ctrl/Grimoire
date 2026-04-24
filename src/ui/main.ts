@@ -45,6 +45,11 @@ const recapAttempts = document.getElementById("recap-attempts") as HTMLElement;
 const recapTurns    = document.getElementById("recap-turns")    as HTMLElement;
 const gridEl       = document.querySelector("main.grid") as HTMLElement;
 const auxTitleEl   = document.getElementById("aux-title") as HTMLHeadingElement;
+const heroHud      = document.getElementById("hero-hud")    as HTMLDivElement;
+const hudHpFill    = document.getElementById("hud-hp-fill") as HTMLDivElement;
+const hudHpVal     = document.getElementById("hud-hp-val")  as HTMLSpanElement;
+const hudMpFill    = document.getElementById("hud-mp-fill") as HTMLDivElement;
+const hudMpVal     = document.getElementById("hud-mp-val")  as HTMLSpanElement;
 
 const DEFAULT_SCRIPT = [
   "# Hero script — edit and click Run.",
@@ -89,6 +94,25 @@ function clearLog(): void { logEl.innerHTML = ""; }
 
 function clearPlayTimer() {
   if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
+}
+
+// Slider value is a "speed" (higher = faster). Convert to the per-step delay
+// the timer consumes: delay = (min + max) - value. So slider at max=1000 →
+// 50ms delay (fastest), at min=50 → 1000ms (slowest).
+function tickDelayMs(): number {
+  const v = Number(speedEl.value);
+  return (Number(speedEl.min) + Number(speedEl.max)) - v;
+}
+
+function updateHud(): void {
+  const hero = currentHandle?.world.actors.find(a => a.kind === "hero");
+  if (!hero) return;
+  const hpFrac = hero.maxHp > 0 ? Math.max(0, hero.hp) / hero.maxHp : 0;
+  const mpFrac = (hero.maxMp ?? 0) > 0 ? Math.max(0, hero.mp ?? 0) / (hero.maxMp ?? 1) : 0;
+  hudHpFill.style.transform = `scaleX(${hpFrac})`;
+  hudMpFill.style.transform = `scaleX(${mpFrac})`;
+  hudHpVal.textContent = `${Math.max(0, hero.hp)} / ${hero.maxHp}`;
+  hudMpVal.textContent = `${Math.max(0, hero.mp ?? 0)} / ${hero.maxMp ?? 0}`;
 }
 
 function teardownCurrent() {
@@ -138,11 +162,12 @@ function playTick(): void {
   if (phase !== "running" || !currentHandle) return;
   const r = currentHandle.step();
   drainLogToAdapter();
+  updateHud();
   if (r.done || currentHandle.done) {
     onRunEnded();
     return;
   }
-  playTimer = setTimeout(playTick, Number(speedEl.value));
+  playTimer = setTimeout(playTick, tickDelayMs());
 }
 
 function onRunEnded(): void {
@@ -189,6 +214,7 @@ function startFromSource(): boolean {
   adapter.mount(gameEl, handle.world.room, handle.world.actors);
   currentAdapter = adapter;
   applyCursor = 0;
+  updateHud();
   return true;
 }
 
@@ -197,7 +223,7 @@ function startFromSource(): boolean {
 btnRun.addEventListener("click", () => {
   if (runCtl.getState().phase !== "prep") return;
   if (!startFromSource()) return;
-  playTimer = setTimeout(playTick, Number(speedEl.value));
+  playTimer = setTimeout(playTick, tickDelayMs());
 });
 
 btnPause.addEventListener("click", () => {
@@ -212,6 +238,7 @@ btnStep.addEventListener("click", () => {
   if (runCtl.getState().phase !== "paused" || !currentHandle) return;
   const r = currentHandle.step();
   drainLogToAdapter();
+  updateHud();
   refreshDebugView();
   if (r.done || currentHandle.done) onRunEnded();
 });
@@ -220,7 +247,7 @@ btnResume.addEventListener("click", () => {
   if (runCtl.getState().phase !== "paused" || !currentHandle) return;
   setActiveGutterLine(null);
   runCtl.resume();
-  playTimer = setTimeout(playTick, Number(speedEl.value));
+  playTimer = setTimeout(playTick, tickDelayMs());
 });
 
 btnStop.addEventListener("click", () => {
@@ -266,11 +293,11 @@ tabHelp.addEventListener("click", () => {
 });
 
 speedEl.addEventListener("input", () => {
-  const ms = Number(speedEl.value);
-  speedOut.textContent = `${ms}ms`;
+  const delay = tickDelayMs();
+  speedOut.textContent = `${delay}ms`;
   if (runCtl.getState().phase === "running") {
     clearPlayTimer();
-    playTimer = setTimeout(playTick, ms);
+    playTimer = setTimeout(playTick, delay);
   }
 });
 
@@ -306,11 +333,21 @@ function renderPhase(): void {
     applyCursor = 0;
   }
 
-  // Inventory editable only in prep.
+  // Inventory visible only in prep (and editable there); hidden during the
+  // run and recap so the player isn't fiddling with gear mid-fight. The
+  // hero HUD (HP/MP) takes over on the canvas overlay during running/paused.
+  gridEl.classList.toggle("no-inventory", phase !== "prep");
   if (inventoryCtl) {
     inventoryCtl.setEditable(phase === "prep");
     inventoryCtl.refresh();
   }
+
+  // Hero HUD overlay on the canvas. Visible only when a run is underway
+  // (running/paused) — in prep the canvas is black, in recap the modal owns
+  // the foreground.
+  const hudOn = phase === "running" || phase === "paused";
+  heroHud.hidden = !hudOn;
+  if (hudOn) updateHud();
 
   // Topbar tabs + aux side pane. Pane is closed-by-default; a click on an
   // enabled tab opens it showing that content. If the active tab's enablement
@@ -420,5 +457,5 @@ function escapeHtml(s: string): string {
 // RunController currently holds, so skip/reset/continue transparently swap
 // the edit target on the next render.
 inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
-speedOut.textContent = `${speedEl.value}ms`;
+speedOut.textContent = `${tickDelayMs()}ms`;
 renderPhase();
