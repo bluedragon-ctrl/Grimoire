@@ -13,7 +13,7 @@ function mkWorld(actors: Actor[], room?: Partial<Room>): World {
 
 function mkHero(over: Partial<Actor> & { id: string; pos: { x: number; y: number } }): Actor {
   return {
-    kind: "hero",
+    kind: "hero", isHero: true,
     hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
     script: script(cHalt()),
     mp: 20, maxMp: 20, atk: 3, def: 0, int: 0,
@@ -113,7 +113,7 @@ describe("castSpell validation", () => {
     // Hero attempts to cast unknown spell — should ActionFailed repeatedly,
     // with energy refunded so cast fires each tick, and eventually halt.
     const hero: Actor = {
-      id: "h", kind: "hero", hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
+      id: "h", kind: "hero", isHero: true, hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
       pos: { x: 0, y: 0 }, mp: 100, maxMp: 100, int: 0,
       knownSpells: ["bolt", "heal"],
       script: script(

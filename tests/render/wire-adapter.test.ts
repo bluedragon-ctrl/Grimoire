@@ -20,7 +20,7 @@ function makeAdapter() {
 const room: Room = { w: 8, h: 6, doors: [{ dir: "E", pos: { x: 7, y: 3 } }], items: [], chests: [] };
 
 function hero(pos = { x: 1, y: 1 }): Actor {
-  return { id: "hero", kind: "hero", hp: 10, maxHp: 10, speed: 1, energy: 0, pos,
+  return { id: "hero", kind: "hero", isHero: true, hp: 10, maxHp: 10, speed: 1, energy: 0, pos,
            script: { main: [], handlers: [], funcs: [] }, alive: true };
 }
 function goblin(id: string, pos: { x: number; y: number }): Actor {

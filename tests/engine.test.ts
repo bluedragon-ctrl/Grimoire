@@ -20,6 +20,7 @@ function makeActor(over: Partial<Actor> & Pick<Actor, "id" | "kind" | "pos" | "s
   return {
     hp: defaults.hp, maxHp: defaults.maxHp, speed: defaults.speed,
     energy: 0, alive: true,
+    isHero: over.kind === "hero",
     ...over,
   };
 }
