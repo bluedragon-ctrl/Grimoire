@@ -204,22 +204,100 @@ failed casts don't consume the actor's action slot.
 ### Primitive registry
 
 Spell bodies are declarative `SpellOp[]`. Each op names a primitive and a
-plain args bag. Phase 6 ships four implemented primitives (`project`,
-`inflict`, `heal`, `spawn_cloud`) and four stubs (`explode`, `summon`,
-`teleport`, `push`). Stubs are callable — they emit an
-`ActionFailed { reason: "Primitive 'X' is not implemented yet" }` and, for
-`explode`, a `VisualBurst` so later renderers can still hook the effect
-site. Nothing throws.
+plain args bag. Phase 13.1 ships five implemented primitives (`project`,
+`inflict`, `heal`, `spawn_cloud`, `explode`) and three stubs (`summon`,
+`teleport`, `push`). Stubs are callable — they emit
+`ActionFailed { reason: "Primitive 'X' is not implemented yet" }`. Nothing
+throws.
 
 Primitives may accept `visual?: string` and `element?: string` args. These
 pass through unchanged onto emitted events (`Cast.visual`,
 `CloudSpawned.visual`, `VisualBurst.visual`). The engine never reads them —
-the Phase 8 renderer will resolve preset names against
-`src/content/visuals.ts`.
+the renderer resolves preset names against `src/content/visuals.ts`.
 
-INT-based magnitude scaling lives in a single function, `scale(base, int)`
-in `src/content/scaling.ts`. Primitives apply it to damage, heal amounts,
-and effect durations; never to range or mpCost.
+**`explode` contract.** `targetType: "tile"`. Args: `{ radius, damage?,
+kind?, duration?, magnitude?, visual?, element?, selfCenter? }`. Sweeps
+every tile within Chebyshev `scaleRadius(radius, caster.int)` of the target
+position; applies scaled damage + optional effect to every live actor found.
+Wall filter: tiles outside room bounds are skipped (structural tile-map wall
+checking is deferred to the dungeon-gen phase). `selfCenter: true` excludes
+the caster even when they stand on the target tile — AoE self-cast spells
+(frost_nova, thunderclap) never self-damage. Emits one `VisualBurst` at the
+target position, then one `Hit`/`Died`/`EffectApplied` per actor struck.
+
+### Scaling
+
+INT-based scaling lives in `src/content/scaling.ts`:
+
+```ts
+scale(base, int)       = floor(base * (1 + int / 10))   // damage, duration, magnitude, heal
+scaleRadius(base, int) = base + floor(int / 8)           // AoE radius only
+```
+
+**Fixed:** `range` and `mpCost` never scale — they are fixed per-spell
+constants for UI predictability.
+
+**Radius > range = placement risk.** A fireball with base radius 2 cast at
+maximum range 4 is safe at int 0. At int 24 the radius grows to 5, which
+reaches back to the caster's tile — taking them into the blast. This is
+intentional: high-INT casters gain wider blasts in exchange for positional
+discipline.
+
+**Magnitude scaling in `inflict` and `explode`.** The scaled value enters
+`applyEffect`; Phase-5 stacking rules (first-write-wins on magnitude,
+duration refreshes to max) apply after. So a second `curse` cast on an
+already-exposed target refreshes the timer but does not stack the magnitude.
+
+### Spell catalog (Phase 13.1 — 20 spells)
+
+**Single-target:**
+
+| spell | target | range | mp | effects |
+|---|---|---|---|---|
+| `bolt` | enemy | 6 | 5 | arcane damage |
+| `firebolt` | enemy | 6 | 8 | fire damage + burning |
+| `frost_lance` | enemy | 6 | 7 | frost damage + chill |
+| `shock_bolt` | enemy | 6 | 7 | lightning damage + shock |
+| `venom_dart` | enemy | 6 | 6 | poison damage + poison |
+| `curse` | enemy | 3 | 6 | expose (incoming dmg ↑) |
+| `mana_leech` | enemy | 3 | 4 | mana_burn (mp drain) |
+
+**AoE explosions (radius scales with int):**
+
+| spell | target | range | mp | effects |
+|---|---|---|---|---|
+| `fireball` | tile | 4 | 12 | fire blast + burning, radius 2 |
+| `frost_nova` | self | 0 | 11 | frost burst + chill, radius 2, self-safe |
+| `thunderclap` | self | 0 | 10 | shock burst, radius 1, self-safe |
+| `meteor` | tile | 5 | 18 | massive fire blast + burning, radius 3 |
+
+**Clouds:**
+
+| spell | target | range | mp | effects |
+|---|---|---|---|---|
+| `firewall` | tile | 4 | 10 | fire cloud (burning DoT) |
+| `poison_cloud` | tile | 4 | 11 | poison cloud (poison DoT) |
+
+**Buffs:**
+
+| spell | target | range | mp | effects |
+|---|---|---|---|---|
+| `bless` | ally | 1 | 7 | haste |
+| `might` | self | 0 | 6 | atk +N |
+| `iron_skin` | self | 0 | 6 | def +N |
+| `mind_spark` | self | 0 | 6 | int +N (power) |
+| `focus` | self | 0 | 5 | mana regen |
+| `shield` | self | 0 | 8 | damage-absorption pool |
+
+**Heal:**
+
+| spell | target | range | mp | effects |
+|---|---|---|---|---|
+| `heal` | ally | 1 | 5 | restore HP |
+
+**Non-goals deferred to later phases:** scrolls and learn-from-scroll flow
+(Phase 13.2/13.3), summoning primitives, `teleport`, `push`, ward/resist
+system, damage-type defence interactions.
 
 ### Cloud lifecycle
 

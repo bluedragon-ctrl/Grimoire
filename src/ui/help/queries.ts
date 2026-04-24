@@ -126,7 +126,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   effects: {
     id: "effects", name: "effects", signature: "effects(target)",
     blurb: "Array of active effect-kind strings on target.",
-    examples: [{ caption: "Skip targets already slowed.", code: "if effects(enemies()[0]).length == 0:\n  cast(\"chill\", enemies()[0])" }],
-    related: ["queries/has_effect", "spells/chill"],
+    examples: [{ caption: "Skip targets already chilled.", code: "if effects(enemies()[0]).length == 0:\n  cast(\"frost_lance\", enemies()[0])" }],
+    related: ["queries/has_effect", "spells/frost_lance"],
   },
 };

@@ -16,6 +16,8 @@ export interface ProjectilePreset {
 export interface BurstPreset {
   burst: string;
   colors: { color: string; color2: string };
+  /** Optional size hint for the renderer (e.g. explosion_fire_big). */
+  size?: "big";
 }
 
 export interface CloudPreset {
@@ -28,26 +30,43 @@ export interface EffectOverlayPreset {
 }
 
 export const PROJECTILE_PRESETS: Record<string, ProjectilePreset> = Object.freeze({
-  bolt_orange: { projectile: "bolt",   colors: { color: "#ff6622", color2: "#ffdd66" } },
-  bolt_red:    { projectile: "bolt",   colors: { color: "#ff3322", color2: "#ffaa33" } },
-  bolt_blue:   { projectile: "bolt",   colors: { color: "#3366ff", color2: "#99ccff" } },
-  bolt_green:  { projectile: "bolt",   colors: { color: "#44cc66", color2: "#aaffcc" } },
-  bolt_gold:   { projectile: "bolt",   colors: { color: "#ffcc00", color2: "#ffffff" } },
-  beam_frost:  { projectile: "beam",   colors: { color: "#66ccff", color2: "#ffffff" } },
-  beam_arcane: { projectile: "beam",   colors: { color: "#bb66ff", color2: "#ffffff" } },
-  thrown_smoke:{ projectile: "thrown", colors: { color: "#666666", color2: "#aaaaaa" } },
+  bolt_orange:   { projectile: "bolt",   colors: { color: "#ff6622", color2: "#ffdd66" } },
+  bolt_red:      { projectile: "bolt",   colors: { color: "#ff3322", color2: "#ffaa33" } },
+  bolt_blue:     { projectile: "bolt",   colors: { color: "#3366ff", color2: "#99ccff" } },
+  bolt_green:    { projectile: "bolt",   colors: { color: "#44cc66", color2: "#aaffcc" } },
+  bolt_gold:     { projectile: "bolt",   colors: { color: "#ffcc00", color2: "#ffffff" } },
+  beam_frost:    { projectile: "beam",   colors: { color: "#66ccff", color2: "#ffffff" } },
+  beam_arcane:   { projectile: "beam",   colors: { color: "#bb66ff", color2: "#ffffff" } },
+  beam_violet:   { projectile: "beam",   colors: { color: "#bb44ff", color2: "#eeccff" } },
+  zigzag_yellow: { projectile: "zigzag", colors: { color: "#ffff44", color2: "#ffffff" } },
+  arrow_green:   { projectile: "arrow",  colors: { color: "#44cc66", color2: "#aaffcc" } },
+  healing_green: { projectile: "bolt",   colors: { color: "#44cc66", color2: "#ccffcc" } },
+  thrown_smoke:  { projectile: "thrown", colors: { color: "#666666", color2: "#aaaaaa" } },
 });
 
 export const BURST_PRESETS: Record<string, BurstPreset> = Object.freeze({
-  burst_ember:  { burst: "ember",  colors: { color: "#ff6622", color2: "#ffcc33" } },
-  burst_frost:  { burst: "frost",  colors: { color: "#66ccff", color2: "#ffffff" } },
-  burst_arcane: { burst: "arcane", colors: { color: "#bb66ff", color2: "#ffddff" } },
+  // Phase 6 originals
+  burst_ember:       { burst: "ember",       colors: { color: "#ff6622", color2: "#ffcc33" } },
+  burst_frost:       { burst: "frost",       colors: { color: "#66ccff", color2: "#ffffff" } },
+  burst_arcane:      { burst: "arcane",      colors: { color: "#bb66ff", color2: "#ffddff" } },
+  // Phase 13.1 — explosion variants (reuse explosion draw fn, different tints)
+  explosion_fire:     { burst: "explosion",  colors: { color: "#ff6622", color2: "#ffcc33" } },
+  explosion_frost:    { burst: "explosion",  colors: { color: "#66ccff", color2: "#ffffff" } },
+  explosion_shock:    { burst: "explosion",  colors: { color: "#ffff44", color2: "#ffffff" } },
+  explosion_fire_big: { burst: "explosion",  colors: { color: "#ff4400", color2: "#ffcc00" }, size: "big" },
+  // Phase 13.1 — self-cast visual bursts for buff spells
+  sparkle_gold:  { burst: "sparkling", colors: { color: "#ffcc00", color2: "#ffee88" } },
+  sparkle_red:   { burst: "sparkling", colors: { color: "#ff4422", color2: "#ffaa44" } },
+  barrier_steel: { burst: "barrier",   colors: { color: "#99aabb", color2: "#ccd8e0" } },
+  barrier_cyan:  { burst: "barrier",   colors: { color: "#44ccff", color2: "#aaeeff" } },
+  healing_blue:  { burst: "healing",   colors: { color: "#4488ff", color2: "#aaddff" } },
 });
 
 export const CLOUD_PRESETS: Record<string, CloudPreset> = Object.freeze({
-  cloud_fire:  { colors: { color: "#ff6622", color2: "#ffaa33" } },
-  cloud_frost: { colors: { color: "#66ccff", color2: "#ccffff" } },
-  cloud_smoke: { colors: { color: "#555555", color2: "#999999" } },
+  cloud_fire:   { colors: { color: "#ff6622", color2: "#ffaa33" } },
+  cloud_frost:  { colors: { color: "#66ccff", color2: "#ccffff" } },
+  cloud_smoke:  { colors: { color: "#555555", color2: "#999999" } },
+  cloud_poison: { colors: { color: "#33aa55", color2: "#aaff88" } },
 });
 
 // Element → default preset name. Used when a spell body omits `visual`

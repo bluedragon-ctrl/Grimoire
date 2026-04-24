@@ -8,7 +8,7 @@
 // site.
 
 import type { Actor, Cloud, GameEvent, Pos, World, EffectKind } from "../types.js";
-import { scale } from "../content/scaling.js";
+import { scale, scaleRadius } from "../content/scaling.js";
 import { applyEffect } from "../effects.js";
 
 export type PrimitiveTargetType = "actor" | "tile" | "self";
@@ -77,7 +77,10 @@ const inflict: Primitive = {
     const kind = String(args.kind) as EffectKind;
     const baseDuration = Number(args.duration ?? 0);
     const duration = scale(baseDuration, caster.int ?? 0);
-    const magnitude = args.magnitude !== undefined ? Number(args.magnitude) : undefined;
+    // magnitude scales with INT; the scaled value enters applyEffect and Phase-5
+    // stacking rules (first-write-wins, duration refreshes) apply after.
+    const rawMag = args.magnitude !== undefined ? Number(args.magnitude) : undefined;
+    const magnitude = rawMag !== undefined ? scale(rawMag, caster.int ?? 0) : undefined;
     return applyEffect(world, t.id, kind, duration, {
       source: caster.id,
       ...(magnitude !== undefined ? { magnitude } : {}),
@@ -151,18 +154,64 @@ function stubActionFailed(caster: Actor, name: PrimitiveName): GameEvent {
 const explode: Primitive = {
   name: "explode",
   targetType: "tile",
-  execute(_world, caster, target, args) {
-    const out: GameEvent[] = [stubActionFailed(caster, "explode")];
+  execute(world, caster, target, args) {
     const pos = asPos(target);
-    if (pos && typeof args.visual === "string") {
-      out.push({
+    if (!pos) return [];
+
+    const selfCenter = Boolean(args.selfCenter);
+    const radius     = scaleRadius(Number(args.radius ?? 0), caster.int ?? 0);
+    const damage     = scale(Number(args.damage ?? 0), caster.int ?? 0);
+    const kind       = args.kind ? String(args.kind) as EffectKind : undefined;
+    const duration   = kind ? scale(Number(args.duration ?? 0), caster.int ?? 0) : 0;
+    const rawMag     = args.magnitude !== undefined ? Number(args.magnitude) : undefined;
+    const magnitude  = rawMag !== undefined ? scale(rawMag, caster.int ?? 0) : undefined;
+
+    const events: GameEvent[] = [];
+
+    if (typeof args.visual === "string") {
+      events.push({
         type: "VisualBurst",
         pos: { ...pos },
         visual: args.visual as string,
         ...(typeof args.element === "string" ? { element: args.element as string } : {}),
       });
     }
-    return out;
+
+    // Sweep every tile within Chebyshev radius of the target position.
+    // Wall filter: tiles outside room bounds are skipped (structural wall map TBD).
+    // selfCenter: true → caster excluded even when standing on the target tile.
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const tx = pos.x + dx;
+        const ty = pos.y + dy;
+        if (tx < 0 || ty < 0 || tx >= world.room.w || ty >= world.room.h) continue;
+
+        for (const actor of world.actors) {
+          if (!actor.alive) continue;
+          if (actor.pos.x !== tx || actor.pos.y !== ty) continue;
+          if (selfCenter && actor.id === caster.id) continue;
+
+          if (damage > 0) {
+            actor.hp -= damage;
+            events.push({ type: "Hit", actor: actor.id, attacker: caster.id, damage });
+            if (actor.hp <= 0 && actor.alive) {
+              actor.alive = false;
+              events.push({ type: "Died", actor: actor.id });
+              if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
+            }
+          }
+
+          if (kind) {
+            events.push(...applyEffect(world, actor.id, kind, duration, {
+              source: caster.id,
+              ...(magnitude !== undefined ? { magnitude } : {}),
+            }));
+          }
+        }
+      }
+    }
+
+    return events;
   },
 };
 

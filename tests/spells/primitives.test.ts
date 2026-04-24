@@ -74,15 +74,19 @@ describe("primitives", () => {
     expect(ev.element).toBe("fire");
   });
 
-  it("stub explode emits ActionFailed + VisualBurst, no crash", () => {
-    const caster = mkActor({ id: "c", kind: "hero", pos: { x: 0, y: 0 } });
-    const w = mkWorld([caster]);
-    const events = PRIMITIVES.explode.execute(w, caster, { x: 2, y: 2 }, { visual: "burst_ember" });
-    const failed = events.find(e => e.type === "ActionFailed") as any;
-    expect(failed.reason).toContain("not implemented");
+  it("explode emits VisualBurst and hits actors in radius, no ActionFailed", () => {
+    const caster = mkActor({ id: "c", kind: "hero", pos: { x: 0, y: 0 }, int: 0 });
+    const victim = mkActor({ id: "v", kind: "goblin", pos: { x: 2, y: 2 }, hp: 20, maxHp: 20 });
+    const w = mkWorld([caster, victim]);
+    const events = PRIMITIVES.explode.execute(w, caster, { x: 2, y: 2 }, {
+      radius: 2, damage: 5, visual: "explosion_fire", element: "fire",
+    });
+    expect(events.find(e => e.type === "ActionFailed")).toBeUndefined();
     const burst = events.find(e => e.type === "VisualBurst") as any;
-    expect(burst.visual).toBe("burst_ember");
+    expect(burst.visual).toBe("explosion_fire");
     expect(burst.pos).toEqual({ x: 2, y: 2 });
+    expect(events.find(e => e.type === "Hit")).toBeDefined();
+    expect(victim.hp).toBe(15); // scale(5, 0)=5
   });
 
   it("compound sequencing: project + inflict runs in order", () => {
