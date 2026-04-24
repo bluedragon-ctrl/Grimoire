@@ -200,15 +200,25 @@ body::before {
   background: var(--border);
   min-height: 0;
 }
-/* Aux pane opened via topbar tab (data-aux="inspector" | "help"). */
-.grid[data-aux="inspector"],
-.grid[data-aux="help"] {
+/* Inspector tab: a narrow right-hand column alongside game/inventory/log. */
+.grid[data-aux="inspector"] {
   grid-template-columns: minmax(240px, 24%) minmax(0, 1fr) minmax(220px, 22%);
   grid-template-areas:
     "editor game      inspector"
     "editor inventory inspector"
     "editor log       inspector";
 }
+/* Help tab: takes over everything to the right of the editor. Game / inventory
+   / log hide — the help content benefits from the full width. */
+.grid[data-aux="help"] {
+  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "editor inspector";
+}
+.grid[data-aux="help"] .game,
+.grid[data-aux="help"] .inventory,
+.grid[data-aux="help"] .log { display: none; }
+
 .grid[data-aux="none"] .inspector { display: none; }
 /* Hide inventory unless in prep/idle phase. */
 .grid.no-inventory {
@@ -217,8 +227,7 @@ body::before {
     "editor game"
     "editor log";
 }
-.grid.no-inventory[data-aux="inspector"],
-.grid.no-inventory[data-aux="help"] {
+.grid.no-inventory[data-aux="inspector"] {
   grid-template-areas:
     "editor game inspector"
     "editor log  inspector";
