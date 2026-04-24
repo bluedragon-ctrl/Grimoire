@@ -225,8 +225,20 @@ Within a scheduler tick, when no action is ready and time advances:
    `effectiveStats.speed`.
 2. **Effects phase:** `tickEffects(world, actor)` for each live actor.
 3. **Clouds phase:** `tickClouds(world)` — cloud applications + decays.
-4. Dispatch all phase events through handler routing.
-5. Return to action-readiness check.
+4. **Death-drop sweep (Phase 9):** any `Died` events emitted by the just-
+   fired action or the effect/cloud phase are scanned; each victim's loot
+   table rolls through `worldRandom()` and the resulting `ItemDropped`
+   events are appended to the *same* bundle. Drops never span ticks.
+5. Dispatch all phase events through handler routing.
+6. Return to action-readiness check.
+
+### Determinism (Phase 9)
+
+A single mulberry32 state (`World.rngSeed`, seeded from `RunOptions.seed`,
+default 1) drives every random decision — currently just loot rolls, but
+Phase 10's AI and any future crit/miss rolls must draw from the same
+generator so replaying `(setup, seed)` is byte-identical. `Math.random` is
+never called inside `src/`.
 
 ## Open questions (flagging, not blocking)
 

@@ -101,6 +101,76 @@ across equips and saves.
 | `ItemEquipped`   | `{ actor, item, defId, slot }`                                |
 | `ItemUnequipped` | `{ actor, item, defId, slot }`                                |
 | `OnHitTriggered` | `{ attacker, defender, item, defId }`                         |
+| `ItemDropped`    | `{ actor, item, defId, pos, source }` — `source ∈ {"death","drop","overflow"}` |
+| `ItemPickedUp`   | `{ actor, item, defId, pos }`                                 |
 
-All four are formatted by `formatLogEntry` and are no-ops in the Phase 7
-wire renderer — Phase 8 will subscribe and draw.
+## Loot & pickups (Phase 9)
+
+Monsters drop items on death, items sit on the floor, and the hero's script
+can `pickup()` them. All randomness is threaded through the engine's
+mulberry32 RNG — see `src/rng.ts` and the `seed` field on `RunOptions`.
+
+### Loot tables
+
+`src/content/loot.ts` exports `LOOT_TABLES`, a record keyed by actor kind.
+Each entry declares one independent roll:
+
+```ts
+export const LOOT_TABLES: Record<string, LootEntry[]> = {
+  goblin: [
+    { defId: "health_potion", chance: 0.5 },  // optional: min/max stack size
+  ],
+};
+```
+
+When an actor dies (`Died` emitted by any path — attacks, cloud burn, poison
+tick) the scheduler calls `rollDeathDrops(world, actor)`: each entry rolls
+independently, and on a hit the engine mints `min..max` fresh `FloorItem`
+instances at the victim's position, emitting one `ItemDropped` event per
+instance with `source: "death"`.
+
+Phase 10's monster registry is expected to point at these same keys (or
+embed inline loot arrays of the same shape) — no schema change planned.
+
+### Commands
+
+| Call                   | Cost | Behavior                                                              |
+| ---------------------- | ---: | --------------------------------------------------------------------- |
+| `pickup()`             |  10  | Take the topmost floor item on the hero's tile into the bag.          |
+| `pickup(item)`         |  10  | Targeted pickup — accepts a bare `defId` or an `items_here()` ref.    |
+| `drop(slot_or_item)`   |   5  | Pull a consumable out of the bag and leave it on the hero's tile.     |
+
+`pickup` fails with `ActionFailed{reason:"Bag full"}` if the bag is at
+`BAG_SIZE` — the item stays on the floor. Failed pickups/drops refund
+energy, mirroring the cast/use policy.
+
+### Queries (zero cost)
+
+- `items_here()` — `FloorItem[]` on the hero's tile, **topmost first** (LIFO;
+  matches what `pickup()` without args would take).
+- `items_nearby(r?)` — Manhattan-sorted list within radius `r` (default 4).
+
+### Bag-full overflow
+
+Unequipping into a full bag used to silently discard the ex-equipped item.
+Phase 9 routes that overflow through the same drop path: the item lands at
+the actor's feet with `ItemDropped{source:"overflow"}`. Same for any future
+loot-grant path — every item either enters an inventory or appears on the
+floor.
+
+### Tick ordering
+
+Loot rolls happen **inside** the step that emitted the death, not on a later
+tick. `stepOne` appends drops to the event bundle after `fireAction` and
+after the tick-effect/cloud phase, so a single returned `StepResult.events`
+carries `Died → ItemDropped{…}` in order. Handlers that care (future: "on
+drop") can subscribe uniformly through the normal dispatch path.
+
+### Renderer
+
+`WireRendererAdapter` adds the new item to `VisualState.floorItems` on
+`ItemDropped` (with a small burst at the tile) and removes it on
+`ItemPickedUp` (with a sparkling overlay on the hero). The `type` passed to
+the vendor `drawItem()` is the `defId` — existing registry entries
+(`health_potion`, `mana_crystal`, equipment sprites) render out of the box.
+

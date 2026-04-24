@@ -2,7 +2,7 @@
 
 import type { Actor, Room } from "./types.js";
 import {
-  script, ident, call, lit, while_, bin, member, index, exprStmt,
+  script, ident, call, lit, while_, if_, bin, member, index, exprStmt,
   cApproach, cAttack, cExit, cHalt,
 } from "./ast-helpers.js";
 import { emptyEquipped } from "./content/items.js";
@@ -12,6 +12,9 @@ const firstEnemy = index(call("enemies"), lit(0));
 const firstDoor = index(call("doors"), lit(0));
 const mePos = member(ident("me"), "pos");
 const doorPos = member(firstDoor, "pos");
+const hereItemsLen = member(call("items_here"), "length");
+const firstHere = index(call("items_here"), lit(0));
+const herePos = member(firstHere, "pos");
 
 export function demoSetup(): { room: Room; actors: Actor[] } {
   const room: Room = {
@@ -25,12 +28,24 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
     chests: [],
   };
 
-  // Hero: while enemies exist, approach+attack. Then walk to the north
-  // door and exit.
+  // Hero: kill the goblin, then (Phase 9) step onto any dropped loot and
+  // pickup() it before heading for the exit.
   const heroScript = script(
     while_(bin(">", enemiesLen, lit(0)), [
       cApproach(firstEnemy),
       cAttack(firstEnemy),
+    ]),
+    // Walk onto the nearest dropped item (if any) and pick it up.
+    if_(bin(">", member(call("items_nearby"), "length"), lit(0)), [
+      while_(
+        bin(">", member(call("items_nearby"), "length"), lit(0)),
+        [
+          if_(bin("==", hereItemsLen, lit(0)),
+            [cApproach(index(call("items_nearby"), lit(0)))],
+            [exprStmt(call("pickup"))],
+          ),
+        ],
+      ),
     ]),
     while_(
       bin("||",
@@ -41,6 +56,7 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
     cExit("N"),
     cHalt(),
   );
+  void herePos;
 
   // Goblin: just halt (idle).
   const gobScript = script(cHalt());
