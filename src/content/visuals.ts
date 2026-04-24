@@ -100,6 +100,7 @@ export const EFFECT_OVERLAY_PRESETS: Record<EffectKind, EffectOverlayPreset> = O
   mana_burn: { name: "dripping",  colors: { color: "#8833aa", color2: "#dd88ff" } },
   power:     { name: "sparkling", colors: { color: "#ffcc00", color2: "#ffee88" } },
   shield:    { name: "barrier",   colors: { color: "#44ccff", color2: "#aaeeff" } },
+  blinded:   { name: "sparkling", colors: { color: "#555555", color2: "#888888" } },
 });
 
 // ── Visual asset catalogs ────────────────────────────────────────────────────
