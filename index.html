@@ -37,12 +37,24 @@
             </div>
             <label class="speed">
               Speed
-              <input id="speed-slider" type="range" min="50" max="1000" step="10" value="200" />
+              <input id="speed-slider" type="range" min="50" max="1000" step="10" value="850" />
               <span id="speed-readout">200ms</span>
             </label>
           </div>
         </section>
         <section class="pane game" id="pane-game" data-phase="prep">
+          <div id="hero-hud" hidden>
+            <div class="hud-bar hud-hp">
+              <span class="hud-label">HP</span>
+              <div class="hud-track"><div class="hud-fill" id="hud-hp-fill"></div></div>
+              <span class="hud-val" id="hud-hp-val">0 / 0</span>
+            </div>
+            <div class="hud-bar hud-mp">
+              <span class="hud-label">MP</span>
+              <div class="hud-track"><div class="hud-fill" id="hud-mp-fill"></div></div>
+              <span class="hud-val" id="hud-mp-val">0 / 0</span>
+            </div>
+          </div>
           <div id="game-view"></div>
         </section>
         <section class="pane log">
