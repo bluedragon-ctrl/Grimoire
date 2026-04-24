@@ -26,14 +26,6 @@ export const COST = {
   drop: 5,
 } as const;
 
-// Phase 11: attacker damage comes from `actor.atk` (set by createActor from
-// MONSTER_TEMPLATES, or by hero defaults). DAMAGE_BY_KIND remains as a final
-// fallback so tests that build raw actors without atk still behave.
-const DAMAGE_BY_KIND: Record<string, number> = {
-  hero: 3,
-  goblin: 1,
-};
-
 // ──────────────────────────── small helpers ────────────────────────────
 
 export function manhattan(a: Pos, b: Pos): number {
@@ -262,7 +254,7 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
   if (!orthogonallyAdjacent(self.pos, target.pos)) {
     return [fail(self, "attack", "not adjacent")];
   }
-  const dmg = self.atk ?? DAMAGE_BY_KIND[self.kind] ?? 1;
+  const dmg = self.atk ?? 1;
   target.hp -= dmg;
   const events: GameEvent[] = [
     { type: "Attacked", attacker: self.id, defender: target.id, damage: dmg },

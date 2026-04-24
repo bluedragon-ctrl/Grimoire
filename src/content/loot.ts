@@ -20,10 +20,7 @@ export interface LootEntry {
   max?: number;
 }
 
-// Phase 11 keys: `<monster>_loot`, matching MONSTER_TEMPLATES[id].loot. The
-// legacy `"goblin"` key is retained as an alias for Phase 9 tests that key
-// rollDeathDrops by actor.kind directly.
-//
+// Phase 11+ keys: `<monster>_loot`, matching MONSTER_TEMPLATES[id].loot.
 // The hero never rolls loot — omit or leave empty.
 export const LOOT_TABLES: Record<string, LootEntry[]> = {
   goblin_loot: [
@@ -38,12 +35,17 @@ export const LOOT_TABLES: Record<string, LootEntry[]> = {
   slime_loot: [
     { defId: "health_potion", chance: 0.15 },
   ],
-  // Legacy alias — Phase 9 tests look up LOOT_TABLES["goblin"]. New code keys
-  // by template.loot (e.g. "goblin_loot").
-  goblin: [
-    { defId: "health_potion", chance: 0.5 },
-  ],
 };
+
+// Registry load-time validation.
+for (const [key, entries] of Object.entries(LOOT_TABLES)) {
+  for (const e of entries) {
+    if (!e.defId) throw new Error(`LOOT_TABLES["${key}"]: entry missing 'defId'.`);
+    if (typeof e.chance !== "number" || e.chance < 0 || e.chance > 1) {
+      throw new Error(`LOOT_TABLES["${key}"]["${e.defId}"]: 'chance' must be in [0, 1].`);
+    }
+  }
+}
 
 // Convenience: typed lookup used by the scheduler. Returns [] for unknown
 // keys so the call site can stay branch-free.
