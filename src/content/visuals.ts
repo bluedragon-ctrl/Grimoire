@@ -62,11 +62,22 @@ export const ELEMENT_DEFAULTS: Record<string, string> = Object.freeze({
 // Data-driven overlay map — replaces the switch in wire-adapter overlayForEffect.
 // Every EffectKind must have an entry; missing keys are caught by visuals-validate.ts.
 export const EFFECT_OVERLAY_PRESETS: Record<EffectKind, EffectOverlayPreset> = Object.freeze({
-  burning: { name: "burning",   colors: { color: "#ff6622", color2: "#ffcc33" } },
-  poison:  { name: "dripping",  colors: { color: "#33aa55", color2: "#aaff88" } },
-  regen:   { name: "healing",   colors: { color: "#66ff99", color2: "#ccffcc" } },
-  haste:   { name: "sparkling", colors: { color: "#ffff99", color2: "#ffffff" } },
-  slow:    { name: "cloudWavy", colors: { color: "#6688aa", color2: "#aaccee" } },
+  // Phase 5 originals
+  burning:   { name: "burning",   colors: { color: "#ff6622", color2: "#ffcc33" } },
+  poison:    { name: "dripping",  colors: { color: "#33aa55", color2: "#aaff88" } },
+  regen:     { name: "healing",   colors: { color: "#66ff99", color2: "#ccffcc" } },
+  haste:     { name: "sparkling", colors: { color: "#ffff99", color2: "#ffffff" } },
+  slow:      { name: "cloudWavy", colors: { color: "#6688aa", color2: "#aaccee" } },
+  // Phase 13 additions
+  chill:     { name: "cloudWavy", colors: { color: "#99ccee", color2: "#ddeeff" } },
+  shock:     { name: "sparkling", colors: { color: "#ffff66", color2: "#ffffff" } },
+  expose:    { name: "sparkling", colors: { color: "#ff44cc", color2: "#ffaadd" } },
+  might:     { name: "sparkling", colors: { color: "#ff4422", color2: "#ffaa44" } },
+  iron_skin: { name: "barrier",   colors: { color: "#99aabb", color2: "#ccd8e0" } },
+  mana_regen:{ name: "healing",   colors: { color: "#4488ff", color2: "#aaddff" } },
+  mana_burn: { name: "dripping",  colors: { color: "#8833aa", color2: "#dd88ff" } },
+  power:     { name: "sparkling", colors: { color: "#ffcc00", color2: "#ffee88" } },
+  shield:    { name: "barrier",   colors: { color: "#44ccff", color2: "#aaeeff" } },
 });
 
 // ── Visual asset catalogs ────────────────────────────────────────────────────

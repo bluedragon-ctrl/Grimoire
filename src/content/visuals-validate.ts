@@ -21,7 +21,11 @@ import {
   OBJECT_VISUALS,
 } from "./visuals.js";
 
-const ALL_EFFECT_KINDS: EffectKind[] = ["burning", "poison", "regen", "haste", "slow"];
+const ALL_EFFECT_KINDS: EffectKind[] = [
+  "burning", "poison", "regen", "haste", "slow",
+  "chill", "shock", "expose", "might", "iron_skin",
+  "mana_regen", "mana_burn", "power", "shield",
+];
 
 // ── spell ops ─────────────────────────────────────────────────────────────────
 

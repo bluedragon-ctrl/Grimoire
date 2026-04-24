@@ -9,9 +9,9 @@
 // - Tick order per scheduler tick: actor actions fire first; AFTER the tick's
 //   action phase, effects tick once per actor (decrement remaining, maybe
 //   onTick, maybe onExpire).
-// - Modifier effects (haste, slow) do NOT mutate base stats. Callers use
-//   effectiveStats(actor) to see the modified view. Direct stat changes
-//   (damage, healing) still mutate hp — they're not modifiers.
+// - Modifier effects (haste, slow, chill, shock, might, iron_skin, power) do
+//   NOT mutate base stats. Callers use effectiveStats(actor) for the modified
+//   view. Direct stat changes (damage, healing, mana) still mutate fields.
 
 import type { Actor, Effect, EffectKind, GameEvent, World } from "./types.js";
 
@@ -21,6 +21,11 @@ export interface EffectSpec {
   defaultMagnitude?: number;
   tickEvery: number;
   onApply?: (world: World, effect: Effect, actor: Actor) => GameEvent[];
+  // Called when an effect of this kind already exists on the actor and is
+  // refreshed by a new application. Receives the live existing effect and the
+  // incoming {magnitude, duration}. The standard stacking logic (refresh
+  // remaining to max, keep existing magnitude) already ran before this fires.
+  onStack?: (world: World, existing: Effect, incoming: { magnitude?: number; duration: number }, actor: Actor) => GameEvent[];
   onTick?: (world: World, effect: Effect, actor: Actor) => GameEvent[];
   onExpire?: (world: World, effect: Effect, actor: Actor) => GameEvent[];
 }
@@ -107,9 +112,148 @@ const poison: EffectSpec = {
   },
 };
 
+// ── Phase 13 effects ──────────────────────────────────────────────────────────
+
+// chill: passive — reduces atk AND speed each by magnitude% (single scalar).
+// magnitude = N means N% reduction; default 20. effectiveStats folds both
+// through a (1 - pct) multiplier so chill composes with haste/slow cleanly.
+const chill: EffectSpec = {
+  kind: "chill",
+  defaultDuration: 30,
+  defaultMagnitude: 20,
+  tickEvery: 1,
+};
+
+// shock: passive — reduces def by magnitude flat. Clamped to 0 in effectiveStats.
+const shock: EffectSpec = {
+  kind: "shock",
+  defaultDuration: 30,
+  defaultMagnitude: 5,
+  tickEvery: 1,
+};
+
+// expose: passive — incoming physical damage is multiplied by (1 + magnitude%).
+// Resolved at damage-apply time in commands.ts doAttack, not in effectiveStats.
+// Spell inflict path does not yet honour expose (out of scope for Phase 13.0).
+const expose: EffectSpec = {
+  kind: "expose",
+  defaultDuration: 20,
+  defaultMagnitude: 25,
+  tickEvery: 1,
+};
+
+// might: passive — flat atk bonus folded into effectiveStats.
+const might: EffectSpec = {
+  kind: "might",
+  defaultDuration: 30,
+  defaultMagnitude: 3,
+  tickEvery: 1,
+};
+
+// iron_skin: passive — flat def bonus folded into effectiveStats.
+const iron_skin: EffectSpec = {
+  kind: "iron_skin",
+  defaultDuration: 30,
+  defaultMagnitude: 3,
+  tickEvery: 1,
+};
+
+// mana_regen: restores mp per tick. Skips tick when already at maxMp (same
+// design choice as regen-at-full-hp: no noise when nothing changed).
+const mana_regen: EffectSpec = {
+  kind: "mana_regen",
+  defaultDuration: 50,
+  defaultMagnitude: 2,
+  tickEvery: 10,
+  onTick: (_w, eff, actor) => {
+    const mp = actor.mp ?? 0;
+    const maxMp = actor.maxMp ?? 0;
+    if (mp >= maxMp) return [];
+    const want = eff.magnitude ?? 2;
+    const gained = Math.min(want, maxMp - mp);
+    actor.mp = mp + gained;
+    return [
+      { type: "EffectTick", actor: actor.id, kind: "mana_regen", magnitude: gained },
+      { type: "ManaChanged", actor: actor.id, amount: gained },
+    ];
+  },
+};
+
+// mana_burn: drains mp per tick. Skips tick when mp is already 0.
+const mana_burn: EffectSpec = {
+  kind: "mana_burn",
+  defaultDuration: 30,
+  defaultMagnitude: 1,
+  tickEvery: 10,
+  onTick: (_w, eff, actor) => {
+    const mp = actor.mp ?? 0;
+    if (mp <= 0) return [];
+    const drain = Math.min(eff.magnitude ?? 1, mp);
+    actor.mp = mp - drain;
+    return [
+      { type: "EffectTick", actor: actor.id, kind: "mana_burn", magnitude: drain },
+      { type: "ManaChanged", actor: actor.id, amount: -drain },
+    ];
+  },
+};
+
+// power: passive — flat int bonus folded into effectiveStats.
+const power: EffectSpec = {
+  kind: "power",
+  defaultDuration: 30,
+  defaultMagnitude: 3,
+  tickEvery: 1,
+};
+
+// shield: damage-absorption pool. magnitude = pool size granted on apply.
+// Duration controls when the remaining pool expires (onExpire zeroes shieldHp).
+//
+// Stacking deviation from Phase-5 standard: shield is a pool, not a modifier,
+// so "bigger pool wins" is applied on re-application. If incoming.magnitude >
+// existing.magnitude the pool is topped up to the new amount and
+// existing.magnitude is updated; smaller incoming leaves the pool unchanged.
+// Duration still refreshes to max(existing, new) per standard stacking.
+const shield: EffectSpec = {
+  kind: "shield",
+  defaultDuration: 50,
+  defaultMagnitude: 10,
+  tickEvery: 1,
+  onApply: (_w, eff, actor) => {
+    actor.shieldHp = (actor.shieldHp ?? 0) + (eff.magnitude ?? 10);
+    return [];
+  },
+  onStack: (_w, existing, incoming, actor) => {
+    const newMag = incoming.magnitude ?? 10;
+    if (newMag > (existing.magnitude ?? 0)) {
+      actor.shieldHp = newMag;
+      existing.magnitude = newMag;
+    }
+    return [];
+  },
+  onExpire: (_w, _eff, actor) => {
+    actor.shieldHp = 0;
+    return [];
+  },
+};
+
 export const REGISTRY: Record<EffectKind, EffectSpec> = {
   burning, regen, haste, slow, poison,
+  chill, shock, expose, might, iron_skin, mana_regen, mana_burn, power, shield,
 };
+
+// Load-time validation: every EffectKind must have a REGISTRY entry.
+// TypeScript's Record<EffectKind, EffectSpec> enforces this statically;
+// this runtime check catches drift from untyped paths (generated content, etc).
+((): void => {
+  const kinds: EffectKind[] = [
+    "burning", "regen", "haste", "slow", "poison",
+    "chill", "shock", "expose", "might", "iron_skin",
+    "mana_regen", "mana_burn", "power", "shield",
+  ];
+  for (const k of kinds) {
+    if (!REGISTRY[k]) throw new Error(`[effects] REGISTRY missing spec for EffectKind '${k}'`);
+  }
+})();
 
 // ──────────────────────────── apply ────────────────────────────
 
@@ -140,12 +284,20 @@ export function applyEffect(
   const effects = actor.effects ?? (actor.effects = []);
   const existing = effects.find(e => e.kind === kind);
   if (existing) {
-    // Stacking: refresh remaining to max(existing, incoming). Magnitude
-    // does not stack — existing magnitude wins (keeps identity stable).
+    // Standard stacking: refresh remaining to max(existing, incoming). Magnitude
+    // does not stack — existing magnitude wins (first-write-wins; keeps identity
+    // stable). Shield deviates: see onStack below.
     const newRemaining = Math.max(existing.remaining, duration);
     existing.remaining = newRemaining;
     existing.duration = Math.max(existing.duration, duration);
-    return [{ type: "EffectApplied", actor: actor.id, kind, ...(opts.source !== undefined ? { source: opts.source } : {}) }];
+    const evs: GameEvent[] = [
+      { type: "EffectApplied", actor: actor.id, kind, ...(opts.source !== undefined ? { source: opts.source } : {}) },
+    ];
+    if (spec.onStack) {
+      const incomingMag = opts.magnitude ?? spec.defaultMagnitude;
+      evs.push(...spec.onStack(world, existing, { magnitude: incomingMag, duration }, actor));
+    }
+    return evs;
   }
 
   const eff: Effect = {
@@ -243,15 +395,45 @@ export function effectiveStats(actor: Actor): EffectiveStats {
     if (bonuses.maxMp) base.maxMp += bonuses.maxMp;
     if (bonuses.speed) base.speed += bonuses.speed;
   }
+
   const effects = actor.effects ?? [];
+
+  // Collect multipliers and flat deltas in one pass, then apply.
+  // Order: flat deltas first (so chill's atk-mul applies to might-boosted atk).
   let speedMul = 1;
+  let atkMul = 1;
+  let atkDelta = 0;
+  let defDelta = 0;
+  let intDelta = 0;
+
   for (const e of effects) {
-    if (e.kind === "haste") speedMul *= 1.5;
-    else if (e.kind === "slow") speedMul *= 0.5;
+    const mag = e.magnitude ?? 0;
+    switch (e.kind) {
+      case "haste":     speedMul *= 1.5; break;
+      case "slow":      speedMul *= 0.5; break;
+      case "chill": {
+        // chill.magnitude = N → N% reduction to both speed and atk.
+        const pct = mag / 100;
+        speedMul *= (1 - pct);
+        atkMul   *= (1 - pct);
+        break;
+      }
+      case "shock":     defDelta -= mag; break;
+      case "might":     atkDelta += mag; break;
+      case "iron_skin": defDelta += mag; break;
+      case "power":     intDelta += mag; break;
+      // expose, mana_regen, mana_burn, shield, burning, regen, poison:
+      // no effectiveStats contribution.
+    }
   }
-  if (speedMul !== 1) {
-    base.speed = Math.max(1, Math.floor(base.speed * speedMul));
-  }
+
+  // Apply flat deltas, then multipliers.
+  if (atkDelta !== 0) base.atk = Math.max(0, base.atk + atkDelta);
+  if (defDelta !== 0) base.def = Math.max(0, base.def + defDelta);
+  if (intDelta !== 0) base.int += intDelta;
+  if (speedMul !== 1) base.speed = Math.max(1, Math.floor(base.speed * speedMul));
+  if (atkMul   !== 1) base.atk   = Math.max(0, Math.floor(base.atk * atkMul));
+
   return base;
 }
 
