@@ -448,17 +448,172 @@ body::before {
   overflow: auto;
   font-size: 13px;
   line-height: 1.5;
+  flex: 1;
+  min-height: 0;
 }
-#help h3 {
+.help-crumb {
+  margin-bottom: 8px;
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 4px;
+}
+.help-crumb-link {
+  color: var(--fg);
+  text-decoration: none;
+  text-shadow: var(--glow);
+  cursor: pointer;
+}
+.help-crumb-link:hover { color: var(--fg-hi); }
+.help-crumb-current { color: var(--accent); text-shadow: var(--glow); }
+.help-crumb-sep { color: var(--dim); }
+
+.help-search { margin-bottom: 8px; }
+.help-search-input {
+  width: 100%;
+  background: #050200;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  text-shadow: var(--glow);
+  outline: none;
+}
+.help-search-input:focus { border-color: var(--accent); }
+
+.help-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.help-row {
+  border-bottom: 1px solid #231500;
+}
+.help-row-link {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 4px;
+  text-decoration: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.help-row-link:hover { background: #150a02; }
+.help-row-name {
+  color: var(--fg-hi);
+  min-width: 110px;
+  font-weight: bold;
+  text-shadow: var(--glow);
+}
+.help-row-blurb {
+  color: var(--muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-group-title {
   margin: 10px 0 4px;
   font-family: "VT323", monospace;
-  font-size: 16px;
+  font-size: 15px;
   text-transform: uppercase;
   letter-spacing: 2px;
   color: var(--accent);
   text-shadow: var(--glow);
 }
-#help p { margin: 0; color: var(--muted); }
+.help-empty { color: var(--muted); font-style: italic; }
+
+.help-leaf-name {
+  margin: 0 0 2px;
+  font-family: "VT323", monospace;
+  font-size: 20px;
+  letter-spacing: 2px;
+  color: var(--fg-hi);
+  text-shadow: var(--glow-strong);
+}
+.help-leaf-sig {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  background: #0a0400;
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  margin-bottom: 6px;
+  display: inline-block;
+  text-shadow: var(--glow);
+}
+.help-leaf-blurb { margin: 0 0 8px; color: var(--fg); }
+
+.help-meta {
+  border-collapse: collapse;
+  margin: 4px 0 10px;
+  font-size: 12px;
+}
+.help-meta td { padding: 1px 8px 1px 0; vertical-align: top; }
+.help-meta td.k { color: var(--muted); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+.help-meta td.v { color: var(--fg-hi); text-shadow: var(--glow); }
+
+.help-section {
+  margin: 12px 0 4px;
+  font-family: "VT323", monospace;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: var(--glow);
+}
+.help-body p { margin: 4px 0; color: var(--fg); }
+.help-body .help-code, .help-example .help-code {
+  background: #050200;
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  margin: 4px 0;
+  font-family: inherit;
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--fg-hi);
+  text-shadow: var(--glow);
+}
+.help-bullets { margin: 4px 0 4px 18px; padding: 0; }
+.help-bullets li { color: var(--fg); }
+
+.help-example { margin: 6px 0 10px; position: relative; }
+.help-example-caption { color: var(--muted); font-style: italic; margin-bottom: 2px; }
+.help-copy {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #0d0700;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--glow);
+}
+.help-copy:hover {
+  background: var(--fg);
+  color: #0a0400;
+  text-shadow: none;
+}
+
+.help-related-list { margin: 4px 0 0; padding-left: 16px; font-size: 12px; }
+.help-related-link {
+  color: var(--fg);
+  text-decoration: none;
+  text-shadow: var(--glow);
+  cursor: pointer;
+}
+.help-related-link:hover { color: var(--fg-hi); text-decoration: underline; }
 
 /* ─────── Recap modal ─────── */
 .modal {

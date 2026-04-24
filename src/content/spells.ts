@@ -3,6 +3,7 @@
 // engine changes.
 
 import type { PrimitiveName } from "../spells/primitives.js";
+import type { HelpMeta } from "../ui/help/types.js";
 
 export type SpellTargetType = "self" | "ally" | "enemy" | "any" | "tile";
 
@@ -18,6 +19,8 @@ export interface Spell {
   range: number;      // Chebyshev distance
   mpCost: number;
   body: SpellOp[];
+  /** Phase 12: optional help override. If absent, help auto-generates from other fields. */
+  help?: HelpMeta;
 }
 
 export const SPELLS: Record<string, Spell> = {
