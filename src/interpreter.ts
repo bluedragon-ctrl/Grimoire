@@ -9,6 +9,7 @@ import type {
   Script, Stmt, Expr, PendingAction, Actor, World, EventHandler, FuncDef, Direction,
 } from "./types.js";
 import { COST, queries } from "./commands.js";
+import { DSLRuntimeError } from "./lang/errors.js";
 
 // Command names that, when used at statement level, yield a PendingAction.
 const COMMAND_NAMES = new Set([
@@ -253,8 +254,7 @@ function callUserFunc(fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx): u
     // Exhaust: if it ever yields a command, that's a runtime error in MVP.
     let r = gen.next();
     while (!r.done) {
-      // Silently drop — alternative: throw. Kept soft for MVP.
-      r = gen.next();
+      throw new DSLRuntimeError("function with action cannot be called in expression position");
     }
     return undefined;
   } catch (e) {

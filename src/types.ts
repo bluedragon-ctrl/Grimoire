@@ -201,6 +201,12 @@ export interface World {
   rngSeed?: number;
   // Monotonic counter for minting unique FloorItem ids within a run.
   floorSeq?: number;
+  // Monotonic counters for minting unique Effect, cloud, and item-instance ids.
+  // Stored on World so two runRoom calls with the same seed produce identical
+  // sequences regardless of how many prior runs happened in the same process.
+  effectSeq?: number;
+  primitiveSeq?: number;
+  itemSeq?: number;
 }
 
 // ──────────────────────────── Events / log ────────────────────────────
@@ -232,7 +238,8 @@ export type GameEvent =
   | { type: "ItemUnequipped"; actor: string; item: string; defId: string; slot: Slot }
   | { type: "OnHitTriggered"; attacker: string; defender: string; item: string; defId: string }
   | { type: "ItemDropped"; actor: string | null; item: string; defId: string; pos: Pos; source: "death" | "drop" | "overflow" }
-  | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos };
+  | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos }
+  | { type: "ScriptError"; actor: string; message: string };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];

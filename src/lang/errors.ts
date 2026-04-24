@@ -1,5 +1,17 @@
 // Parse-time errors with position + optional hint + "did you mean?".
 
+// Thrown by the interpreter when a DSL script violates a runtime constraint
+// (e.g. calling an action-bearing function in expression position). The
+// scheduler catches only this class and converts it to a ScriptError event;
+// all other throws propagate out of runRoom so bugs in command impls are
+// visible.
+export class DSLRuntimeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DSLRuntimeError";
+  }
+}
+
 export class ParseError extends Error {
   line: number;
   col: number;
