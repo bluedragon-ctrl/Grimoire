@@ -129,11 +129,12 @@ export class RunController {
     this.emit();
   }
 
-  /** prep → prep. Same level, attempts reset, fresh room. */
+  /** prep → prep at level+1. Advances past the current room without running it. */
   // TODO: cost — skipping should cost something (gold? attempts budget?) once
   // those systems exist.
   skipRoom(): void {
     if (this.state.phase !== "prep") return;
+    this.state.level += 1;
     this.state.attempts = 1;
     this.state.current = this.opts.generate(this.state.level);
     this.emit();

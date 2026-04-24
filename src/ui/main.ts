@@ -43,6 +43,8 @@ const recapModal   = document.getElementById("recap-modal")   as HTMLDivElement;
 const recapTitle   = document.getElementById("recap-title")   as HTMLHeadingElement;
 const recapAttempts = document.getElementById("recap-attempts") as HTMLElement;
 const recapTurns    = document.getElementById("recap-turns")    as HTMLElement;
+const gridEl       = document.querySelector("main.grid") as HTMLElement;
+const auxTitleEl   = document.getElementById("aux-title") as HTMLHeadingElement;
 
 const DEFAULT_SCRIPT = [
   "# Hero script — edit and click Run.",
@@ -71,9 +73,10 @@ let currentAdapter: WireRendererAdapter | null = null;
 let inventoryCtl: InventoryController | null = null;
 let applyCursor = 0;
 let playTimer: ReturnType<typeof setTimeout> | null = null;
-// Which UI tab the user last selected. Render logic still obeys phase-based
-// enablement — this is the preference used when multiple tabs are enabled.
-let activeTab: "inspector" | "help" = "help";
+// Which aux tab (if any) the user has opened. Closed by default — the pane
+// only exists in the grid when this is non-null.
+type AuxTab = "inspector" | "help";
+let auxOpen: AuxTab | null = null;
 
 function appendLine(text: string, cls?: string): void {
   const li = document.createElement("li");
@@ -249,15 +252,16 @@ btnContinue.addEventListener("click", () => {
   clearLog();
 });
 
-// Tab strip: manual selection allowed only when the tab is enabled.
+// Topbar tabs: click toggles the aux side pane. A second click on the same
+// tab (or clicking the active tab) closes it.
 tabInspector.addEventListener("click", () => {
   if (tabInspector.disabled) return;
-  activeTab = "inspector";
+  auxOpen = auxOpen === "inspector" ? null : "inspector";
   renderPhase();
 });
 tabHelp.addEventListener("click", () => {
   if (tabHelp.disabled) return;
-  activeTab = "help";
+  auxOpen = auxOpen === "help" ? null : "help";
   renderPhase();
 });
 
@@ -308,19 +312,24 @@ function renderPhase(): void {
     inventoryCtl.refresh();
   }
 
-  // Tabs.
+  // Topbar tabs + aux side pane. Pane is closed-by-default; a click on an
+  // enabled tab opens it showing that content. If the active tab's enablement
+  // rule flips off mid-run (e.g., user was on Inspector while paused, then
+  // clicked Resume), auto-close the pane.
   const helpOn = helpTabEnabled(phase);
   const inspOn = inspectorTabEnabled(phase);
   tabHelp.disabled = !helpOn;
   tabInspector.disabled = !inspOn;
-  // Auto-switch to whichever tab is currently enabled.
-  let shown: "inspector" | "help" = activeTab;
-  if (shown === "inspector" && !inspOn && helpOn) shown = "help";
-  if (shown === "help" && !helpOn && inspOn) shown = "inspector";
-  tabInspector.classList.toggle("active", shown === "inspector");
-  tabHelp.classList.toggle("active", shown === "help");
-  panelInspector.hidden = shown !== "inspector";
-  panelHelp.hidden = shown !== "help";
+  if (auxOpen === "inspector" && !inspOn) auxOpen = null;
+  if (auxOpen === "help" && !helpOn) auxOpen = null;
+  tabInspector.classList.toggle("active", auxOpen === "inspector");
+  tabHelp.classList.toggle("active", auxOpen === "help");
+  tabInspector.setAttribute("aria-pressed", auxOpen === "inspector" ? "true" : "false");
+  tabHelp.setAttribute("aria-pressed", auxOpen === "help" ? "true" : "false");
+  gridEl.setAttribute("data-aux", auxOpen ?? "none");
+  panelInspector.hidden = auxOpen !== "inspector";
+  panelHelp.hidden = auxOpen !== "help";
+  auxTitleEl.textContent = auxOpen === "help" ? "Help" : "Inspector";
 
   // Recap modal.
   if (phase === "recap" && s.recap) {
