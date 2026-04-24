@@ -206,7 +206,8 @@ failed casts don't consume the actor's action slot.
 Spell bodies are declarative `SpellOp[]`. Each op names a primitive and a
 plain args bag. Phase 13.1 ships five implemented primitives (`project`,
 `inflict`, `heal`, `spawn_cloud`, `explode`) and three stubs (`summon`,
-`teleport`, `push`). Stubs are callable — they emit
+`teleport`, `push`). Phase 13.2 fully implements `summon` (see §Phase 13.2
+Summoning). Remaining stubs (`teleport`, `push`) are callable — they emit
 `ActionFailed { reason: "Primitive 'X' is not implemented yet" }`. Nothing
 throws.
 
@@ -341,6 +342,100 @@ default 1) drives every random decision — currently just loot rolls, but
 Phase 10's AI and any future crit/miss rolls must draw from the same
 generator so replaying `(setup, seed)` is byte-identical. `Math.random` is
 never called inside `src/`.
+
+## Phase 13.2: Factions
+
+### Faction field
+
+Every actor carries an optional `faction?: "player" | "enemy" | "neutral"`. All engine code that reads faction falls back to `actor.isHero ? "player" : "enemy"` when the field is absent, preserving backward compat with hand-rolled test actors.
+
+- **Hero** — always `faction: "player"` (set by `cloneActor`).
+- **Wild monsters** — always `faction: "enemy"` (set by `createActor`).
+- **Summoned actors** — inherit the summoner's faction (set at spawn).
+- **Neutral** — infrastructure only this phase; no neutral content ships.
+
+### `isHero` vs `faction` distinction
+
+`isHero: true` marks the single protagonist whose death ends the run. `faction: "player"` marks the player side. A summoned goblin has `faction: "player"` but `isHero: false`. Death-ends-run logic keys off `isHero`; spell targeting, enemy/ally selectors, and faction checks key off `faction`.
+
+### Selector contract
+
+| selector | returns |
+|---|---|
+| `enemies(self)` | actors where `faction !== self.faction` AND NOT both neutral |
+| `allies(self)` | actors where `faction === self.faction` AND NOT both neutral, excluding self |
+
+Two neutrals are neither allies nor enemies — they ignore each other. All actor selectors use these helpers; no `isHero` comparisons in selector code paths.
+
+## Phase 13.2: Summoning
+
+### `summon` primitive
+
+`summon` is a full spell primitive (and also a DSL command). Contract:
+
+1. Resolve target tile; reject if out-of-bounds or occupied → `ActionFailed`.
+2. Look up `MONSTERS[template]`; throw `DSLRuntimeError` if missing (caught by the scheduler and logged as `ScriptError`).
+3. Cap check: `max(1, floor(caster.int / 4))` live summons per caster. Overflow → `ActionFailed` (pre-spend, MP already gated by cast path).
+4. Clone template → new Actor: fresh id (`world.actorSeq++`), `pos = target tile`, `faction = caster.faction`, `owner = caster.id`, `summoned = true`, full hp/mp from template, `alive = true`.
+5. Push into `world.actors`; scheduler's `syncNewActors` picks it up after the current step and creates a runtime.
+6. Emit `Summoned` + `VisualBurst(summon_portal)`.
+
+### DSL `summon()` command
+
+Scripts may call `summon(template, tile)` directly (not via a spell). The energy cost is `COST.summon = 15`. The MP gate uses `template.summonMpCost` (deducted before spawn). Failed direct summons refund energy (same policy as failed casts).
+
+### Cap formula
+
+`max(1, floor(int / 4))`:
+
+| int | cap |
+|---|---|
+| 0–7 | 1 |
+| 8–11 | 2 |
+| 12–15 | 3 |
+| 16–19 | 4 |
+
+Measured against live `world.actors` with `owner === caster.id`.
+
+### Room-exit sweep
+
+On `HeroExited`: every actor with `owner` set is immediately marked dead and a `Despawned { reason: "room_exit" }` event is emitted per actor. Despawned actors drop no loot (`summoned === true` skips `rollDeathDrops`).
+
+### Summoner-death cascade
+
+On any `Died` event: all live actors with `owner === deceased.id` are swept, marked dead, and each emits `Despawned { reason: "summoner_died" }`. Cascade repeats recursively so a summon that itself owns summons is fully unwound. The cascade is safe against cycles because each actor is marked dead before recursing.
+
+### Summoned-no-loot rule
+
+`appendDeathDrops` in the scheduler skips `rollDeathDrops` when `actor.summoned === true`. This applies to both sweep paths (room exit and summoner death).
+
+### MONSTERS registry additions
+
+| field | type | meaning |
+|---|---|---|
+| `summonable?` | `boolean` | Eligible for player-side summon spells |
+| `summonMpCost?` | `number` | MP price when summoned via DSL or spell |
+
+Load-time validation: every `summon_X` entry in SPELLS must reference a template with `summonable === true` and a defined `summonMpCost`. Fails loud at import.
+
+## Phase 13.2: Seedable RNG and DSL builtins
+
+`World.rngSeed` (already present from Phase 9) seeds a mulberry32 generator. Two new DSL builtins are exposed via the `queries` object:
+
+| builtin | signature | semantics |
+|---|---|---|
+| `chance(p)` | `p: 0–100` | Returns `worldRandom(world) * 100 < p` |
+| `random(n)` | `n: integer ≥ 0` | Returns `floor(worldRandom(world) * n)` |
+
+Both advance `world.rngSeed`. Because the world seed is deterministic from `RunOptions.seed`, replaying `(setup, seed)` produces identical RNG sequences. `chance(0)` is always false; `chance(100)` is always true; `random(1)` always returns 0.
+
+## Phase 13.2: Non-goals
+
+- Monster script universalization (full rewrite for faction-aware selectors) — deferred to the monster-content phase.
+- Neutral actors as content — infrastructure only.
+- `teleport`, `push` primitives — still stubs.
+- Consumables / scrolls — Phase 13.3.
+- Summon visuals beyond portal / despawn puff — summons use their template's `MONSTER_VISUALS` entry unchanged.
 
 ## Open questions (flagging, not blocking)
 
