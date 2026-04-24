@@ -320,12 +320,14 @@ export function doWait(world: World, self: Actor): GameEvent[] {
   return [{ type: "Waited", actor: self.id }];
 }
 
-export function doExit(world: World, self: Actor, doorRef: unknown): GameEvent[] {
-  const door = resolveDoor(world, doorRef);
-  if (!door) return [fail(self, "exit", "no such door")];
-  if (self.pos.x !== door.pos.x || self.pos.y !== door.pos.y) {
-    return [fail(self, "exit", "not on door tile")];
-  }
+// `exit` is position-driven: any door tile works. The arg is accepted for
+// backward compat with `exit("N")` / `exit(doors()[0])` but ignored —
+// whichever door the hero is standing on exits.
+export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent[] {
+  const door = world.room.doors.find(
+    d => d.pos.x === self.pos.x && d.pos.y === self.pos.y,
+  );
+  if (!door) return [fail(self, "exit", "not on a door tile")];
   return [{ type: "HeroExited", actor: self.id, door: door.dir }];
 }
 
