@@ -1,19 +1,19 @@
-// Phase 10: thin dungeon generator. Produces a RoomSetup per level.
+// Phase 11: room generation spawns 2 monsters per room, picked uniformly
+// from MONSTER_TEMPLATES using a seeded RNG (no Math.random). Layout is
+// still a single 10x10 box with N/S doors — Phase 12 will branch on layout.
 //
-// Generation is deliberately minimal for this phase — same layout as the
-// demo, scaled goblin HP by level so later levels actually push back.
-// Later phases will branch on monster templates, room shape, loot tables.
-//
-// `rng` is a seedable `() => number` (Math.random-compatible). Not used yet
-// but threaded so a future generator can vary layout without API churn.
+// `rng` is a seedable `() => number` (Math.random-compatible). Callers from
+// the gameplay loop pass a mulberry32 stream seeded per level; tests pass a
+// deterministic stub.
 
 import type { RoomSetup } from "../engine.js";
-import type { Actor, Room, Script } from "../types.js";
+import type { Actor, Pos, Room, Script } from "../types.js";
 import {
   script, ident, call, lit, while_, if_, bin, member, index, exprStmt,
   cApproach, cAttack, cExit, cHalt,
 } from "../ast-helpers.js";
 import { emptyEquipped } from "./items.js";
+import { MONSTER_TEMPLATES, createActor } from "./monsters.js";
 
 export type Rng = () => number;
 
@@ -54,15 +54,65 @@ function buildHeroScript(): Script {
   );
 }
 
-function buildGoblinHp(level: number): number {
-  // +2 HP per level, capped loosely. Keep scaling mild — this is a stub.
-  return 5 + Math.max(0, level - 1) * 2;
+const ROOM_W = 10;
+const ROOM_H = 10;
+const HERO_SPAWN: Pos = { x: 1, y: 5 };
+const MIN_DIST_FROM_HERO = 3;   // Manhattan — monsters can't crowd the hero.
+const MONSTER_COUNT = 2;
+
+function chebyshev(a: Pos, b: Pos): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
-export function generateRoom(level: number, _rng: Rng = Math.random): RoomSetup {
+// Uniform integer in [lo, hi] via the injected rng stream.
+function randInt(rng: Rng, lo: number, hi: number): number {
+  if (hi <= lo) return lo;
+  return lo + Math.floor(rng() * (hi - lo + 1));
+}
+
+function pickFloorTile(rng: Rng, taken: Pos[]): Pos | null {
+  // Interior tiles only (exclude the wall border). Retry until we find one
+  // that's at least MIN_DIST_FROM_HERO from the hero and doesn't overlap any
+  // previously picked monster tile. Bounded to 50 tries so a pathological
+  // seed can't hang the room gen.
+  for (let i = 0; i < 50; i++) {
+    const x = randInt(rng, 1, ROOM_W - 2);
+    const y = randInt(rng, 1, ROOM_H - 2);
+    const p = { x, y };
+    if (chebyshev(p, HERO_SPAWN) < MIN_DIST_FROM_HERO) continue;
+    if (taken.some(q => q.x === x && q.y === y)) continue;
+    return p;
+  }
+  return null;
+}
+
+function pickTemplateId(rng: Rng): string {
+  const ids = Object.keys(MONSTER_TEMPLATES);
+  const idx = randInt(rng, 0, ids.length - 1);
+  return ids[idx]!;
+}
+
+// mulberry32 — same algorithm as src/rng.ts but a local closure so room gen
+// can run before a World (with rngSeed) exists. Kept in-file so we don't
+// leak a new public RNG primitive.
+function seededRng(seed: number): Rng {
+  let s = seed >>> 0;
+  return () => {
+    let t = (s += 0x6D2B79F5) | 0;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 0x100000000;
+  };
+}
+
+export function generateRoom(level: number, rng?: Rng): RoomSetup {
+  // Default stream is seeded from the level number so each level is
+  // reproducible even when no seed is threaded from the UI. No Math.random.
+  const stream: Rng = rng ?? seededRng(level * 0x9E3779B1);
+  void level;  // Phase 11 keeps uniform picks — level-based weighting is Phase 12.
   const room: Room = {
-    w: 10,
-    h: 10,
+    w: ROOM_W,
+    h: ROOM_H,
     doors: [
       { dir: "N", pos: { x: 5, y: 0 } },
       { dir: "S", pos: { x: 5, y: 9 } },
@@ -72,8 +122,8 @@ export function generateRoom(level: number, _rng: Rng = Math.random): RoomSetup 
   };
 
   const hero: Actor = {
-    id: "hero", kind: "hero", hp: 20, maxHp: 20,
-    speed: 12, energy: 0, pos: { x: 1, y: 5 },
+    id: "hero", kind: "hero", isHero: true, hp: 20, maxHp: 20,
+    speed: 12, energy: 0, pos: { ...HERO_SPAWN },
     script: buildHeroScript(), alive: true,
     inventory: {
       consumables: [
@@ -88,12 +138,15 @@ export function generateRoom(level: number, _rng: Rng = Math.random): RoomSetup 
     },
   };
 
-  const gobHp = buildGoblinHp(level);
-  const goblin: Actor = {
-    id: "gob1", kind: "goblin", hp: gobHp, maxHp: gobHp,
-    speed: 10, energy: 0, pos: { x: 5, y: 5 },
-    script: script(cHalt()), alive: true,
-  };
+  const actors: Actor[] = [hero];
+  const taken: Pos[] = [HERO_SPAWN];
+  for (let i = 0; i < MONSTER_COUNT; i++) {
+    const tpl = pickTemplateId(stream);
+    const pos = pickFloorTile(stream, taken);
+    if (!pos) break;
+    taken.push(pos);
+    actors.push(createActor(tpl, pos, `m${i + 1}`));
+  }
 
-  return { room, actors: [hero, goblin] };
+  return { room, actors };
 }
