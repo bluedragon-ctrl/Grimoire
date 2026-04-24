@@ -44,10 +44,17 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   },
   enemies: {
     id: "enemies", name: "enemies", signature: "enemies()",
-    blurb: "Living non-hero actors, sorted nearest-first.",
-    body: "Dead actors are excluded. Ties break by id (lexicographic).",
+    blurb: "Living actors of an opposing faction, sorted nearest-first.",
+    body: "Returns actors whose faction differs from the caller's (player vs enemy). Dead actors and actors of the same faction are excluded. Two neutrals ignore each other. Ties break by id (lexicographic).",
     examples: [{ caption: "Nearest enemy first.", code: "while enemies().length > 0:\n  approach(enemies()[0])" }],
-    related: ["data/actor", "queries/distance", "queries/adjacent"],
+    related: ["queries/allies", "data/actor", "queries/distance", "queries/adjacent"],
+  },
+  allies: {
+    id: "allies", name: "allies", signature: "allies()",
+    blurb: "Living actors of the same faction (excluding self), sorted nearest-first.",
+    body: "Returns actors that share the caller's faction. Dead actors and the caller itself are excluded. Two neutrals are not considered allies. Ties break by id (lexicographic).",
+    examples: [{ caption: "Heal the nearest ally if one is hurt.", code: "if allies().length > 0 and can_cast(\"heal\", allies()[0]):\n  cast(\"heal\", allies()[0])" }],
+    related: ["queries/enemies", "data/actor"],
   },
   items: {
     id: "items", name: "items", signature: "items()",
@@ -128,5 +135,20 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     blurb: "Array of active effect-kind strings on target.",
     examples: [{ caption: "Skip targets already chilled.", code: "if effects(enemies()[0]).length == 0:\n  cast(\"frost_lance\", enemies()[0])" }],
     related: ["queries/has_effect", "spells/frost_lance"],
+  },
+  // Phase 13.2: RNG builtins.
+  chance: {
+    id: "chance", name: "chance", signature: "chance(p)",
+    blurb: "Returns true with probability p% using the world's seedable RNG.",
+    body: "`p` is a percentage (0–100). `chance(0)` is always false; `chance(100)` is always true. Uses the engine's deterministic mulberry32 RNG — the same seed always produces the same sequence.",
+    examples: [{ caption: "Summon reinforcements 20% of the time.", code: "if chance(20):\n  summon(\"goblin\", enemies()[0])" }],
+    related: ["queries/random"],
+  },
+  random: {
+    id: "random", name: "random", signature: "random(n)",
+    blurb: "Returns a random integer in [0, n) using the world's seedable RNG.",
+    body: "`random(1)` always returns 0. `random(0)` returns 0. Uses the engine's deterministic mulberry32 RNG.",
+    examples: [{ caption: "Vary wait duration.", code: "r = random(5)\nif r == 0:\n  wait()" }],
+    related: ["queries/chance"],
   },
 };

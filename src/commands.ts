@@ -8,6 +8,8 @@ import { hasEffect, listEffects } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
 import { useItem, onHitHook } from "./items/execute.js";
 import { doPickup, doDrop } from "./items/loot.js";
+import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
+import { worldRandom } from "./rng.js";
 
 export { doPickup, doDrop };
 
@@ -24,6 +26,7 @@ export const COST = {
   use: 15,
   pickup: 10,
   drop: 5,
+  summon: 15,
 } as const;
 
 // ──────────────────────────── small helpers ────────────────────────────
@@ -125,7 +128,25 @@ export const queries = {
   me: (world: World, self: Actor): Actor => self,
   hp: (world: World, self: Actor): number => self.hp,
   enemies: (world: World, self: Actor): Actor[] => {
-    const others = world.actors.filter(a => a.alive && a.id !== self.id);
+    const sf = self.faction ?? (self.isHero ? "player" : "enemy");
+    const others = world.actors.filter(a => {
+      if (!a.alive || a.id === self.id) return false;
+      const af = a.faction ?? (a.isHero ? "player" : "enemy");
+      // Two neutrals ignore each other.
+      if (sf === "neutral" && af === "neutral") return false;
+      return af !== sf;
+    });
+    return sortByDistance(self, others);
+  },
+  allies: (world: World, self: Actor): Actor[] => {
+    const sf = self.faction ?? (self.isHero ? "player" : "enemy");
+    const others = world.actors.filter(a => {
+      if (!a.alive || a.id === self.id) return false;
+      const af = a.faction ?? (a.isHero ? "player" : "enemy");
+      // Two neutrals are not allies.
+      if (sf === "neutral" && af === "neutral") return false;
+      return af === sf;
+    });
     return sortByDistance(self, others);
   },
   items: (world: World, self: Actor): Item[] => sortByDistance(self, world.room.items),
@@ -200,6 +221,16 @@ export const queries = {
     const floor = world.room.floorItems ?? [];
     const within = floor.filter(f => manhattan(f.pos, self.pos) <= radius);
     return sortByDistance(self, within).map(f => ({ ...f, pos: { ...f.pos } }));
+  },
+  // Phase 13.2: RNG builtins — backed by the world's seedable mulberry32 RNG.
+  chance: (world: World, _self: Actor, p: unknown): boolean => {
+    const pct = typeof p === "number" ? p : 0;
+    return worldRandom(world) * 100 < pct;
+  },
+  random: (world: World, _self: Actor, n: unknown): number => {
+    const max = typeof n === "number" ? Math.floor(n) : 0;
+    if (max <= 0) return 0;
+    return Math.floor(worldRandom(world) * max);
   },
 };
 
@@ -359,6 +390,64 @@ export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent
 
 export function doHalt(world: World, self: Actor): GameEvent[] {
   return [{ type: "Halted", actor: self.id }];
+}
+
+// Phase 13.2: direct-script summon(templateId, targetPos).
+// Unlike the spell primitive version, this checks template.summonMpCost for the
+// MP gate (the spell wrapper has already gated MP when called via cast()).
+export function doSummon(
+  world: World,
+  self: Actor,
+  templateRef: unknown,
+  targetRef: unknown,
+): GameEvent[] {
+  const tid = String(templateRef ?? "");
+  const tpl = MONSTER_TEMPLATES[tid];
+  if (!tpl) {
+    return [fail(self, "summon", `Unknown monster template '${tid}'.`)];
+  }
+
+  // MP gate — direct script calls pay template.summonMpCost.
+  const mpCost = tpl.summonMpCost ?? 0;
+  if ((self.mp ?? 0) < mpCost) {
+    return [fail(self, "summon", `Not enough mana (needs ${mpCost}, you have ${self.mp ?? 0}).`)];
+  }
+
+  // Summon-cap check.
+  const cap = Math.max(1, Math.floor((self.int ?? 0) / 4));
+  const owned = world.actors.filter(a => a.alive && a.owner === self.id).length;
+  if (owned >= cap) {
+    return [fail(self, "summon", "summon cap reached")];
+  }
+
+  // Tile validation.
+  const pos = resolvePos(world, targetRef);
+  if (!pos) return [fail(self, "summon", "summon needs a tile target")];
+  if (!inBounds(world, pos)) return [fail(self, "summon", "target tile is out of bounds")];
+  if (actorAt(world, pos)) return [fail(self, "summon", "target tile is occupied")];
+
+  // Deduct MP, spawn actor.
+  if (mpCost > 0) {
+    self.mp = (self.mp ?? 0) - mpCost;
+    world.log.push({ t: world.tick, event: { type: "ManaChanged", actor: self.id, amount: -mpCost } });
+  }
+
+  const n = (world.actorSeq ?? 0) + 1;
+  world.actorSeq = n;
+  const newActor = createActor(tid, pos, `s${n}`);
+  newActor.faction = self.faction ?? (self.isHero ? "player" : "enemy");
+  newActor.owner = self.id;
+  newActor.summoned = true;
+  world.actors.push(newActor);
+
+  return [
+    { type: "Summoned", actor: newActor.id, summoner: self.id, template: tid, pos: { ...pos } },
+    { type: "VisualBurst", pos: { ...pos }, visual: "summon_portal", element: "arcane" },
+  ];
+}
+
+export function summonFailedCleanly(events: GameEvent[]): boolean {
+  return events.length === 1 && events[0]!.type === "ActionFailed";
 }
 
 function fail(self: Actor, action: string, reason: string): GameEvent {
