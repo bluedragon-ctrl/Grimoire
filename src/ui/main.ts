@@ -1,31 +1,48 @@
-// UI wiring. Run parses the textarea, starts a DebugHandle on the demo setup,
-// then drives handle.step() through a setTimeout loop to pace events through
-// the WireRendererAdapter. Pause freezes the loop; Step fires one action;
-// Reset rebuilds from the initial snapshot.
+// UI wiring. Drives the Phase 10 gameplay loop: prep → running → (recap | prep).
+// Owns a RunController (src/ui/run-state.ts) that tracks level/attempts/snapshot;
+// translates button clicks into phase transitions and, separately, into engine
+// pause/step/abort calls. The engine itself stays pure — the state machine is
+// purely a UI concept.
 
 import { startRoom, type DebugHandle } from "../engine.js";
 import { formatLogEntry } from "../scheduler.js";
-import { demoSetup } from "../demo.js";
 import type { RoomSetup } from "../engine.js";
 import { parse, ParseError, formatError } from "../lang/index.js";
 import { WireRendererAdapter } from "../render/wire-adapter.js";
 import { mountInventoryPanel, type InventoryController } from "./inventory.js";
+import {
+  RunController,
+  inspectorTabEnabled, helpTabEnabled,
+  type Phase,
+} from "./run-state.js";
+import { generateRoom } from "../content/rooms.js";
 
-const btnRun    = document.getElementById("btn-run")    as HTMLButtonElement;
-const btnPause  = document.getElementById("btn-pause")  as HTMLButtonElement;
-const btnStep   = document.getElementById("btn-step")   as HTMLButtonElement;
-const btnResume = document.getElementById("btn-resume") as HTMLButtonElement;
-const btnStop   = document.getElementById("btn-stop")   as HTMLButtonElement;
-const btnReset  = document.getElementById("btn-reset")  as HTMLButtonElement;
+const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
+const btnPause    = document.getElementById("btn-pause")    as HTMLButtonElement;
+const btnStep     = document.getElementById("btn-step")     as HTMLButtonElement;
+const btnResume   = document.getElementById("btn-resume")   as HTMLButtonElement;
+const btnStop     = document.getElementById("btn-stop")     as HTMLButtonElement;
+const btnSkip     = document.getElementById("btn-skip")     as HTMLButtonElement;
+const btnReset    = document.getElementById("btn-reset")    as HTMLButtonElement;
+const btnContinue = document.getElementById("btn-continue") as HTMLButtonElement;
 const speedEl   = document.getElementById("speed-slider")  as HTMLInputElement;
 const speedOut  = document.getElementById("speed-readout") as HTMLSpanElement;
 const logEl     = document.getElementById("event-log") as HTMLUListElement;
 const editorEl  = document.getElementById("editor")    as HTMLTextAreaElement;
 const gutterEl  = document.getElementById("gutter")    as HTMLPreElement;
 const gameEl    = document.getElementById("game-view") as HTMLDivElement;
+const gamePane  = document.getElementById("pane-game") as HTMLElement;
 const inspectorEl = document.getElementById("inspector") as HTMLDivElement;
 const inventoryEl = document.getElementById("inventory") as HTMLDivElement;
-const gridEl = document.querySelector("main.grid") as HTMLElement;
+const runMetaEl   = document.getElementById("run-meta") as HTMLSpanElement;
+const tabInspector = document.getElementById("tab-inspector") as HTMLButtonElement;
+const tabHelp      = document.getElementById("tab-help")      as HTMLButtonElement;
+const panelInspector = document.getElementById("panel-inspector") as HTMLDivElement;
+const panelHelp      = document.getElementById("panel-help")      as HTMLDivElement;
+const recapModal   = document.getElementById("recap-modal")   as HTMLDivElement;
+const recapTitle   = document.getElementById("recap-title")   as HTMLHeadingElement;
+const recapAttempts = document.getElementById("recap-attempts") as HTMLElement;
+const recapTurns    = document.getElementById("recap-turns")    as HTMLElement;
 
 const DEFAULT_SCRIPT = [
   "# Hero script — edit and click Run.",
@@ -45,18 +62,18 @@ editorEl.readOnly = false;
 editorEl.placeholder = "# Your script here";
 if (editorEl.value.trim() === "") editorEl.value = DEFAULT_SCRIPT;
 
-type Mode = "idle" | "playing" | "paused" | "done";
+// ── Run state + engine handle ───────────────────────────────────────────────
+
+const runCtl = new RunController({ generate: (lvl) => generateRoom(lvl) });
 
 let currentHandle: DebugHandle | null = null;
 let currentAdapter: WireRendererAdapter | null = null;
-let currentSetup: RoomSetup | null = null;
 let inventoryCtl: InventoryController | null = null;
-// The hero actor the inventory panel edits. Prep-phase edits mutate this
-// ref; the real `startRoom` clones it when Run fires.
-let prepSetup: RoomSetup = demoSetup();
-let applyCursor = 0;           // next log index yet to apply to the adapter
+let applyCursor = 0;
 let playTimer: ReturnType<typeof setTimeout> | null = null;
-let mode: Mode = "idle";
+// Which UI tab the user last selected. Render logic still obeys phase-based
+// enablement — this is the preference used when multiple tabs are enabled.
+let activeTab: "inspector" | "help" = "help";
 
 function appendLine(text: string, cls?: string): void {
   const li = document.createElement("li");
@@ -67,23 +84,6 @@ function appendLine(text: string, cls?: string): void {
 }
 function clearLog(): void { logEl.innerHTML = ""; }
 
-function setControls(m: Mode) {
-  mode = m;
-  btnRun.disabled    = m === "playing" || m === "paused";
-  btnPause.disabled  = m !== "playing";
-  btnStep.disabled   = m !== "paused";
-  btnResume.disabled = m !== "paused";
-  btnStop.disabled   = m === "idle" || m === "done";
-  // Inspector is only useful while paused/stepping — hide otherwise so the
-  // idle/playing layout gets the full width.
-  gridEl.classList.toggle("no-inspector", m !== "paused");
-  // Inventory panel is a prep-phase tool: visible only before the first Run
-  // or after a Reset lands back in idle. Editable in idle, read-only in
-  // done (so the player can see what they had after the run).
-  gridEl.classList.toggle("no-inventory", !(m === "idle" || m === "done"));
-  if (inventoryCtl) inventoryCtl.setEditable(m === "idle");
-}
-
 function clearPlayTimer() {
   if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
 }
@@ -93,7 +93,6 @@ function teardownCurrent() {
   if (currentAdapter) currentAdapter.teardown();
   currentAdapter = null;
   currentHandle = null;
-  currentSetup = null;
   applyCursor = 0;
   setActiveGutterLine(null);
   renderInspectorEmpty();
@@ -110,6 +109,18 @@ function drainLogToAdapter(): void {
   }
 }
 
+// Scan the event log for terminal events so we can distinguish success
+// (HeroExited) from failure (HeroDied, aborted, or mere exhaustion).
+function terminalOutcome(): "success" | "failure" {
+  if (!currentHandle) return "failure";
+  for (let i = currentHandle.log.length - 1; i >= 0; i--) {
+    const t = currentHandle.log[i]!.event.type;
+    if (t === "HeroExited") return "success";
+    if (t === "HeroDied")   return "failure";
+  }
+  return "failure";
+}
+
 function refreshDebugView(): void {
   if (!currentHandle) return;
   const loc = currentHandle.currentLoc;
@@ -120,17 +131,29 @@ function refreshDebugView(): void {
 
 function playTick(): void {
   playTimer = null;
-  if (mode !== "playing" || !currentHandle) return;
+  const phase = runCtl.getState().phase;
+  if (phase !== "running" || !currentHandle) return;
   const r = currentHandle.step();
   drainLogToAdapter();
   if (r.done || currentHandle.done) {
-    appendLine(`— done (tick=${currentHandle.world.tick}) —`);
-    setActiveGutterLine(null);
-    renderInspectorEmpty("Done.");
-    setControls("done");
+    onRunEnded();
     return;
   }
   playTimer = setTimeout(playTick, Number(speedEl.value));
+}
+
+function onRunEnded(): void {
+  if (!currentHandle) return;
+  const outcome = terminalOutcome();
+  const turns = currentHandle.world.tick;
+  setActiveGutterLine(null);
+  if (outcome === "success") {
+    appendLine(`— cleared (tick=${turns}) —`);
+    runCtl.succeed(turns);
+  } else {
+    appendLine(`— failed (tick=${turns}) —`, "fail");
+    runCtl.fail();
+  }
 }
 
 function startFromSource(): boolean {
@@ -150,15 +173,15 @@ function startFromSource(): boolean {
   }
 
   appendLine("— run —");
-  // Use the prep-phase setup (edited via the inventory panel) and stamp
-  // the current hero script onto it. startRoom clones before mutating.
-  const setup = prepSetup;
+  // Stamp the current editor script onto the prep-phase hero.
+  const setup: RoomSetup = runCtl.getState().current;
   setup.actors[0]!.script = heroScript;
-  currentSetup = setup;
+
+  // Transition prep → running. This snapshots the setup for fail-restore.
+  runCtl.startRun();
 
   const handle = startRoom(setup, { maxTicks: 2000 });
   currentHandle = handle;
-
   const adapter = new WireRendererAdapter();
   adapter.mount(gameEl, handle.world.room, handle.world.actors);
   currentAdapter = adapter;
@@ -166,67 +189,158 @@ function startFromSource(): boolean {
   return true;
 }
 
+// ── Button wiring ───────────────────────────────────────────────────────────
+
 btnRun.addEventListener("click", () => {
+  if (runCtl.getState().phase !== "prep") return;
   if (!startFromSource()) return;
-  setControls("playing");
   playTimer = setTimeout(playTick, Number(speedEl.value));
 });
 
 btnPause.addEventListener("click", () => {
-  if (mode !== "playing" || !currentHandle) return;
+  if (runCtl.getState().phase !== "running" || !currentHandle) return;
   clearPlayTimer();
   currentHandle.pause();
+  runCtl.pause();
   refreshDebugView();
-  setControls("paused");
 });
 
 btnStep.addEventListener("click", () => {
-  if (mode !== "paused" || !currentHandle) return;
+  if (runCtl.getState().phase !== "paused" || !currentHandle) return;
   const r = currentHandle.step();
   drainLogToAdapter();
   refreshDebugView();
-  if (r.done || currentHandle.done) {
-    appendLine(`— done (tick=${currentHandle.world.tick}) —`);
-    setActiveGutterLine(null);
-    renderInspectorEmpty("Done.");
-    setControls("done");
-  }
+  if (r.done || currentHandle.done) onRunEnded();
 });
 
 btnResume.addEventListener("click", () => {
-  if (mode !== "paused" || !currentHandle) return;
+  if (runCtl.getState().phase !== "paused" || !currentHandle) return;
   setActiveGutterLine(null);
-  setControls("playing");
+  runCtl.resume();
   playTimer = setTimeout(playTick, Number(speedEl.value));
 });
 
 btnStop.addEventListener("click", () => {
-  if (!currentHandle) return;
-  currentHandle.abort();
+  const p = runCtl.getState().phase;
+  if (p !== "running" && p !== "paused") return;
+  if (currentHandle) currentHandle.abort();
   clearPlayTimer();
   appendLine("— stop —");
-  setActiveGutterLine(null);
-  renderInspectorEmpty("Stopped.");
-  setControls("done");
+  // Stop is treated as failure: attempts++, snapshot restored, back to prep.
+  runCtl.fail();
+});
+
+btnSkip.addEventListener("click", () => {
+  if (runCtl.getState().phase !== "prep") return;
+  runCtl.skipRoom();
+  appendLine("— skipped room —");
 });
 
 btnReset.addEventListener("click", () => {
-  // Reset always reparses current source — Phase 4 spec says reset restarts
-  // the interpreter on the initial state, and edits-then-reset should use
-  // the new source.
-  if (!startFromSource()) return;
-  setControls("idle");
+  // Full teardown: level 1, attempts 1, fresh room, prep phase.
+  if (currentHandle) currentHandle.abort();
+  runCtl.resetAll();
+  clearLog();
+});
+
+btnContinue.addEventListener("click", () => {
+  if (runCtl.getState().phase !== "recap") return;
+  runCtl.continueAfterRecap();
+  clearLog();
+});
+
+// Tab strip: manual selection allowed only when the tab is enabled.
+tabInspector.addEventListener("click", () => {
+  if (tabInspector.disabled) return;
+  activeTab = "inspector";
+  renderPhase();
+});
+tabHelp.addEventListener("click", () => {
+  if (tabHelp.disabled) return;
+  activeTab = "help";
+  renderPhase();
 });
 
 speedEl.addEventListener("input", () => {
   const ms = Number(speedEl.value);
   speedOut.textContent = `${ms}ms`;
-  // If we're mid-playback, the next scheduled tick will use the new speed.
-  if (mode === "playing") {
+  if (runCtl.getState().phase === "running") {
     clearPlayTimer();
     playTimer = setTimeout(playTick, ms);
   }
 });
+
+// ── Phase-driven UI rendering ───────────────────────────────────────────────
+
+runCtl.on(renderPhase);
+
+function renderPhase(): void {
+  const s = runCtl.getState();
+  const phase = s.phase;
+
+  // Controls enablement.
+  btnRun.disabled    = phase !== "prep";
+  btnPause.disabled  = phase !== "running";
+  btnStep.disabled   = phase !== "paused";
+  btnResume.disabled = phase !== "paused";
+  btnStop.disabled   = !(phase === "running" || phase === "paused");
+  btnSkip.disabled   = phase !== "prep";
+  btnReset.disabled  = false;
+
+  // Topbar/script-label badge.
+  runMetaEl.textContent = `— Level ${s.level}, Attempt ${s.attempts}`;
+
+  // Game pane: expose phase to CSS and clear the canvas during prep/recap.
+  gamePane.setAttribute("data-phase", phase);
+  if (phase === "prep" || phase === "recap") {
+    // Teardown adapter if one's still mounted (e.g., after a Stop).
+    if (currentAdapter) {
+      currentAdapter.teardown();
+      currentAdapter = null;
+    }
+    currentHandle = null;
+    applyCursor = 0;
+  }
+
+  // Inventory editable only in prep.
+  if (inventoryCtl) {
+    inventoryCtl.setEditable(phase === "prep");
+    inventoryCtl.refresh();
+  }
+
+  // Tabs.
+  const helpOn = helpTabEnabled(phase);
+  const inspOn = inspectorTabEnabled(phase);
+  tabHelp.disabled = !helpOn;
+  tabInspector.disabled = !inspOn;
+  // Auto-switch to whichever tab is currently enabled.
+  let shown: "inspector" | "help" = activeTab;
+  if (shown === "inspector" && !inspOn && helpOn) shown = "help";
+  if (shown === "help" && !helpOn && inspOn) shown = "inspector";
+  tabInspector.classList.toggle("active", shown === "inspector");
+  tabHelp.classList.toggle("active", shown === "help");
+  panelInspector.hidden = shown !== "inspector";
+  panelHelp.hidden = shown !== "help";
+
+  // Recap modal.
+  if (phase === "recap" && s.recap) {
+    recapTitle.textContent = `LEVEL ${s.recap.level} CLEARED`;
+    recapAttempts.textContent = String(s.recap.attempts);
+    recapTurns.textContent = String(s.recap.turns);
+    recapModal.hidden = false;
+  } else {
+    recapModal.hidden = true;
+  }
+
+  // Inspector rendering: only meaningful during paused; show empty otherwise.
+  if (phase !== "paused") {
+    renderInspectorEmpty(
+      phase === "recap"  ? "Cleared." :
+      phase === "prep"   ? "Not running." :
+      /* running */        "Running…"
+    );
+  }
+}
 
 // ──────────────────────────── gutter ────────────────────────────
 
@@ -234,7 +348,6 @@ let activeGutterLine: number | null = null;
 
 function renderGutter(): void {
   const lines = editorEl.value.split("\n").length;
-  // Build one <span> per line so we can highlight individually.
   const rows: string[] = [];
   for (let i = 1; i <= lines; i++) {
     const cls = i === activeGutterLine ? "gutter-line gutter-active" : "gutter-line";
@@ -294,8 +407,9 @@ function escapeHtml(s: string): string {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 }
 
-// Initial state.
-inventoryCtl = mountInventoryPanel(inventoryEl, () => prepSetup.actors[0] ?? null);
-setControls("idle");
+// Initial state. The inventory panel reads the hero actor from whatever the
+// RunController currently holds, so skip/reset/continue transparently swap
+// the edit target on the next render.
+inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
 speedOut.textContent = `${speedEl.value}ms`;
-renderInspectorEmpty();
+renderPhase();

@@ -16,7 +16,7 @@
       </header>
       <main class="grid">
         <section class="pane editor">
-          <h2>Script</h2>
+          <h2>Script <span id="run-meta" class="run-meta"></span></h2>
           <div class="editor-wrap">
             <pre class="gutter" id="gutter" aria-hidden="true"></pre>
             <textarea id="editor" spellcheck="false"></textarea>
@@ -28,6 +28,7 @@
               <button id="btn-step" disabled>Step</button>
               <button id="btn-resume" disabled>Resume</button>
               <button id="btn-stop" disabled>Stop</button>
+              <button id="btn-skip">Skip Room</button>
               <button id="btn-reset">Reset</button>
             </div>
             <label class="speed">
@@ -37,7 +38,7 @@
             </label>
           </div>
         </section>
-        <section class="pane game">
+        <section class="pane game" id="pane-game" data-phase="prep">
           <div id="game-view"></div>
         </section>
         <section class="pane log">
@@ -45,9 +46,26 @@
           <ul id="event-log"></ul>
         </section>
         <section class="pane inspector">
-          <h2>Inspector</h2>
-          <div id="inspector">
-            <div class="inspector-empty">Not paused.</div>
+          <div class="tab-strip" id="tab-strip">
+            <button class="tab" id="tab-inspector" data-tab="inspector">Inspector</button>
+            <button class="tab" id="tab-help" data-tab="help">Help</button>
+          </div>
+          <div class="tab-panel" id="panel-inspector">
+            <div id="inspector">
+              <div class="inspector-empty">Not paused.</div>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-help" hidden>
+            <div id="help">
+              <h3>Commands</h3>
+              <p>Lorem ipsum — approach, attack, cast, exit, pickup, drop, use, wait, halt.</p>
+              <h3>Queries</h3>
+              <p>Lorem ipsum — enemies(), doors(), items_here(), items_nearby(), me.</p>
+              <h3>Items</h3>
+              <p>Lorem ipsum — consumables, equipment slots, on-hit effects.</p>
+              <h3>Monsters</h3>
+              <p>Lorem ipsum — monster templates, AI, loot tables (coming soon).</p>
+            </div>
           </div>
         </section>
         <section class="pane inventory">
@@ -55,6 +73,19 @@
           <div id="inventory"></div>
         </section>
       </main>
+    </div>
+    <div id="recap-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="recap-title">
+        <h2 id="recap-title">LEVEL 1 CLEARED</h2>
+        <table class="recap-stats">
+          <tr><td class="k">attempts</td><td class="v" id="recap-attempts">1</td></tr>
+          <tr><td class="k">turns</td><td class="v" id="recap-turns">0</td></tr>
+        </table>
+        <div class="modal-actions">
+          <button id="btn-continue">Continue</button>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/ui/main.ts"></script>
   </body>
