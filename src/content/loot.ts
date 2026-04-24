@@ -20,9 +20,26 @@ export interface LootEntry {
   max?: number;
 }
 
-// Key is a string (currently aligns with ActorKind) so Phase 10 can reuse
-// without a breaking rename. The hero never rolls loot — omit or leave empty.
+// Phase 11 keys: `<monster>_loot`, matching MONSTER_TEMPLATES[id].loot. The
+// legacy `"goblin"` key is retained as an alias for Phase 9 tests that key
+// rollDeathDrops by actor.kind directly.
+//
+// The hero never rolls loot — omit or leave empty.
 export const LOOT_TABLES: Record<string, LootEntry[]> = {
+  goblin_loot: [
+    { defId: "health_potion", chance: 0.3 },
+  ],
+  skeleton_loot: [
+    { defId: "mana_crystal", chance: 0.2 },
+  ],
+  cultist_loot: [
+    { defId: "mana_crystal", chance: 0.4 },
+  ],
+  slime_loot: [
+    { defId: "health_potion", chance: 0.15 },
+  ],
+  // Legacy alias — Phase 9 tests look up LOOT_TABLES["goblin"]. New code keys
+  // by template.loot (e.g. "goblin_loot").
   goblin: [
     { defId: "health_potion", chance: 0.5 },
   ],
