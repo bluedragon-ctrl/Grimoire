@@ -12,7 +12,7 @@ function mkRoom(over: Partial<Room> = {}): Room {
 
 function mkHero(over: Partial<Actor> & { id: string; pos: { x: number; y: number } }): Actor {
   return {
-    kind: "hero",
+    kind: "hero", isHero: true,
     hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
     script: script(cHalt()),
     mp: 20, maxMp: 20, atk: 3, def: 0, int: 0,

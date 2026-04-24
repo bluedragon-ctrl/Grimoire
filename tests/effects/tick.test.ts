@@ -10,7 +10,7 @@ function emptyRoom(): Room {
 
 function hero(over: Partial<Actor> = {}): Actor {
   return {
-    id: "h", kind: "hero", hp: 20, maxHp: 20, speed: 10, energy: 0,
+    id: "h", kind: "hero", isHero: true, hp: 20, maxHp: 20, speed: 10, energy: 0,
     pos: { x: 0, y: 0 }, alive: true,
     script: script(while_(lit(true), [cWait()])),
     ...over,

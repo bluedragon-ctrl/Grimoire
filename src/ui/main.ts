@@ -105,7 +105,7 @@ function tickDelayMs(): number {
 }
 
 function updateHud(): void {
-  const hero = currentHandle?.world.actors.find(a => a.kind === "hero");
+  const hero = currentHandle?.world.actors.find(a => a.isHero);
   if (!hero) return;
   const hpFrac = hero.maxHp > 0 ? Math.max(0, hero.hp) / hero.maxHp : 0;
   const mpFrac = (hero.maxMp ?? 0) > 0 ? Math.max(0, hero.mp ?? 0) / (hero.maxMp ?? 1) : 0;

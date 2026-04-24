@@ -12,6 +12,7 @@
 //     without a real canvas, a real RAF clock, or a real render().
 
 import type { Actor, EffectKind, GameEvent, Pos, Room } from "../types.js";
+import { MONSTER_TEMPLATES } from "../content/monsters.js";
 import type { RendererAdapter } from "./adapter.js";
 import { initRenderer as vendorInit, render as vendorRender } from "./vendor/ui/renderer.js";
 import { TILE } from "./context.js";
@@ -134,12 +135,14 @@ function overlayForEffect(kind: EffectKind): { name: string; colors?: { color: s
   }
 }
 
-function spriteForKind(kind: Actor["kind"]): string {
-  switch (kind) {
-    case "hero":   return "mage";      // rendered via player slot, not MONSTER_RENDERERS
-    case "goblin": return "skeleton";  // goblin sprite not in MONSTER_RENDERERS; skeleton is the safe fallback
-    default:       return "skeleton";
-  }
+// Phase 11: sprite resolution consults the monster template registry so new
+// monsters don't need a renderer patch. Order: actor.visual (set by
+// createActor) → MONSTER_TEMPLATES[kind].visual → "skeleton" fallback.
+function spriteForActor(a: Actor): string {
+  if (a.visual) return a.visual;
+  const tpl = MONSTER_TEMPLATES[a.kind];
+  if (tpl) return tpl.visual;
+  return "skeleton";
 }
 
 function buildMap(room: Room): string[][] {
@@ -221,20 +224,28 @@ export class WireRendererAdapter implements RendererAdapter {
     el.replaceChildren(wrap);
     this.deps.init(this.canvas);
 
-    const player = actors.find(a => a.kind === "hero");
-    const monsters = actors.filter(a => a.kind !== "hero");
+    const player = actors.find(a => a.isHero);
+    const monsters = actors.filter(a => !a.isHero);
 
     const initialFloor: VisualFloorItem[] = (room.floorItems ?? []).map(f => ({
       id: f.id, defId: f.defId, type: f.defId, x: f.pos.x, y: f.pos.y,
     }));
     this.state = {
       player: player ? { id: player.id, x: player.pos.x, y: player.pos.y, hp: player.hp } : null,
-      monsters: monsters.map(m => ({
-        id: m.id,
-        x: m.pos.x, y: m.pos.y,
-        type: spriteForKind(m.kind),
-        hp: m.hp,
-      })),
+      monsters: monsters.map(m => {
+        const ent: VisualEntity = {
+          id: m.id,
+          x: m.pos.x, y: m.pos.y,
+          type: spriteForActor(m),
+          hp: m.hp,
+        };
+        const tpl = MONSTER_TEMPLATES[m.kind];
+        const baseVisual = m.baseVisual ?? tpl?.baseVisual;
+        if (baseVisual) ent.baseVisual = baseVisual;
+        const colors = m.colors ?? tpl?.colors;
+        if (colors) ent.colors = colors;
+        return ent;
+      }),
       floorItems: initialFloor, floorObjects: [], clouds: [], activeEffects: [],
       width: room.w, height: room.h, tick: 0,
       map: buildMap(room),

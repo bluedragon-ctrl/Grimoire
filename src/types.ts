@@ -70,11 +70,17 @@ export interface Script {
 
 export interface Pos { x: number; y: number; }
 
-export type ActorKind = "hero" | "goblin";
+// Phase 11: `kind` is now a free-form string — the template id from
+// MONSTER_TEMPLATES (or "hero"). Faction/HUD/damage branching reads `isHero`
+// rather than comparing the string.
+export type ActorKind = string;
 
 export interface Actor {
   id: string;
   kind: ActorKind;
+  // Phase 11: single source of truth for "is this the player?". All code that
+  // used to compare kind === "hero" reads this field instead.
+  isHero?: boolean;
   hp: number;
   maxHp: number;
   speed: number;
@@ -92,11 +98,21 @@ export interface Actor {
   int?: number;
   effects?: Effect[];
   // Phase 6: list of spell names the actor has learned. Default hero = ["bolt","heal"],
-  // default goblin = []. Cast validation rejects unknown/unlearned names.
+  // default monster = []. Cast validation rejects unknown/unlearned names.
   knownSpells?: string[];
   // Phase 7: inventory. Consumables are a small bag (BAG_SIZE); equipped is
   // one slot per Slot, always present (null when empty).
   inventory?: Inventory;
+  // Phase 11: loot-table key (into LOOT_TABLES). Set by createActor from the
+  // monster template. Falls back to actor.kind when absent so legacy tests
+  // that seed LOOT_TABLES[kind] still work.
+  lootTable?: string;
+  // Phase 11: optional sprite hints for the renderer. Set by createActor from
+  // the template. wire-adapter falls back to MONSTER_TEMPLATES[kind].visual
+  // and then to "skeleton" when these are absent.
+  visual?: string;
+  baseVisual?: string;
+  colors?: Record<string, string>;
 }
 
 // ──────────────────────────── Items (Phase 7) ────────────────────────────

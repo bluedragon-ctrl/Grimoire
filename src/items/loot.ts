@@ -53,7 +53,11 @@ export function spawnFloorItem(
 // instances on the actor's tile. Events are appended in the order rolled,
 // matching scheduler expectations (one bundle per step).
 export function rollDeathDrops(world: World, actor: Actor): GameEvent[] {
-  const table = lootTableFor(actor.kind);
+  // Phase 11: prefer the explicit template key (createActor sets this from
+  // MONSTER_TEMPLATES[id].loot); fall back to actor.kind for hand-rolled
+  // test actors whose LOOT_TABLES entry is keyed by kind.
+  const key = actor.lootTable ?? actor.kind;
+  const table = lootTableFor(key);
   if (table.length === 0) return [];
   const out: GameEvent[] = [];
   for (const entry of table) {

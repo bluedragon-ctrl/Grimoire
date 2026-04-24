@@ -96,11 +96,15 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
 }
 
 function cloneActor(a: Actor): Actor {
-  const defaults = a.kind === "hero"
+  // Phase 11: stat defaults branch on `isHero`, not on kind string. Monsters
+  // built via createActor always bring their own stats; the hero path keeps
+  // the historical hero defaults (mp 20, atk 3, bolt+heal spellbook).
+  const defaults = a.isHero
     ? { mp: 20, maxMp: 20, atk: 3, def: 0, int: 0, knownSpells: ["bolt", "heal"] }
     : { mp: 0,  maxMp: 0,  atk: 1, def: 0, int: 0, knownSpells: [] as string[] };
-  return {
+  const out: Actor = {
     id: a.id, kind: a.kind,
+    isHero: a.isHero ?? false,
     hp: a.hp, maxHp: a.maxHp, speed: a.speed, energy: 0,
     pos: { ...a.pos }, alive: a.hp > 0,
     script: a.script as Script, // AST is immutable — safe to share
@@ -116,6 +120,11 @@ function cloneActor(a: Actor): Actor {
       equipped: { ...a.inventory.equipped },
     } : { consumables: [], equipped: emptyEquipped() },
   };
+  if (a.lootTable !== undefined) out.lootTable = a.lootTable;
+  if (a.visual !== undefined)    out.visual = a.visual;
+  if (a.baseVisual !== undefined) out.baseVisual = a.baseVisual;
+  if (a.colors !== undefined)    out.colors = { ...a.colors };
+  return out;
 }
 
 function buildWorld(setup: RoomSetup, seed: number): World {
