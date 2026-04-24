@@ -60,6 +60,9 @@ export const BURST_PRESETS: Record<string, BurstPreset> = Object.freeze({
   barrier_steel: { burst: "barrier",   colors: { color: "#99aabb", color2: "#ccd8e0" } },
   barrier_cyan:  { burst: "barrier",   colors: { color: "#44ccff", color2: "#aaeeff" } },
   healing_blue:  { burst: "healing",   colors: { color: "#4488ff", color2: "#aaddff" } },
+  // Phase 13.2: summoning visuals.
+  summon_portal: { burst: "blob",      colors: { color: "#220044", color2: "#9922ff" } },
+  despawn_puff:  { burst: "blob",      colors: { color: "#555555", color2: "#aaaaaa" } },
 });
 
 export const CLOUD_PRESETS: Record<string, CloudPreset> = Object.freeze({

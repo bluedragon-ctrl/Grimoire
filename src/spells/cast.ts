@@ -46,10 +46,11 @@ function targetKindMatches(caster: Actor, spell: Spell, target: Actor | null): b
 }
 
 function sameFaction(a: Actor, b: Actor): boolean {
-  // Phase 11: faction is derived from `isHero` only. Hero = player faction;
-  // anything else = enemy faction. No more kind-string inspection.
-  const fa = a.isHero ? "player" : "enemy";
-  const fb = b.isHero ? "player" : "enemy";
+  // Phase 13.2: use explicit faction field with isHero fallback for backward compat.
+  const fa = a.faction ?? (a.isHero ? "player" : "enemy");
+  const fb = b.faction ?? (b.isHero ? "player" : "enemy");
+  // Two neutrals are neither allies nor enemies — treat as not same faction.
+  if (fa === "neutral" && fb === "neutral") return false;
   return fa === fb;
 }
 

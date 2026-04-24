@@ -11,8 +11,8 @@ import { compile, type CompiledScript } from "./interpreter.js";
 import { DSLRuntimeError } from "./lang/errors.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
-  doPickup, doDrop,
-  castFailedCleanly, useFailedCleanly, pickupFailedCleanly, dropFailedCleanly,
+  doPickup, doDrop, doSummon,
+  castFailedCleanly, useFailedCleanly, pickupFailedCleanly, dropFailedCleanly, summonFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
 import { tickClouds } from "./clouds.js";
@@ -88,6 +88,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
 
       const events = fireAction(world, rt.actor, action);
       appendDeathDrops(world, events);
+      appendRoomExitDespawn(world, events);
       // Phase 6: failed casts don't cost energy (actor tries again next tick).
       if (action.kind === "cast" && castFailedCleanly(events)) {
         rt.actor.energy += action.cost;
@@ -102,6 +103,10 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       if (action.kind === "drop" && dropFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
+      // Phase 13.2: failed direct summon() refunds energy like cast.
+      if (action.kind === "summon" && summonFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
       dispatch(world, s.runtimes, events);
 
       if (events.some(e => e.type === "HeroExited" || e.type === "HeroDied")) {
@@ -111,6 +116,8 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       if (!rt.actor.alive)        { rt.stack = []; rt.halted = true; }
 
       for (const r of s.runtimes) ensurePending(r, world);
+      // Sync newly spawned actors (e.g., summons) into the runtime list.
+      syncNewActors(world, s);
       const done = world.ended || world.aborted || !anyLiveWork(s);
       return { events, done };
     }
@@ -146,22 +153,73 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
 // Phase 9: for each Died in `events`, roll the victim's loot table and append
 // the resulting ItemDropped events in-place. Hero deaths never drop (no hero
 // loot table, and even with one the HeroDied path ends the room anyway).
+// Phase 13.2: summoned actors skip loot; their owner's death cascades despawns.
 function appendDeathDrops(world: World, events: GameEvent[]): void {
-  // Snapshot the current length — drops we push must not themselves be
-  // re-scanned (they can't trigger deaths, but it also keeps intent clear).
+  // Snapshot the current length — drops/despawns we push must not themselves
+  // be re-scanned (they can't trigger further deaths/drops).
   const end = events.length;
   for (let i = 0; i < end; i++) {
     const ev = events[i]!;
     if (ev.type !== "Died") continue;
     const actor = world.actors.find(a => a.id === ev.actor);
     if (!actor) continue;
-    events.push(...rollDeathDrops(world, actor));
+    if (!actor.summoned) events.push(...rollDeathDrops(world, actor));
+    // Cascade: despawn all live actors this actor owned.
+    events.push(...despawnOwned(world, actor.id, "summoner_died"));
   }
+}
+
+// Mark all live actors owned by `ownerId` as dead and emit Despawned events.
+// Cascades recursively so a summon that itself has summons also despawns them.
+function despawnOwned(world: World, ownerId: string, reason: "room_exit" | "summoner_died"): GameEvent[] {
+  const out: GameEvent[] = [];
+  for (const a of world.actors) {
+    if (!a.alive || a.owner !== ownerId) continue;
+    a.alive = false;
+    out.push({ type: "Despawned", actor: a.id, reason });
+    out.push(...despawnOwned(world, a.id, reason));
+  }
+  return out;
+}
+
+// Phase 13.2: on room-exit, despawn every owned (summoned) actor.
+function appendRoomExitDespawn(world: World, events: GameEvent[]): void {
+  if (!events.some(e => e.type === "HeroExited")) return;
+  events.push(...despawnAllOwned(world));
+}
+
+function despawnAllOwned(world: World): GameEvent[] {
+  const out: GameEvent[] = [];
+  for (const a of world.actors) {
+    if (!a.alive || !a.owner) continue;
+    a.alive = false;
+    out.push({ type: "Despawned", actor: a.id, reason: "room_exit" });
+  }
+  return out;
 }
 
 function anyLiveWork(s: SchedulerState): boolean {
   // A halted actor with an active handler frame still has work to do.
   return s.runtimes.some(r => r.actor.alive && r.stack.length > 0);
+}
+
+// Phase 13.2: create runtimes for any actors that were added to world.actors
+// after createScheduler() ran (e.g., summoned actors). Called after each step.
+function syncNewActors(world: World, s: SchedulerState): void {
+  const knownIds = new Set(s.runtimes.map(r => r.actor.id));
+  for (const a of world.actors) {
+    if (knownIds.has(a.id)) continue;
+    const compiled = compile(a.script, { world, self: a });
+    const rt: ActorRuntime = {
+      actor: a,
+      compiled,
+      stack: [{ gen: compiled.makeMain(), pending: null }],
+      eventQueue: [],
+      halted: false,
+    };
+    s.runtimes.push(rt);
+    ensurePending(rt, world);
+  }
 }
 
 export function runLoop(world: World, opts: RunOptions = {}): void {
@@ -245,6 +303,7 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "use":      return doUse(world, self, action.item);
     case "pickup":   return doPickup(world, self, action.target);
     case "drop":     return doDrop(world, self, action.target);
+    case "summon":   return doSummon(world, self, action.template, action.target);
   }
 }
 
@@ -323,6 +382,9 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "OnHitTriggered": return `[t=${t}] ${event.attacker}.onHit — ${event.defId} → ${event.defender}`;
     case "ItemDropped": return `[t=${t}] ${event.actor ?? "?"}.itemDropped — ${event.defId} @(${event.pos.x},${event.pos.y}) [${event.source}]`;
     case "ItemPickedUp": return `[t=${t}] ${event.actor}.itemPickedUp — ${event.defId}`;
+    case "Summoned": return `[t=${t}] ${event.actor}.summoned — by ${event.summoner} (${event.template}) @(${event.pos.x},${event.pos.y})`;
+    case "Despawned": return `[t=${t}] ${event.actor}.despawned — ${event.reason}`;
+    case "ScriptError": return `[t=${t}] ${event.actor}.scriptError — ${event.message}`;
   }
 }
 

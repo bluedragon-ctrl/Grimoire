@@ -9,6 +9,7 @@
 import type { PrimitiveName } from "../spells/primitives.js";
 import type { HelpMeta } from "../ui/help/types.js";
 import type { EffectKind } from "../types.js";
+import { MONSTER_TEMPLATES } from "./monsters.js";
 
 export type SpellTargetType = "self" | "ally" | "enemy" | "any" | "tile";
 
@@ -174,6 +175,37 @@ export const SPELLS: Record<string, Spell> = {
     targetType: "ally", range: 1, mpCost: 5,
     body: [{ op: "heal", args: { amount: 5, visual: "healing_green", element: "arcane" } }],
   },
+  // Phase 13.2: summon spells — one per summonable template.
+  summon_goblin: {
+    name: "summon_goblin",
+    description: "Summon a Goblin to fight beside you.",
+    targetType: "tile", range: 3, mpCost: 5,
+    body: [{ op: "summon", args: { template: "goblin", visual: "summon_portal", element: "arcane" } }],
+  },
+  summon_skeleton: {
+    name: "summon_skeleton",
+    description: "Summon a Skeleton to fight beside you.",
+    targetType: "tile", range: 3, mpCost: 8,
+    body: [{ op: "summon", args: { template: "skeleton", visual: "summon_portal", element: "arcane" } }],
+  },
+  summon_bat: {
+    name: "summon_bat",
+    description: "Summon a Bat to harry your enemies.",
+    targetType: "tile", range: 3, mpCost: 4,
+    body: [{ op: "summon", args: { template: "bat", visual: "summon_portal", element: "arcane" } }],
+  },
+  summon_cultist: {
+    name: "summon_cultist",
+    description: "Summon a Cultist to cast spells for you.",
+    targetType: "tile", range: 3, mpCost: 12,
+    body: [{ op: "summon", args: { template: "cultist", visual: "summon_portal", element: "arcane" } }],
+  },
+  summon_slime: {
+    name: "summon_slime",
+    description: "Summon a Slime to absorb blows for you.",
+    targetType: "tile", range: 3, mpCost: 10,
+    body: [{ op: "summon", args: { template: "slime", visual: "summon_portal", element: "arcane" } }],
+  },
 };
 
 // ── Load-time validation ─────────────────────────────────────────────────────
@@ -198,6 +230,13 @@ for (const [id, spell] of Object.entries(SPELLS)) {
       if (typeof kind !== "string" || !_VALID_EFFECT_KINDS.has(kind)) {
         throw new Error(`SPELLS['${id}'] op 'inflict': invalid EffectKind '${kind}'.`);
       }
+    }
+    if (op.op === "summon" && id.startsWith("summon_")) {
+      const tid = String(op.args.template ?? "");
+      const tpl = MONSTER_TEMPLATES[tid];
+      if (!tpl) throw new Error(`Summon spell '${id}': template '${tid}' not found in MONSTER_TEMPLATES.`);
+      if (!tpl.summonable) throw new Error(`Summon spell '${id}': template '${tid}' is not summonable.`);
+      if (tpl.summonMpCost === undefined) throw new Error(`Summon spell '${id}': template '${tid}' missing summonMpCost.`);
     }
   }
 }

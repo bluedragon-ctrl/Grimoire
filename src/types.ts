@@ -116,6 +116,13 @@ export interface Actor {
   // Phase 13: damage-absorption pool added by the shield effect. Drained before
   // hp on incoming physical hits. Zeroed on shield expiry.
   shieldHp?: number;
+  // Phase 13.2: faction system.
+  // Optional for backward compat — engine falls back to isHero ? "player" : "enemy".
+  faction?: "player" | "enemy" | "neutral";
+  // Set on summoned actors; undefined on wild actors.
+  owner?: string;
+  // Shortcut flag set at spawn. Loot tables skip when true.
+  summoned?: boolean;
 }
 
 // ──────────────────────────── Items (Phase 7) ────────────────────────────
@@ -209,12 +216,14 @@ export interface World {
   rngSeed?: number;
   // Monotonic counter for minting unique FloorItem ids within a run.
   floorSeq?: number;
-  // Monotonic counters for minting unique Effect, cloud, and item-instance ids.
+  // Monotonic counters for minting unique Effect, cloud, item-instance, and actor ids.
   // Stored on World so two runRoom calls with the same seed produce identical
   // sequences regardless of how many prior runs happened in the same process.
   effectSeq?: number;
   primitiveSeq?: number;
   itemSeq?: number;
+  // Phase 13.2: monotonic counter for summoned-actor ids.
+  actorSeq?: number;
 }
 
 // ──────────────────────────── Events / log ────────────────────────────
@@ -248,7 +257,9 @@ export type GameEvent =
   | { type: "OnHitTriggered"; attacker: string; defender: string; item: string; defId: string }
   | { type: "ItemDropped"; actor: string | null; item: string; defId: string; pos: Pos; source: "death" | "drop" | "overflow" }
   | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos }
-  | { type: "ScriptError"; actor: string; message: string };
+  | { type: "ScriptError"; actor: string; message: string }
+  | { type: "Summoned"; actor: string; summoner: string; template: string; pos: Pos }
+  | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -265,7 +276,8 @@ export type PendingAction =
   | { kind: "pickup"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
-  | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> };
+  | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "summon"; cost: number; template: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> };
 
 // ──────────────────────────── Target resolution seam ────────────────────────────
 
