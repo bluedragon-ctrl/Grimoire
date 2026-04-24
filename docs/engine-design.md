@@ -57,11 +57,34 @@ Notes:
 - Tiebreak: descending energy, ascending `id` — deterministic.
 - A terminated main generator with no handlers queued → actor idles forever. The scheduler still ticks energy for them (cheap, keeps logic uniform) but they never show up in `ready`.
 
-## Effects and stat resolution (Phase 5)
+## Effects and stat resolution (Phase 5 + 13)
 
-An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tickEvery, source? }` record attached to an actor. Four kinds ship in Phase 5: `burning` (DoT), `regen` (HoT), `haste` (speed ×1.5), `slow` (speed ×0.5). All spells, item procs, clouds, weapon on-hit, and statuses will sit on this abstraction — the engine only knows about the four verbs `apply`, `onApply`, `onTick`, `onExpire`.
+An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tickEvery, source? }` record attached to an actor. The engine only knows about the four lifecycle verbs `apply`, `onApply`, `onTick`, `onExpire`, plus `onStack` (Phase 13) for effects that deviate from standard stacking.
 
-**Stacking.** Same kind on the same target from any source → refresh `remaining` to `max(existing, new)`; magnitude does not stack. Different kinds stack independently. `haste + slow` coexist, yielding effective `floor(base * 1.5 * 0.5) = floor(base * 0.75)`, clamped to min 1.
+**Thirteen kinds ship through Phase 13:**
+
+| kind | behaviour | mechanism |
+|---|---|---|
+| `burning` | DoT — damage per tick | onTick mutates hp |
+| `regen` | HoT — heal per tick | onTick mutates hp |
+| `haste` | speed ×1.5 | effectiveStats multiplier |
+| `slow` | speed ×0.5 | effectiveStats multiplier |
+| `poison` | weaker / longer burn | onTick mutates hp |
+| `chill` | speed and atk ×(1 − N%) | effectiveStats multiplier |
+| `shock` | def −N flat | effectiveStats delta |
+| `expose` | incoming physical damage ×(1 + N%) | resolved at doAttack |
+| `might` | atk +N flat | effectiveStats delta |
+| `iron_skin` | def +N flat | effectiveStats delta |
+| `mana_regen` | mp +N per tick | onTick mutates mp |
+| `mana_burn` | mp −N per tick | onTick mutates mp |
+| `power` | int +N flat | effectiveStats delta |
+| `shield` | damage-absorption pool (see below) | onApply/onExpire mutate shieldHp |
+
+**Non-goals (defer to later phases):** `wards` (6 elemental wards — needs damage-type system first); damage-type tagging on spells/attacks.
+
+**Stacking.** Same kind on the same target from any source → refresh `remaining` to `max(existing, new)`; magnitude does not stack (first-write-wins, keeps identity stable). Different kinds stack independently. `haste + slow` coexist, yielding effective `floor(base * 1.5 * 0.5) = floor(base * 0.75)`, clamped to min 1. `chill` composes with haste/slow as an additional speed multiplier.
+
+**Shield stacking deviation.** `shield` is a pool, not a modifier. When re-applied while active: duration refreshes to max (standard), but if the incoming magnitude exceeds the existing magnitude the pool (`actor.shieldHp`) is topped up to the new magnitude and `existing.magnitude` is updated. Smaller incoming magnitude leaves the pool unchanged. This is implemented via `EffectSpec.onStack`.
 
 **Tick ordering per scheduler tick.**
 
@@ -83,7 +106,7 @@ on tick T → T+1 transition:
 
 Placing the effect phase AFTER the prior tick's actions (i.e., at tick-transition, before new actions for the upcoming tick) keeps the rule "actions first, statuses resolve after" consistent — a burning actor who just struck and killed an enemy still ticks the burn.
 
-**Stat resolution.** `effectiveStats(actor)` is a pure fold over `actor.effects` returning `{ hp, maxHp, speed, atk, def, mp, maxMp, int }`. Modifier effects (haste/slow) are read-only on base stats — no mutation. Damage and healing still mutate `hp` directly — they're not modifiers, they're direct changes.
+**Stat resolution.** `effectiveStats(actor)` is a pure fold over `actor.effects` returning `{ hp, maxHp, speed, atk, def, mp, maxMp, int }`. Modifier effects are read-only — no mutation. Order: flat deltas (might, iron_skin, shock) are applied first, then multipliers (haste, slow, chill), so `chill` reduces the already-boosted atk. `expose` and `shield` are not stats — they are resolved at the damage-apply site in `doAttack`. Direct changes (damage, healing, mana drain) still mutate the actor fields directly.
 
 **Reserved formula (Phase 6).** Spell effects will scale magnitude by `floor(base * (1 + int / 10))`. Phase 5 adds the `int` stat (hero default 5, goblin 0) but no mechanic reads it yet — the contract is reserved so Phase 6 inherits it.
 
