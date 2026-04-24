@@ -462,3 +462,71 @@ export const ITEM_DRAWS: Record<string, (ctx: Ctx, cx: number, cy: number, t?: n
   trap2: drawTrap2,
   trap3: drawTrap3,
 };
+
+/** Signature shared by all item-draw functions. */
+export type ItemDraw = (ctx: Ctx, cx: number, cy: number, t: number, colors?: ItemColors) => void;
+
+/** Item type → draw function (content-facing keys). */
+export const ITEM_RENDERERS: Record<string, ItemDraw> = {
+  mana_crystal:      drawManaCrystal,
+  health_potion:     drawHealthPotion,
+  sword:             drawSword,
+  key:               drawKey,
+  potion_1:          drawPotion1,
+  potion_2:          drawPotion2,
+  potion_of_fury:    drawElixir,
+  potion_of_warding: drawElixir,
+  potion_of_focus:   drawElixir,
+  // Equipment — staves
+  wooden_staff:    drawWoodenStaff,
+  fire_staff:      drawFireStaff,
+  iron_staff:      drawIronStaff,
+  shock_staff:     drawIronStaff,
+  draining_staff:  drawFireStaff,
+  crystal_staff:   drawIronStaff,
+  // Equipment — robes
+  leather_robe:    drawRobeFolded,
+  silk_robe:       drawRobeFolded,
+  ember_robe:      drawRobeFoldedEmber,
+  chain_vestment:  drawRobeFolded,
+  archmage_robe:   drawRobeFolded,
+  shadow_cloak:    drawRobeFoldedEmber,
+  // Equipment — daggers
+  bone_dagger:     drawDaggerA,
+  steel_dagger:    drawDaggerA,
+  venom_dagger:    drawDaggerB,
+  shadow_blade:    drawDaggerA,
+  frost_shard:     drawDaggerB,
+  warblade:        drawDaggerA,
+  // Equipment — foci
+  quartz_focus:    drawFocusB,
+  runed_focus:     drawFocusA,
+  void_focus:      drawFocusA,
+  bloodstone:      drawFocusA,
+  star_fragment:   drawFocusB,
+  prism_shard:     drawFocusB,
+  // Equipment — hats
+  cloth_cap:       drawHat1,
+  wizard_hat:      drawHat1,
+  scholar_circlet: drawHat2,
+  iron_helm:       drawHat2,
+  arcane_cowl:     drawHat1,
+  crown_of_ages:   drawHat2,
+  // Floor traps
+  trap_1:          drawTrap1,
+  trap_2:          drawTrap2,
+  trap_3:          drawTrap3,
+};
+
+/** Draw a floor item by type. Falls back through prefix patterns then generic. */
+export function drawItem(ctx: Ctx, cx: number, cy: number, type: string, t = 0, colors?: ItemColors): void {
+  const renderer =
+    ITEM_RENDERERS[type] ??
+    (type.startsWith("scroll_")  ? drawScroll       : null) ??
+    (type.startsWith("book_of_") ? drawBook         : null) ??
+    (type.startsWith("tome_")    ? drawBook         : null) ??
+    (type.endsWith("_potion")    ? drawHealthPotion : null) ??
+    (type.endsWith("_elixir")    ? drawElixir       : null) ??
+    drawGenericItem;
+  renderer(ctx, cx, cy, t, colors);
+}

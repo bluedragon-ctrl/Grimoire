@@ -17,6 +17,8 @@ import {
   CLOUD_PRESETS,
   ELEMENT_DEFAULTS,
   EFFECT_OVERLAY_PRESETS,
+  TILE_VISUALS,
+  OBJECT_VISUALS,
 } from "./visuals.js";
 
 const ALL_EFFECT_KINDS: EffectKind[] = ["burning", "poison", "regen", "haste", "slow"];
@@ -102,7 +104,8 @@ function validateEffectOverlays(): void {
 
 // ── monster sprites ───────────────────────────────────────────────────────────
 
-function validateMonsterVisuals(rendererKeys: Set<string>): void {
+function validateMonsterTemplates(rendererKeys: Set<string>): void {
+  // Every template's visual must resolve to a known renderer.
   for (const [id, tpl] of Object.entries(MONSTER_TEMPLATES)) {
     if (!rendererKeys.has(tpl.visual)) {
       throw new Error(
@@ -112,16 +115,44 @@ function validateMonsterVisuals(rendererKeys: Set<string>): void {
   }
 }
 
+// ── tile / object catalog checks ─────────────────────────────────────────────
+
+function validateTileCatalog(rendererKeys: Set<string>): void {
+  for (const [key, spec] of Object.entries(TILE_VISUALS)) {
+    if (!rendererKeys.has(spec.renderer)) {
+      throw new Error(
+        `TILE_VISUALS['${key}'].renderer '${spec.renderer}' not found in TILE_RENDERERS.`,
+      );
+    }
+  }
+}
+
+function validateObjectCatalog(rendererKeys: Set<string>): void {
+  for (const [key, spec] of Object.entries(OBJECT_VISUALS)) {
+    if (!rendererKeys.has(spec.renderer)) {
+      throw new Error(
+        `OBJECT_VISUALS['${key}'].renderer '${spec.renderer}' not found in OBJECT_RENDERERS.`,
+      );
+    }
+  }
+}
+
 // ── public entry point ────────────────────────────────────────────────────────
 
 /**
  * Validate all visual wiring at engine startup.
- * `monsterRendererKeys` is `new Set(Object.keys(MONSTER_RENDERERS))` — passed
- * as a parameter to keep this content module free of render imports.
+ * Renderer key sets are passed as parameters to keep this content module
+ * free of render-layer imports.
  */
-export function validateVisuals(monsterRendererKeys: Set<string>): void {
+export function validateVisuals(
+  monsterRendererKeys: Set<string>,
+  tileRendererKeys?: Set<string>,
+  objectRendererKeys?: Set<string>,
+): void {
   validateSpellVisuals();
   validateCloudVisuals();
   validateEffectOverlays();
-  validateMonsterVisuals(monsterRendererKeys);
+  validateMonsterTemplates(monsterRendererKeys);
+  if (tileRendererKeys) validateTileCatalog(tileRendererKeys);
+  if (objectRendererKeys) validateObjectCatalog(objectRendererKeys);
 }
