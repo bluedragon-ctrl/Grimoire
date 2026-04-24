@@ -31,7 +31,7 @@ export const SPELLS: Record<string, Spell> = {
     name: "heal",
     description: "Restores an ally's health.",
     targetType: "ally", range: 1, mpCost: 5,
-    body: [{ op: "heal", args: { amount: 5 } }],
+    body: [{ op: "heal", args: { amount: 5, visual: "bolt_green", element: "arcane" } }],
   },
   firebolt: {
     name: "firebolt",
@@ -55,7 +55,7 @@ export const SPELLS: Record<string, Spell> = {
     name: "bless",
     description: "Hastens an ally.",
     targetType: "ally", range: 1, mpCost: 7,
-    body: [{ op: "inflict", args: { kind: "haste", duration: 40 } }],
+    body: [{ op: "inflict", args: { kind: "haste", duration: 40, visual: "bolt_gold", element: "arcane" } }],
   },
   firewall: {
     name: "firewall",
