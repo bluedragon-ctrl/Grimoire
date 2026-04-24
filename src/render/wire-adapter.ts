@@ -18,8 +18,14 @@ import { initRenderer as vendorInit, render as vendorRender } from "./vendor/ui/
 import { TILE } from "./context.js";
 import {
   PROJECTILE_PRESETS, BURST_PRESETS, CLOUD_PRESETS, ELEMENT_DEFAULTS,
+  EFFECT_OVERLAY_PRESETS,
   type ProjectilePreset, type BurstPreset,
 } from "../content/visuals.js";
+import { validateVisuals } from "../content/visuals-validate.js";
+import { MONSTER_RENDERERS } from "./vendor/ui/render-entities.js";
+
+// Validate all visual wiring once at module load — missing preset → hard throw.
+validateVisuals(new Set(Object.keys(MONSTER_RENDERERS)));
 
 // ── VisualState shape (mirrors what the vendor renderer reads) ──────────
 
@@ -123,16 +129,9 @@ function resolveBurst(visual?: string, element?: string): BurstPreset | undefine
   return undefined;
 }
 
-/** Map an EffectKind to the overlay renderer name + fallback colors. */
-function overlayForEffect(kind: EffectKind): { name: string; colors?: { color: string; color2: string } } | undefined {
-  switch (kind) {
-    case "burning": return { name: "burning",   colors: { color: "#ff6622", color2: "#ffcc33" } };
-    case "poison":  return { name: "dripping",  colors: { color: "#33aa55", color2: "#aaff88" } };
-    case "regen":   return { name: "healing",   colors: { color: "#66ff99", color2: "#ccffcc" } };
-    case "haste":   return { name: "sparkling", colors: { color: "#ffff99", color2: "#ffffff" } };
-    case "slow":    return { name: "cloudWavy", colors: { color: "#6688aa", color2: "#aaccee" } };
-    default:        return undefined;
-  }
+/** Map an EffectKind to the overlay renderer name + colors via data registry. */
+function overlayForEffect(kind: EffectKind): { name: string; colors: { color: string; color2: string } } | undefined {
+  return EFFECT_OVERLAY_PRESETS[kind];
 }
 
 // Phase 11: sprite resolution consults the monster template registry so new

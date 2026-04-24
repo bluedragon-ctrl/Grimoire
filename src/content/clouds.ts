@@ -9,9 +9,12 @@ export interface CloudKindSpec {
   // Effect re-applied while an actor stands on the cloud tile.
   // duration here is the effect's duration per re-application, not the cloud's.
   effect: { kind: EffectKind; duration: number };
+  // Default visual preset (key into CLOUD_PRESETS). Used when a CloudSpawned
+  // event carries no explicit visual field — e.g. clouds spawned by monsters.
+  visual: string;
 }
 
 export const CLOUD_KINDS: Record<string, CloudKindSpec> = {
-  fire:  { effect: { kind: "burning", duration: 10 } },
-  frost: { effect: { kind: "slow",    duration: 10 } },
+  fire:  { effect: { kind: "burning", duration: 10 }, visual: "cloud_fire"  },
+  frost: { effect: { kind: "slow",    duration: 10 }, visual: "cloud_frost" },
 };
