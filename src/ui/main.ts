@@ -16,6 +16,7 @@ import {
   type Phase,
 } from "./run-state.js";
 import { generateRoom } from "../content/rooms.js";
+import { mountHelpPane } from "./help/help-pane.js";
 
 const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
 const btnPause    = document.getElementById("btn-pause")    as HTMLButtonElement;
@@ -457,5 +458,7 @@ function escapeHtml(s: string): string {
 // RunController currently holds, so skip/reset/continue transparently swap
 // the edit target on the next render.
 inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
+const helpEl = document.getElementById("help") as HTMLDivElement;
+mountHelpPane(helpEl);
 speedOut.textContent = `${tickDelayMs()}ms`;
 renderPhase();
