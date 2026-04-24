@@ -3,9 +3,10 @@
 
 import { getTile, isVisible, isExplored, isAlive } from '../engine/game-state.js';
 import { TILE, C, setCanvas, getCanvas, getCtx } from './render-context.js';
-import { drawTile } from './render-tiles.js';
-import { drawMage, drawItem, drawMonster } from './render-entities.js';
-import { drawObject } from './render-objects.js';
+import { drawTile } from '../../tiles.ts';
+import { drawMage, drawMonster } from '../../monsters.ts';
+import { drawItem } from '../../items.ts';
+import { drawObject } from '../../objects.ts';
 import { drawEffect } from './render-effects.js';
 import { hasActiveEffectFor } from '../engine/effects.js';
 import { CLOUD_DEFS } from '../config/clouds.js';
