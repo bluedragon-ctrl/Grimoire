@@ -37,6 +37,11 @@ export interface MonsterTemplate {
   colors?: Record<string, string>;   // optional renderer tint
   /** Phase 12: optional help override. If absent, help auto-generates from stats + AI. */
   help?: HelpMeta;
+  // Phase 13.2: summoning fields.
+  /** When true, player-side summon spells may summon this template. */
+  summonable?: boolean;
+  /** MP price when summoned directly via DSL summon() or a summon_X spell. Required when summonable. */
+  summonMpCost?: number;
 }
 
 // ──────────────────────────── AI scripts ────────────────────────────
@@ -112,6 +117,7 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
     stats: { hp: 5, maxHp: 5, speed: 10, atk: 1 },
     ai: GOBLIN_AI,
     loot: "goblin_loot",
+    summonable: true, summonMpCost: 5,
   },
   {
     id: "skeleton",
@@ -120,6 +126,7 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
     stats: { hp: 8, maxHp: 8, speed: 10, atk: 2, def: 1 },
     ai: SKELETON_AI,
     loot: "skeleton_loot",
+    summonable: true, summonMpCost: 8,
   },
   {
     id: "bat",
@@ -128,6 +135,7 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
     stats: { hp: 2, maxHp: 2, speed: 18, atk: 1 },
     ai: BAT_AI,
     // No loot — bats don't drop.
+    summonable: true, summonMpCost: 4,
   },
   {
     id: "cultist",
@@ -137,6 +145,7 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
     knownSpells: ["bolt"],
     ai: CULTIST_AI,
     loot: "cultist_loot",
+    summonable: true, summonMpCost: 12,
   },
   {
     id: "slime",
@@ -145,6 +154,7 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
     stats: { hp: 12, maxHp: 12, speed: 5, atk: 2 },
     ai: SLIME_AI,
     loot: "slime_loot",
+    summonable: true, summonMpCost: 10,
   },
 ];
 
@@ -154,6 +164,9 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
 for (const tpl of RAW_TEMPLATES) {
   if (!tpl.visual) throw new Error(`Monster template '${tpl.id}': missing required field 'visual'.`);
   if (tpl.stats.atk === undefined) throw new Error(`Monster template '${tpl.id}': missing required stat 'stats.atk'.`);
+  if (tpl.summonable && tpl.summonMpCost === undefined) {
+    throw new Error(`Monster template '${tpl.id}': summonable is true but summonMpCost is missing.`);
+  }
 }
 
 // ──────────────────────────── parse cache ────────────────────────────
@@ -194,6 +207,7 @@ export function createActor(templateId: string, pos: Pos, id: string): Actor {
     id,
     kind: tpl.id,
     isHero: false,
+    faction: "enemy",
     hp: s.hp,
     maxHp: s.maxHp,
     speed: s.speed,

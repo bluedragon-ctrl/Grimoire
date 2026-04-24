@@ -99,12 +99,16 @@ function cloneActor(a: Actor): Actor {
   // Phase 11: stat defaults branch on `isHero`, not on kind string. Monsters
   // built via createActor always bring their own stats; the hero path keeps
   // the historical hero defaults (mp 20, atk 3, bolt+heal spellbook).
-  const defaults = a.isHero
+  // Phase 11: isHero is the canonical flag; Phase 11-era tests that set
+  // kind: "hero" without isHero also get treated as player faction.
+  const isHero = a.isHero ?? (a.kind === "hero");
+  const defaults = isHero
     ? { mp: 20, maxMp: 20, atk: 3, def: 0, int: 0, knownSpells: ["bolt", "heal"] }
     : { mp: 0,  maxMp: 0,  atk: 1, def: 0, int: 0, knownSpells: [] as string[] };
   const out: Actor = {
     id: a.id, kind: a.kind,
-    isHero: a.isHero ?? false,
+    isHero,
+    faction: a.faction ?? (isHero ? "player" : "enemy"),
     hp: a.hp, maxHp: a.maxHp, speed: a.speed, energy: 0,
     pos: { ...a.pos }, alive: a.hp > 0,
     script: a.script as Script, // AST is immutable — safe to share
@@ -124,6 +128,8 @@ function cloneActor(a: Actor): Actor {
   if (a.visual !== undefined)    out.visual = a.visual;
   if (a.baseVisual !== undefined) out.baseVisual = a.baseVisual;
   if (a.colors !== undefined)    out.colors = { ...a.colors };
+  if (a.owner !== undefined)     out.owner = a.owner;
+  if (a.summoned !== undefined)  out.summoned = a.summoned;
   return out;
 }
 
@@ -147,6 +153,7 @@ function buildWorld(setup: RoomSetup, seed: number): World {
     effectSeq: 0,
     primitiveSeq: 0,
     itemSeq: 0,
+    actorSeq: 0,
   };
 }
 
