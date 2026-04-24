@@ -254,11 +254,28 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
   if (!orthogonallyAdjacent(self.pos, target.pos)) {
     return [fail(self, "attack", "not adjacent")];
   }
-  const dmg = self.atk ?? 1;
-  target.hp -= dmg;
+
+  // Phase 13: expose — target's incoming physical damage is multiplied by
+  // (1 + magnitude%). Applied before shield absorption.
+  let rawDmg = self.atk ?? 1;
+  const exposeEff = (target.effects ?? []).find(e => e.kind === "expose");
+  if (exposeEff) rawDmg = Math.floor(rawDmg * (1 + (exposeEff.magnitude ?? 25) / 100));
+
+  // Phase 13: shield — drain shieldHp first; only overflow reaches hp.
+  // Attacked.damage carries the full raw hit so callers see the true blow.
+  let shieldAbsorbed = 0;
+  let hpDmg = rawDmg;
+  if ((target.shieldHp ?? 0) > 0) {
+    shieldAbsorbed = Math.min(target.shieldHp!, rawDmg);
+    target.shieldHp = target.shieldHp! - shieldAbsorbed;
+    hpDmg = rawDmg - shieldAbsorbed;
+  }
+
+  target.hp -= hpDmg;
   const events: GameEvent[] = [
-    { type: "Attacked", attacker: self.id, defender: target.id, damage: dmg },
-    { type: "Hit", actor: target.id, attacker: self.id, damage: dmg },
+    { type: "Attacked", attacker: self.id, defender: target.id, damage: rawDmg },
+    { type: "Hit", actor: target.id, attacker: self.id, damage: hpDmg,
+      ...(shieldAbsorbed > 0 ? { shieldAbsorbed } : {}) },
   ];
   if (target.hp <= 0) {
     target.alive = false;
