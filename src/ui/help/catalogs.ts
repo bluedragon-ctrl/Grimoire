@@ -60,13 +60,13 @@ export function itemEntries(): HelpEntry[] {
     const examples: HelpExample[] =
       d.help?.examples
         ? makeExamples(d.help.examples)
-        : d.category === "consumable"
+        : d.kind === "consumable"
           ? [{ code: `use("${d.id}")` }]
           : [];
-    const related = d.help?.related ?? (d.category === "consumable" ? ["commands/use"] : ["data/item"]);
-    const meta: Array<[string, string]> = [["category", d.category]];
+    const related = d.help?.related ?? (d.kind === "consumable" ? ["commands/use"] : ["data/item"]);
+    const meta: Array<[string, string]> = [["kind", d.kind]];
     if (d.slot) meta.push(["slot", d.slot]);
-    meta.push(["script", d.script]);
+    if (d.script) meta.push(["script", d.script]);
     out.push({
       id: d.id,
       path: `items/${d.id}`,
