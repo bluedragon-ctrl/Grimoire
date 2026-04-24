@@ -15,6 +15,7 @@ import type {
 import { ITEMS, BAG_SIZE, emptyEquipped } from "../content/items.js";
 import { parseItemScript, type ItemOp, type MergeStat } from "./script.js";
 import { applyEffect, wireEquipmentBonuses, REGISTRY as EFFECT_REGISTRY } from "../effects.js";
+import { spawnOverflowDrop } from "./loot.js";
 
 // ──────────────────────────── parse cache ────────────────────────────
 
@@ -162,18 +163,22 @@ export function equipItem(world: World, actor: Actor, instance: ItemInstance): G
 }
 
 export function unequipItem(world: World, actor: Actor, slot: Slot): GameEvent[] {
-  void world;
   const inv = ensureInventory(actor);
   const inst = inv.equipped[slot];
   if (!inst) return [{ type: "ActionFailed", actor: actor.id, action: "unequip", reason: `Nothing equipped in ${slot}.` }];
   inv.equipped[slot] = null;
   const def = ITEMS[inst.defId]!;
+  const events: GameEvent[] = [
+    { type: "ItemUnequipped", actor: actor.id, item: inst.id, defId: def.id, slot },
+  ];
   if (inv.consumables.length < BAG_SIZE) {
     inv.consumables.push(inst);
+  } else {
+    // Phase 9: bag was full — the ex-equipped item falls to the floor at
+    // the actor's feet rather than vanishing. Emits ItemDropped{source:"overflow"}.
+    events.push(spawnOverflowDrop(world, actor, inst));
   }
-  // (If the bag is full the item is dropped — Phase 9 loot system will handle
-  // floor drops. Phase 7: silently discarded; UI will prevent this path.)
-  return [{ type: "ItemUnequipped", actor: actor.id, item: inst.id, defId: def.id, slot }];
+  return events;
 }
 
 // ──────────────────────────── merge aggregation ────────────────────────────

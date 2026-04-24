@@ -62,10 +62,18 @@ export interface VisualCloud {
   colors?: { color: string; color2: string };
 }
 
+export interface VisualFloorItem {
+  id: string;
+  defId: string;
+  type: string;       // passed to vendor drawItem() — reuses defId as the sprite key
+  x: number;
+  y: number;
+}
+
 export interface VisualState {
   player: VisualEntity | null;
   monsters: VisualEntity[];
-  floorItems: unknown[];
+  floorItems: VisualFloorItem[];
   floorObjects: unknown[];
   clouds: VisualCloud[];
   activeEffects: VisualEffect[];
@@ -216,6 +224,9 @@ export class WireRendererAdapter implements RendererAdapter {
     const player = actors.find(a => a.kind === "hero");
     const monsters = actors.filter(a => a.kind !== "hero");
 
+    const initialFloor: VisualFloorItem[] = (room.floorItems ?? []).map(f => ({
+      id: f.id, defId: f.defId, type: f.defId, x: f.pos.x, y: f.pos.y,
+    }));
     this.state = {
       player: player ? { id: player.id, x: player.pos.x, y: player.pos.y, hp: player.hp } : null,
       monsters: monsters.map(m => ({
@@ -224,7 +235,7 @@ export class WireRendererAdapter implements RendererAdapter {
         type: spriteForKind(m.kind),
         hp: m.hp,
       })),
-      floorItems: [], floorObjects: [], clouds: [], activeEffects: [],
+      floorItems: initialFloor, floorObjects: [], clouds: [], activeEffects: [],
       width: room.w, height: room.h, tick: 0,
       map: buildMap(room),
     };
@@ -369,6 +380,28 @@ export class WireRendererAdapter implements RendererAdapter {
         break;
       }
       case "ItemUsed": {
+        const e = this.findEntity(event.actor);
+        if (e) this.pushEffect({
+          kind: "overlay", name: "sparkling", duration: D_ITEM, elapsed: 0, delay: 0,
+          attachTo: e.id,
+        });
+        break;
+      }
+      case "ItemDropped": {
+        // Add the item to the floor layer. A small burst at the drop tile so
+        // the eye sees the drop even without a dedicated sprite.
+        s.floorItems.push({
+          id: event.item, defId: event.defId, type: event.defId,
+          x: event.pos.x, y: event.pos.y,
+        });
+        this.pushEffect({
+          kind: "area", name: "blobExplosion", duration: D_ITEM, elapsed: 0, delay: 0,
+          at: { x: event.pos.x, y: event.pos.y }, radius: 0.4,
+        });
+        break;
+      }
+      case "ItemPickedUp": {
+        s.floorItems = s.floorItems.filter(f => f.id !== event.item);
         const e = this.findEntity(event.actor);
         if (e) this.pushEffect({
           kind: "overlay", name: "sparkling", duration: D_ITEM, elapsed: 0, delay: 0,
