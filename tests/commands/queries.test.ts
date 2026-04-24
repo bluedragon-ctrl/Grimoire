@@ -99,3 +99,54 @@ describe("can_cast() query", () => {
     expect(h.mp).toBe(mpBefore);
   });
 });
+
+describe("adjacent() query", () => {
+  it("orthogonal neighbours are adjacent", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 2, y: 2 } });
+    const b = mkGoblin({ id: "b", pos: { x: 3, y: 2 } });
+    const w = mkWorld([a, b]);
+    expect(queries.adjacent(w, a, a, b)).toBe(true);
+  });
+
+  it("diagonal neighbours are adjacent (Chebyshev)", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 2, y: 2 } });
+    const b = mkGoblin({ id: "b", pos: { x: 3, y: 3 } });
+    const w = mkWorld([a, b]);
+    expect(queries.adjacent(w, a, a, b)).toBe(true);
+  });
+
+  it("two tiles away is not adjacent", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 0, y: 0 } });
+    const b = mkGoblin({ id: "b", pos: { x: 2, y: 0 } });
+    const w = mkWorld([a, b]);
+    expect(queries.adjacent(w, a, a, b)).toBe(false);
+  });
+
+  it("same tile is NOT adjacent (adjacent(me, me) → false)", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 0, y: 0 } });
+    const w = mkWorld([a]);
+    expect(queries.adjacent(w, a, a, a)).toBe(false);
+  });
+
+  it("accepts actor + door", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 2, y: 2 } });
+    const room = mkRoom({ doors: [{ dir: "N", pos: { x: 2, y: 3 } }] });
+    const w = mkWorld([a], room);
+    expect(queries.adjacent(w, a, a, w.room.doors[0])).toBe(true);
+  });
+
+  it("accepts actor + bare pos", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 5, y: 5 } });
+    const w = mkWorld([a]);
+    expect(queries.adjacent(w, a, a, { pos: { x: 6, y: 6 } })).toBe(true);
+    expect(queries.adjacent(w, a, a, { pos: { x: 7, y: 7 } })).toBe(false);
+  });
+
+  it("returns false for non-positional args (no crash)", () => {
+    const a = mkGoblin({ id: "a", pos: { x: 0, y: 0 } });
+    const w = mkWorld([a]);
+    expect(queries.adjacent(w, a, a, null)).toBe(false);
+    expect(queries.adjacent(w, a, a, 42)).toBe(false);
+    expect(queries.adjacent(w, a, null, a)).toBe(false);
+  });
+});

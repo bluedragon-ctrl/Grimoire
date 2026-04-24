@@ -148,6 +148,13 @@ export const queries = {
     if (!pa || !pb) return 0;
     return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
   },
+  adjacent: (world: World, _self: Actor, a: unknown, b: unknown): boolean => {
+    const pa = resolvePos(world, a);
+    const pb = resolvePos(world, b);
+    if (!pa || !pb) return false;
+    const d = Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+    return d === 1;
+  },
   can_cast: (world: World, self: Actor, name: unknown, target?: unknown): boolean => {
     if (typeof name !== "string") return false;
     const v = validateCast(world, self, name, target, {
