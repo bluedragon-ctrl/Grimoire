@@ -72,10 +72,46 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 16px;
   padding: 0 12px;
-  height: 22px;
+  height: 24px;
   background: linear-gradient(180deg, #1a0d02, #0d0700);
   border-bottom: 1px solid var(--border);
+}
+.topbar-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.topbar-tab {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 1px 10px;
+  font-family: "VT323", monospace;
+  font-size: 15px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--glow);
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.topbar-tab:hover:not(:disabled):not(.active) {
+  color: var(--fg);
+  border-color: var(--border-hi);
+}
+.topbar-tab.active {
+  color: #0a0400;
+  background: var(--fg);
+  border-color: var(--fg-hi);
+  text-shadow: none;
+  box-shadow: 0 0 8px rgba(255, 170, 51, 0.5);
+}
+.topbar-tab:disabled {
+  color: var(--dim);
+  border-color: #3a1f00;
+  cursor: default;
+  text-shadow: none;
 }
 .topbar h1 {
   margin: 0;
@@ -152,37 +188,40 @@ body::before {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr) minmax(200px, 20%);
+  /* Default: aux pane closed — editor | (game/inventory/log) */
+  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr);
   /* game row stretches; inventory is auto; log is a short fixed-ish band. */
   grid-template-rows: minmax(0, 1fr) auto minmax(100px, 160px);
-  grid-template-areas:
-    "editor game      inspector"
-    "editor inventory inspector"
-    "editor log       inspector";
-  gap: 1px;
-  background: var(--border);
-  min-height: 0;
-}
-/* Hide inspector column unless paused/stepping. */
-.grid.no-inspector {
-  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr);
   grid-template-areas:
     "editor game"
     "editor inventory"
     "editor log";
+  gap: 1px;
+  background: var(--border);
+  min-height: 0;
 }
-.grid.no-inspector .inspector { display: none; }
+/* Aux pane opened via topbar tab (data-aux="inspector" | "help"). */
+.grid[data-aux="inspector"],
+.grid[data-aux="help"] {
+  grid-template-columns: minmax(240px, 24%) minmax(0, 1fr) minmax(220px, 22%);
+  grid-template-areas:
+    "editor game      inspector"
+    "editor inventory inspector"
+    "editor log       inspector";
+}
+.grid[data-aux="none"] .inspector { display: none; }
 /* Hide inventory unless in prep/idle phase. */
 .grid.no-inventory {
   grid-template-rows: minmax(0, 1fr) minmax(100px, 160px);
   grid-template-areas:
-    "editor game inspector"
-    "editor log  inspector";
-}
-.grid.no-inventory.no-inspector {
-  grid-template-areas:
     "editor game"
     "editor log";
+}
+.grid.no-inventory[data-aux="inspector"],
+.grid.no-inventory[data-aux="help"] {
+  grid-template-areas:
+    "editor game inspector"
+    "editor log  inspector";
 }
 .grid.no-inventory .inventory { display: none; }
 .pane {
@@ -344,33 +383,7 @@ body::before {
   text-transform: none;
 }
 
-/* ─────── Inspector/Help tab strip ─────── */
-.tab-strip {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #180c02, transparent);
-}
-.tab-strip .tab {
-  flex: 1;
-  background: transparent;
-  color: var(--muted);
-  border: none;
-  border-right: 1px solid var(--border);
-  padding: 4px 10px;
-  font-family: "VT323", monospace;
-  font-size: 16px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  cursor: pointer;
-  text-shadow: var(--glow);
-}
-.tab-strip .tab:last-child { border-right: none; }
-.tab-strip .tab.active {
-  color: var(--accent);
-  background: #150a02;
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-.tab-strip .tab:disabled { color: var(--dim); cursor: default; text-shadow: none; }
+/* ─────── Aux pane (Inspector/Help) content ─────── */
 .tab-panel {
   flex: 1;
   min-height: 0;

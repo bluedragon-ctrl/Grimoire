@@ -79,14 +79,14 @@ describe("RunController", () => {
     expect(s.recap).toBeNull();
   });
 
-  it("skipRoom preserves level and resets attempts to 1; regenerates current", () => {
+  it("skipRoom advances level by 1, resets attempts to 1, and regenerates current", () => {
     const c = ctrl();
     c.startRun(); c.fail();   // attempts → 2
     const prevRoom = c.getState().current;
     c.skipRoom();
     const s = c.getState();
     expect(s.phase).toBe("prep");
-    expect(s.level).toBe(1);
+    expect(s.level).toBe(2);
     expect(s.attempts).toBe(1);
     expect(s.current).not.toBe(prevRoom);
   });

@@ -26,7 +26,7 @@ concepts. The engine simply runs one room to a terminal event (`HeroExited`,
    │       │◄── continue ──│ recap   │               │     │
    │       │               └─────────┘               │     │
    │       │                                         │     │
-   │       │ skipRoom (same level, new room, att=1)  │     │
+   │       │ skipRoom (level+1, new room, att=1)     │     │
    │       │ ◄────────────────────────────────────── │     │
    └───────┘                                               │
        ▲                                                   │
@@ -47,8 +47,9 @@ Four phases:
 - **attempts** starts at 1 for a new room. Increments by exactly 1 on each
   failed run (hero died, user clicked Stop, or script exhausted without
   exiting). Never increments on pause/resume or successful runs.
-- **level** starts at 1. Increments on success via `continueAfterRecap`.
-  Skip preserves level; resetAll returns it to 1.
+- **level** starts at 1. Increments on success via `continueAfterRecap` and
+  on `skipRoom` (skip advances to the next room without running the current
+  one). `resetAll` returns it to 1.
 - Game-over semantics (max attempts / lives) are intentionally **out of
   scope** for this phase — retries are unbounded.
 

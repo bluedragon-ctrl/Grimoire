@@ -13,8 +13,12 @@
     <div id="app">
       <header class="topbar">
         <h1>Grimoire</h1>
+        <nav class="topbar-tabs">
+          <button class="topbar-tab" id="tab-inspector" type="button" aria-pressed="false">Inspector</button>
+          <button class="topbar-tab" id="tab-help" type="button" aria-pressed="false">Help</button>
+        </nav>
       </header>
-      <main class="grid">
+      <main class="grid" data-aux="none">
         <section class="pane editor">
           <h2>Script <span id="run-meta" class="run-meta"></span></h2>
           <div class="editor-wrap">
@@ -46,10 +50,7 @@
           <ul id="event-log"></ul>
         </section>
         <section class="pane inspector">
-          <div class="tab-strip" id="tab-strip">
-            <button class="tab" id="tab-inspector" data-tab="inspector">Inspector</button>
-            <button class="tab" id="tab-help" data-tab="help">Help</button>
-          </div>
+          <h2 id="aux-title">Inspector</h2>
           <div class="tab-panel" id="panel-inspector">
             <div id="inspector">
               <div class="inspector-empty">Not paused.</div>
