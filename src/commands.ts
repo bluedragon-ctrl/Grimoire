@@ -11,6 +11,9 @@ import { doPickup, doDrop } from "./items/loot.js";
 import { ITEMS } from "./content/items.js";
 import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
 import { worldRandom } from "./rng.js";
+import { hasLineOfSight } from "./los.js";
+
+export { hasLineOfSight };
 
 export { doPickup, doDrop };
 
@@ -323,33 +326,6 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
 }
 
 // ──────────────────────────── LOS helper ────────────────────────────
-
-// Checks whether there is a clear line of sight from `from` to `to`.
-// Only smoke clouds create dynamic opacity; structural walls are not yet modelled.
-// Convention: the source tile (from) is never opaque (you can see from where you
-// stand regardless of local cloud cover). The path up to and including `to` is
-// checked for intervening smoke. Adjacent tiles (Chebyshev 1) always have LOS.
-export function hasLineOfSight(world: World, from: Pos, to: Pos): boolean {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  if (steps <= 1) return true;  // always clear at adjacency
-
-  const clouds = world.room.clouds ?? [];
-  const smoke = new Set(
-    clouds.filter(c => c.kind === "smoke" && c.remaining > 0)
-          .map(c => `${c.pos.x},${c.pos.y}`),
-  );
-  if (smoke.size === 0) return true;
-
-  // Walk intermediate tiles (skip i=0 = from tile; check i=1..steps-1 then i=steps = to tile).
-  for (let i = 1; i <= steps; i++) {
-    const px = Math.round(from.x + dx * i / steps);
-    const py = Math.round(from.y + dy * i / steps);
-    if (smoke.has(`${px},${py}`)) return false;
-  }
-  return true;
-}
 
 // ──────────────────────────── use() generalization ────────────────────────────
 
