@@ -76,6 +76,37 @@ describe("help pane navigation", () => {
     expect(crumb).toEqual(["HELP", "Spells", "firebolt"]);
   });
 
+  it("isSpellVisible hides unknown spells from the spells list", () => {
+    const h = mountHelpPane(container, { isSpellVisible: (n) => n === "bolt" });
+    h.goto("spells/bolt"); // direct goto still works
+    // Navigate back to the spells list via breadcrumb
+    const crumbLinks = qAll(".help-crumb-link", container);
+    crumbLinks[1]!.click();
+    const visibleNames = qAll(".help-row-name", container).map(e => e.textContent);
+    expect(visibleNames).toContain("bolt");
+    expect(visibleNames).not.toContain("firebolt");
+    expect(visibleNames).not.toContain("heal");
+  });
+
+  it("isSpellVisible filters search results", () => {
+    mountHelpPane(container, { isSpellVisible: (n) => n === "bolt" });
+    const input = q(".help-search-input", container) as HTMLInputElement;
+    input.value = "bolt";
+    input.dispatchEvent(new Event("input"));
+    const hitPaths = qAll(".help-row-link", container).map(a => a.dataset.path);
+    expect(hitPaths).toContain("spells/bolt");
+    expect(hitPaths).not.toContain("spells/firebolt");
+  });
+
+  it("empty spells list shows a hint", () => {
+    mountHelpPane(container, { isSpellVisible: () => false });
+    const h = mountHelpPane(container, { isSpellVisible: () => false });
+    h.goto("spells/bolt");
+    const crumbLinks = qAll(".help-crumb-link", container);
+    crumbLinks[1]!.click();
+    expect(q(".help-empty", container)?.textContent).toMatch(/haven't learned/i);
+  });
+
   it("related link navigates to another leaf", () => {
     const h = mountHelpPane(container);
     h.goto("commands/cast");

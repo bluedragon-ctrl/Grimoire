@@ -291,6 +291,8 @@ tabHelp.addEventListener("click", () => {
   if (tabHelp.disabled) return;
   auxOpen = auxOpen === "help" ? null : "help";
   renderPhase();
+  // Refresh so the spells filter picks up any new learned spells / equip changes.
+  if (auxOpen === "help") helpPane.refresh();
 });
 
 speedEl.addEventListener("input", () => {
@@ -459,6 +461,15 @@ function escapeHtml(s: string): string {
 // the edit target on the next render.
 inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
 const helpEl = document.getElementById("help") as HTMLDivElement;
-mountHelpPane(helpEl);
+const helpPane = mountHelpPane(helpEl, {
+  // Only show spells the hero has learned. Reads live from RunController so
+  // equipping a focus that grants a spell, or progressing, updates the list
+  // on the next re-render (triggered when the Help tab is opened).
+  isSpellVisible: (name: string) => {
+    const hero = (currentHandle?.world.actors.find(a => a.isHero))
+      ?? runCtl.getState().current.actors[0];
+    return !!hero?.knownSpells?.includes(name);
+  },
+});
 speedOut.textContent = `${tickDelayMs()}ms`;
 renderPhase();

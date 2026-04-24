@@ -12,8 +12,18 @@ type View =
   | { kind: "list"; category: CategoryId }
   | { kind: "leaf"; path: string };
 
+export interface HelpPaneOpts {
+  /**
+   * Optional predicate: returns true when the given spell name should be
+   * visible in help. When omitted, all spells are shown. When provided,
+   * spells failing the predicate are filtered out of list views, search
+   * results, and related-link lists. Direct `goto()` still works.
+   */
+  isSpellVisible?: (name: string) => boolean;
+}
+
 export interface HelpPaneHandle {
-  /** Re-render (e.g., after external state changes). Currently unused but exposed for symmetry. */
+  /** Re-render — call after external state changes (e.g., hero learned a new spell). */
   refresh(): void;
   /** Navigate to a specific path, opening the right view. Used by tests. */
   goto(path: string): void;
@@ -21,9 +31,18 @@ export interface HelpPaneHandle {
   getView(): View;
 }
 
-export function mountHelpPane(container: HTMLElement): HelpPaneHandle {
+export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): HelpPaneHandle {
   let view: View = { kind: "category" };
   let query = "";
+
+  // Visibility predicate applied before enumeration (lists, search, related).
+  // Returns true = show. Unknown-to-hero spells are hidden when a filter is set.
+  function isVisible(entry: HelpEntry): boolean {
+    if (entry.category === "spells" && opts.isSpellVisible) {
+      return opts.isSpellVisible(entry.id);
+    }
+    return true;
+  }
 
   function render(): void {
     container.innerHTML = "";
@@ -35,7 +54,7 @@ export function mountHelpPane(container: HTMLElement): HelpPaneHandle {
     if (view.kind === "category") {
       root.appendChild(renderSearchBox());
       if (query.trim()) {
-        root.appendChild(renderSearchResults(search(query)));
+        root.appendChild(renderSearchResults(search(query).filter(h => isVisible(h.entry))));
       } else {
         root.appendChild(renderCategoryList());
       }
@@ -140,9 +159,17 @@ export function mountHelpPane(container: HTMLElement): HelpPaneHandle {
   function renderList(category: CategoryId): HTMLElement {
     const ul = document.createElement("ul");
     ul.className = "help-list";
-    for (const e of entriesIn(category)) {
-      ul.appendChild(renderRow(e));
+    const rows = entriesIn(category).filter(isVisible);
+    if (rows.length === 0) {
+      const li = document.createElement("li");
+      li.className = "help-empty";
+      li.textContent = category === "spells"
+        ? "You haven't learned any spells yet."
+        : "No entries.";
+      ul.appendChild(li);
+      return ul;
     }
+    for (const e of rows) ul.appendChild(renderRow(e));
     return ul;
   }
 
@@ -350,6 +377,7 @@ export function mountHelpPane(container: HTMLElement): HelpPaneHandle {
     for (const path of paths) {
       const entry = getEntry(path);
       if (!entry) continue; // defensive; tests guarantee this holds
+      if (!isVisible(entry)) continue; // hide unknown spells from related lists
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.href = "#";
