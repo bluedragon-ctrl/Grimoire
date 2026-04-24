@@ -143,4 +143,17 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     ],
     related: ["events/hit", "events/died"],
   },
+
+  summon: {
+    id: "summon",
+    name: "summon",
+    signature: "summon(template, target)",
+    blurb: "Spawn a monster as an ally on a target tile. Costs 15 energy + template's MP.",
+    body:
+      "`template` is a monster id string (e.g., \"goblin\"). `target` is any tile position. The spawned actor shares the caster's faction and is removed when the caster dies or exits the room.\n\nA per-caster cap limits concurrent summons: `max(1, floor(int/4))`. Exceeding it emits ActionFailed and refunds energy. The tile must be in-bounds and unoccupied. MP cost is the template's `summonMpCost`; direct script calls deduct it immediately. When cast via a `summon_X` spell, the spell's mpCost covers it instead.",
+    examples: [
+      { caption: "Summon a goblin on an adjacent tile.", code: "summon(\"goblin\", enemies()[0])" },
+    ],
+    related: ["spells/summon_goblin", "spells/summon_skeleton", "queries/allies"],
+  },
 };
