@@ -10,10 +10,12 @@ import type {
 import { compile, type CompiledScript } from "./interpreter.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
-  castFailedCleanly, useFailedCleanly,
+  doPickup, doDrop,
+  castFailedCleanly, useFailedCleanly, pickupFailedCleanly, dropFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
 import { tickClouds } from "./clouds.js";
+import { rollDeathDrops } from "./items/loot.js";
 
 interface Frame {
   gen: Generator<PendingAction, void, void>;
@@ -33,6 +35,9 @@ interface ActorRuntime {
 export interface RunOptions {
   maxTicks?: number;
   onTick?: (world: World) => void; // called at the start of each tick
+  // Phase 9: seed for the engine's deterministic RNG (mulberry32). Defaults
+  // to 1 so omitting the option still produces reproducible runs.
+  seed?: number;
 }
 
 export interface SchedulerState {
@@ -81,12 +86,19 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       s.lastFiredLoc = action.loc ?? null;
 
       const events = fireAction(world, rt.actor, action);
+      appendDeathDrops(world, events);
       // Phase 6: failed casts don't cost energy (actor tries again next tick).
       if (action.kind === "cast" && castFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
       // Phase 7: failed use() mirrors the cast refund policy.
       if (action.kind === "use" && useFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
+      if (action.kind === "pickup" && pickupFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
+      if (action.kind === "drop" && dropFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
       dispatch(world, s.runtimes, events);
@@ -116,6 +128,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     // Cloud phase: after effects, before next action. Emits its own events
     // (CloudTicked, CloudExpired) and may also emit EffectApplied/Died/etc.
     effectEvents.push(...tickClouds(world));
+    appendDeathDrops(world, effectEvents);
     if (effectEvents.length > 0) {
       dispatch(world, s.runtimes, effectEvents);
       if (effectEvents.some(e => e.type === "HeroDied" || e.type === "HeroExited")) {
@@ -126,6 +139,22 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     if (world.ended || world.aborted) return { events: effectEvents, done: true };
 
     if (!anyLiveWork(s)) return { events: [], done: true };
+  }
+}
+
+// Phase 9: for each Died in `events`, roll the victim's loot table and append
+// the resulting ItemDropped events in-place. Hero deaths never drop (no hero
+// loot table, and even with one the HeroDied path ends the room anyway).
+function appendDeathDrops(world: World, events: GameEvent[]): void {
+  // Snapshot the current length — drops we push must not themselves be
+  // re-scanned (they can't trigger deaths, but it also keeps intent clear).
+  const end = events.length;
+  for (let i = 0; i < end; i++) {
+    const ev = events[i]!;
+    if (ev.type !== "Died") continue;
+    const actor = world.actors.find(a => a.id === ev.actor);
+    if (!actor) continue;
+    events.push(...rollDeathDrops(world, actor));
   }
 }
 
@@ -200,6 +229,8 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "exit":     return doExit(world, self, action.door);
     case "halt":     return doHalt(world, self);
     case "use":      return doUse(world, self, action.item);
+    case "pickup":   return doPickup(world, self, action.target);
+    case "drop":     return doDrop(world, self, action.target);
   }
 }
 
@@ -276,6 +307,8 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "ItemEquipped": return `[t=${t}] ${event.actor}.itemEquipped — ${event.defId} (${event.slot})`;
     case "ItemUnequipped": return `[t=${t}] ${event.actor}.itemUnequipped — ${event.defId} (${event.slot})`;
     case "OnHitTriggered": return `[t=${t}] ${event.attacker}.onHit — ${event.defId} → ${event.defender}`;
+    case "ItemDropped": return `[t=${t}] ${event.actor ?? "?"}.itemDropped — ${event.defId} @(${event.pos.x},${event.pos.y}) [${event.source}]`;
+    case "ItemPickedUp": return `[t=${t}] ${event.actor}.itemPickedUp — ${event.defId}`;
   }
 }
 

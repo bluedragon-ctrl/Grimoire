@@ -89,6 +89,7 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
       items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
       clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
+      floorItems: (setup.room.floorItems ?? []).map(f => ({ ...f, pos: { ...f.pos } })),
     },
     actors: setup.actors.map(a => cloneActor(a)),
   };
@@ -117,7 +118,7 @@ function cloneActor(a: Actor): Actor {
   };
 }
 
-function buildWorld(setup: RoomSetup): World {
+function buildWorld(setup: RoomSetup, seed: number): World {
   return {
     tick: 0,
     room: {
@@ -126,11 +127,14 @@ function buildWorld(setup: RoomSetup): World {
       items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
       clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
+      floorItems: (setup.room.floorItems ?? []).map(f => ({ ...f, pos: { ...f.pos } })),
     },
     actors: setup.actors.map(a => cloneActor(a)),
     log: [],
     aborted: false,
     ended: false,
+    rngSeed: seed >>> 0,
+    floorSeq: 0,
   };
 }
 
@@ -145,7 +149,8 @@ export function runRoom(setup: RoomSetup, opts: RunOptions = {}): EngineHandle {
 export function startRoom(setup: RoomSetup, opts: RunOptions = {}): DebugHandle {
   const snapshot = snapshotSetup(setup);
 
-  let world: World = buildWorld(snapshot);
+  const seed = opts.seed ?? 1;
+  let world: World = buildWorld(snapshot, seed);
   let sched: SchedulerState = createScheduler(world, opts);
   let paused = false;
   let done = false;
@@ -197,7 +202,7 @@ export function startRoom(setup: RoomSetup, opts: RunOptions = {}): DebugHandle 
     },
 
     reset() {
-      world = buildWorld(snapshot);
+      world = buildWorld(snapshot, seed);
       sched = createScheduler(world, opts);
       paused = false;
       done = false;

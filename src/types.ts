@@ -157,6 +157,11 @@ export interface Door { dir: Direction; pos: Pos; }
 export interface Item { id: string; kind: string; pos: Pos; }
 export interface Chest { id: string; pos: Pos; opened: boolean; }
 
+// Phase 9: items that have been dropped onto the floor (loot drops, overflow
+// drops from equip swaps, or explicit hero drop()). Distinct from Room.items
+// (scripted/static items) so the loot flow never mutates the designer's list.
+export interface FloorItem { id: string; defId: string; pos: Pos; }
+
 export interface Room {
   w: number;
   h: number;
@@ -164,6 +169,7 @@ export interface Room {
   items: Item[];
   chests: Chest[];
   clouds?: Cloud[];
+  floorItems?: FloorItem[];
 }
 
 export interface World {
@@ -173,6 +179,12 @@ export interface World {
   log: EventLog;
   aborted: boolean;
   ended: boolean;    // room ended (hero exited / hero died / abort)
+  // Phase 9: deterministic RNG state. `rngSeed` is a uint32 mulberry32 state
+  // advanced by worldRandom(). Optional on hand-rolled test worlds; the
+  // engine's buildWorld() always initializes it from RunOptions.seed.
+  rngSeed?: number;
+  // Monotonic counter for minting unique FloorItem ids within a run.
+  floorSeq?: number;
 }
 
 // ──────────────────────────── Events / log ────────────────────────────
@@ -202,7 +214,9 @@ export type GameEvent =
   | { type: "ItemUsed"; actor: string; item: string; defId: string }
   | { type: "ItemEquipped"; actor: string; item: string; defId: string; slot: Slot }
   | { type: "ItemUnequipped"; actor: string; item: string; defId: string; slot: Slot }
-  | { type: "OnHitTriggered"; attacker: string; defender: string; item: string; defId: string };
+  | { type: "OnHitTriggered"; attacker: string; defender: string; item: string; defId: string }
+  | { type: "ItemDropped"; actor: string | null; item: string; defId: string; pos: Pos; source: "death" | "drop" | "overflow" }
+  | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -216,6 +230,8 @@ export type PendingAction =
   | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "use"; cost: number; item: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "pickup"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> };
 
