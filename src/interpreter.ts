@@ -14,7 +14,7 @@ import { DSLRuntimeError } from "./lang/errors.js";
 // Command names that, when used at statement level, yield a PendingAction.
 const COMMAND_NAMES = new Set([
   "approach", "flee", "attack", "cast", "wait", "exit", "halt", "use",
-  "pickup", "drop",
+  "pickup", "drop", "summon",
 ]);
 
 // ──────────────────────────── environment ────────────────────────────
@@ -294,6 +294,7 @@ function buildPendingAction(name: string, args: unknown[]): PendingAction {
     case "use":      return { kind: "use",      cost: COST.use,      item: args[0] };
     case "pickup":   return { kind: "pickup",   cost: COST.pickup,   target: args[0] };
     case "drop":     return { kind: "drop",     cost: COST.drop,     target: args[0] };
+    case "summon":   return { kind: "summon",   cost: COST.summon,   template: String(args[0] ?? ""), target: args[1] };
   }
   // Unreachable: COMMAND_NAMES is the authoritative set.
   throw new Error(`unknown command ${name}`);

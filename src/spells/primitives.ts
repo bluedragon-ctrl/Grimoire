@@ -10,6 +10,8 @@
 import type { Actor, Cloud, GameEvent, Pos, World, EffectKind } from "../types.js";
 import { scale, scaleRadius } from "../content/scaling.js";
 import { applyEffect } from "../effects.js";
+import { createActor, MONSTER_TEMPLATES } from "../content/monsters.js";
+import { DSLRuntimeError } from "../lang/errors.js";
 
 export type PrimitiveTargetType = "actor" | "tile" | "self";
 export type PrimitiveName =
@@ -218,7 +220,48 @@ const explode: Primitive = {
 const summon: Primitive = {
   name: "summon",
   targetType: "tile",
-  execute(_world, caster) { return [stubActionFailed(caster, "summon")]; },
+  execute(world, caster, target, args) {
+    const pos = asPos(target);
+    if (!pos) return [stubActionFailed(caster, "summon")];
+
+    // Tile must be in-bounds and unoccupied.
+    if (pos.x < 0 || pos.y < 0 || pos.x >= world.room.w || pos.y >= world.room.h) {
+      return [{ type: "ActionFailed", actor: caster.id, action: "cast", reason: "target tile is out of bounds" }];
+    }
+    const occupied = world.actors.some(a => a.alive && a.pos.x === pos.x && a.pos.y === pos.y);
+    if (occupied) {
+      return [{ type: "ActionFailed", actor: caster.id, action: "cast", reason: "target tile is occupied" }];
+    }
+
+    // Template lookup — missing template is a content error, throw DSLRuntimeError.
+    const templateId = String(args.template ?? "");
+    const tpl = MONSTER_TEMPLATES[templateId];
+    if (!tpl) throw new DSLRuntimeError(`Unknown monster template '${templateId}'.`);
+
+    // Per-caster cap: max(1, floor(int/4)).
+    const cap = Math.max(1, Math.floor((caster.int ?? 0) / 4));
+    const owned = world.actors.filter(a => a.alive && a.owner === caster.id).length;
+    if (owned >= cap) {
+      return [{ type: "ActionFailed", actor: caster.id, action: "cast", reason: "summon cap reached" }];
+    }
+
+    // Spawn the new actor with caster's faction, ownership, and summoned flag.
+    const n = (world.actorSeq ?? 0) + 1;
+    world.actorSeq = n;
+    const newActor = createActor(templateId, pos, `s${n}`);
+    newActor.faction = caster.faction ?? (caster.isHero ? "player" : "enemy");
+    newActor.owner = caster.id;
+    newActor.summoned = true;
+    world.actors.push(newActor);
+
+    const visual = typeof args.visual === "string" ? args.visual : "summon_portal";
+    const element = typeof args.element === "string" ? args.element : "arcane";
+
+    return [
+      { type: "Summoned", actor: newActor.id, summoner: caster.id, template: templateId, pos: { ...pos } },
+      { type: "VisualBurst", pos: { ...pos }, visual, element },
+    ];
+  },
 };
 
 const teleport: Primitive = {
