@@ -41,7 +41,7 @@ const burning: EffectSpec = {
     if (actor.hp <= 0 && actor.alive) {
       actor.alive = false;
       events.push({ type: "Died", actor: actor.id });
-      if (actor.kind === "hero") {
+      if (actor.isHero) {
         events.push({ type: "HeroDied", actor: actor.id });
       }
     }
@@ -101,7 +101,7 @@ const poison: EffectSpec = {
     if (actor.hp <= 0 && actor.alive) {
       actor.alive = false;
       events.push({ type: "Died", actor: actor.id });
-      if (actor.kind === "hero") events.push({ type: "HeroDied", actor: actor.id });
+      if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
     }
     return events;
   },

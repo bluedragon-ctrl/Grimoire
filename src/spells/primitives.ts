@@ -62,7 +62,7 @@ const project: Primitive = {
     if (t.hp <= 0 && t.alive) {
       t.alive = false;
       events.push({ type: "Died", actor: t.id });
-      if (t.kind === "hero") events.push({ type: "HeroDied", actor: t.id });
+      if (t.isHero) events.push({ type: "HeroDied", actor: t.id });
     }
     return events;
   },

@@ -46,9 +46,10 @@ function targetKindMatches(caster: Actor, spell: Spell, target: Actor | null): b
 }
 
 function sameFaction(a: Actor, b: Actor): boolean {
-  // Phase 6: hero = player faction; goblin = enemy faction.
-  const fa = a.kind === "hero" ? "player" : "enemy";
-  const fb = b.kind === "hero" ? "player" : "enemy";
+  // Phase 11: faction is derived from `isHero` only. Hero = player faction;
+  // anything else = enemy faction. No more kind-string inspection.
+  const fa = a.isHero ? "player" : "enemy";
+  const fb = b.isHero ? "player" : "enemy";
   return fa === fb;
 }
 
