@@ -159,7 +159,8 @@ function appendDeathDrops(world: World, events: GameEvent[]): void {
 }
 
 function anyLiveWork(s: SchedulerState): boolean {
-  return s.runtimes.some(r => r.actor.alive && !r.halted && r.stack.length > 0);
+  // A halted actor with an active handler frame still has work to do.
+  return s.runtimes.some(r => r.actor.alive && r.stack.length > 0);
 }
 
 export function runLoop(world: World, opts: RunOptions = {}): void {
@@ -179,7 +180,10 @@ function activeFrame(rt: ActorRuntime): Frame | null {
 // ──────────────────────────── generator advancement ────────────────────────────
 
 function ensurePending(rt: ActorRuntime): void {
-  if (rt.halted || !rt.actor.alive) return;
+  // NB: `halted` means main ran halt(); per engine-design.md § Events and
+  // handler preemption, handlers must still fire. So we only gate on alive —
+  // a handler frame pushed onto a halted actor's stack still advances.
+  if (!rt.actor.alive) return;
   while (true) {
     const frame = activeFrame(rt);
     if (!frame) {

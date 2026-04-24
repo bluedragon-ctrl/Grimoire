@@ -104,7 +104,7 @@ function resolveTarget(world, actor, ref): Actor | Tile | null
 
 MVP: returns `null` on failure, command emits `ActionFailed { reason }`, action still consumes its cost (so a bad script can't starve the scheduler). Swapping to `"throw"` later means raising inside `resolveTarget` and letting the interpreter surface it as a runtime error event; `"cancel"` means returning a sentinel the scheduler treats as a no-cost retry. One file, one function — future swap is a line change.
 
-Queries (`enemies()`, `items()`, `doors()`, `hp()`, `me`) are zero-cost: they run inline during expression eval, return arrays sorted by Manhattan distance from `actor.pos`. They never consume energy and never yield.
+Queries (`enemies()`, `items()`, `doors()`, `hp()`, `me`, `distance()`, `adjacent()`, `can_cast()`, …) are zero-cost: they run inline during expression eval, return arrays sorted by Manhattan distance from `actor.pos`. They never consume energy and never yield. The full set is catalogued in `dsl-queries.md`.
 
 ## Events and handler preemption
 
@@ -120,6 +120,7 @@ Dispatch rules:
 - If an actor is already running a handler when another event arrives, queue it. One handler at a time per actor.
 - When a handler's generator returns, pop it: resume the suspended generator underneath (main or a prior handler). Drain the queue before yielding control back to the scheduler's "advance generator" step.
 - Main script does not observe events directly — handlers are the only interface. Keeps the main/handler boundary clean.
+- Dispatch is symmetric across actors: handlers fire for any actor with a matching `on <event>` block — hero and monsters alike. `halt()` ends main but does not disable handlers; a halted actor keeps receiving events until it dies.
 
 Events wired in MVP: `hit` (emitted, handlers dispatched). `see` has plumbing (event type, dispatch path) but nothing emits it yet — parser / vision system will.
 

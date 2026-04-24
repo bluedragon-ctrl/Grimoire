@@ -5,7 +5,7 @@ import type {
   Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode,
 } from "./types.js";
 import { hasEffect, listEffects } from "./effects.js";
-import { castSpell } from "./spells/cast.js";
+import { castSpell, validateCast } from "./spells/cast.js";
 import { useItem, onHitHook } from "./items/execute.js";
 import { doPickup, doDrop } from "./items/loot.js";
 
@@ -147,6 +147,20 @@ export const queries = {
     const pb = resolvePos(_world, b);
     if (!pa || !pb) return 0;
     return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+  },
+  adjacent: (world: World, _self: Actor, a: unknown, b: unknown): boolean => {
+    const pa = resolvePos(world, a);
+    const pb = resolvePos(world, b);
+    if (!pa || !pb) return false;
+    const d = Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+    return d === 1;
+  },
+  can_cast: (world: World, self: Actor, name: unknown, target?: unknown): boolean => {
+    if (typeof name !== "string") return false;
+    const v = validateCast(world, self, name, target, {
+      skipTarget: target === undefined || target === null,
+    });
+    return v.ok;
   },
   has_effect: (world: World, _self: Actor, target: unknown, kind: unknown): boolean => {
     const a = resolveActor(world, target);

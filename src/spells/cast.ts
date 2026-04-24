@@ -52,12 +52,20 @@ function sameFaction(a: Actor, b: Actor): boolean {
   return fa === fb;
 }
 
-export function castSpell(
+// Shared validation for steps 1–5. Returns a resolved target on success, or a
+// reason string on failure. `skipTarget: true` skips the target-type/range
+// checks (used by can_cast(name) with no target argument).
+export type ValidateCastResult =
+  | { ok: true; spell: Spell; targetActor: Actor | null; targetPos: Pos | null }
+  | { ok: false; reason: string };
+
+export function validateCast(
   world: World,
   caster: Actor,
   spellName: string,
   targetRef: unknown,
-): GameEvent[] {
+  opts: { skipTarget?: boolean } = {},
+): ValidateCastResult {
   // 1. Known spell?
   const spell = SPELLS[spellName];
   if (!spell) {
@@ -65,52 +73,66 @@ export function castSpell(
     const msg = hint
       ? `Unknown spell '${spellName}'. Did you mean '${hint}'?`
       : `Unknown spell '${spellName}'.`;
-    return [fail(caster, msg)];
+    return { ok: false, reason: msg };
   }
 
   // 2. Caster has learned it?
   const known = caster.knownSpells ?? [];
   if (!known.includes(spellName)) {
-    return [fail(caster, `You haven't learned '${spellName}' yet.`)];
+    return { ok: false, reason: `You haven't learned '${spellName}' yet.` };
   }
 
-  // 3–4. Resolve target + type/range.
   let targetActor: Actor | null = null;
   let targetPos: Pos | null = null;
 
-  if (spell.targetType === "self") {
-    targetActor = caster;
-    targetPos = { ...caster.pos };
-  } else if (spell.targetType === "tile") {
-    // Accept actor (resolve to pos) or bare pos.
-    const a = resolveTargetActor(world, targetRef);
-    if (a) targetPos = { ...a.pos };
-    else targetPos = resolvePos(targetRef);
-    if (!targetPos) {
-      return [fail(caster, `${capitalize(spellName)} needs a tile target.`)];
+  if (!opts.skipTarget) {
+    // 3–4. Resolve target + type/range.
+    if (spell.targetType === "self") {
+      targetActor = caster;
+      targetPos = { ...caster.pos };
+    } else if (spell.targetType === "tile") {
+      const a = resolveTargetActor(world, targetRef);
+      if (a) targetPos = { ...a.pos };
+      else targetPos = resolvePos(targetRef);
+      if (!targetPos) {
+        return { ok: false, reason: `${capitalize(spellName)} needs a tile target.` };
+      }
+    } else {
+      targetActor = resolveTargetActor(world, targetRef);
+      if (!targetKindMatches(caster, spell, targetActor)) {
+        const need = spell.targetType === "ally" ? "an ally" : spell.targetType === "enemy" ? "an enemy" : "a valid target";
+        return { ok: false, reason: `${capitalize(spellName)} needs ${need} target.` };
+      }
+      targetPos = targetActor!.pos;
     }
-  } else {
-    targetActor = resolveTargetActor(world, targetRef);
-    if (!targetKindMatches(caster, spell, targetActor)) {
-      const need = spell.targetType === "ally" ? "an ally" : spell.targetType === "enemy" ? "an enemy" : "a valid target";
-      return [fail(caster, `${capitalize(spellName)} needs ${need} target.`)];
-    }
-    targetPos = targetActor!.pos;
-  }
 
-  // 4. Range.
-  const dist = chebyshev(caster.pos, targetPos!);
-  if (dist > spell.range) {
-    return [fail(caster, `Target is out of range (max ${spell.range} tiles).`)];
+    const dist = chebyshev(caster.pos, targetPos!);
+    if (dist > spell.range) {
+      return { ok: false, reason: `Target is out of range (max ${spell.range} tiles).` };
+    }
   }
 
   // 5. Mana.
   const mp = caster.mp ?? 0;
   if (mp < spell.mpCost) {
-    return [fail(caster, `Not enough mana (needs ${spell.mpCost}, you have ${mp}).`)];
+    return { ok: false, reason: `Not enough mana (needs ${spell.mpCost}, you have ${mp}).` };
   }
 
+  return { ok: true, spell, targetActor, targetPos };
+}
+
+export function castSpell(
+  world: World,
+  caster: Actor,
+  spellName: string,
+  targetRef: unknown,
+): GameEvent[] {
+  const v = validateCast(world, caster, spellName, targetRef);
+  if (!v.ok) return [fail(caster, v.reason)];
+  const { spell, targetActor, targetPos } = v;
+
   // 6. Deduct mp, emit Cast, run body ops.
+  const mp = caster.mp ?? 0;
   caster.mp = mp - spell.mpCost;
 
   // Cast event: amount defaults to 0 (kept for log compat; primitives emit
