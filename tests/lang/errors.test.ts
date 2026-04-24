@@ -1,6 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parse } from "../../src/lang/index.js";
 import { ParseError, formatError, didYouMean } from "../../src/lang/errors.js";
+import { runRoom } from "../../src/engine.js";
+import { queries } from "../../src/commands.js";
+import type { Actor, Room } from "../../src/types.js";
+import {
+  script, funcDef, exprStmt, call, assign, ident, lit, cHalt,
+} from "../../src/ast-helpers.js";
+
+function mkRoom(): Room {
+  return { w: 5, h: 5, doors: [], items: [], chests: [] };
+}
+function mkHero(scriptArg: ReturnType<typeof script>): Actor {
+  return {
+    id: "h", kind: "hero", isHero: true,
+    hp: 10, maxHp: 10, speed: 10, energy: 0, alive: true,
+    pos: { x: 0, y: 0 }, script: scriptArg,
+    atk: 3, def: 0, int: 0,
+  };
+}
 
 function errOf(src: string): ParseError {
   try { parse(src); } catch (e) { if (e instanceof ParseError) return e; throw e; }
@@ -70,5 +88,41 @@ describe("parse errors", () => {
     expect(formatted).toContain("abcdefg");
     expect(formatted).toContain("    ^");
     expect(formatted).toContain("hint: try again");
+  });
+});
+
+describe("DSL runtime errors", () => {
+  it("user func with action in expression position → ScriptError in log, no crash", () => {
+    // A function that contains attack() called as an expression value.
+    // `x = my_attack(enemy)` — callUserFunc should throw DSLRuntimeError,
+    // which the scheduler catches and converts to a ScriptError log entry.
+    const hero = mkHero(script(
+      // func my_attack(): attack(enemies()[0])
+      funcDef("my_attack", [], [
+        exprStmt(call("attack", call("enemies", ident("0")))),
+      ]),
+      // x = my_attack()  ← expression position
+      assign(ident("x"), call("my_attack")),
+      cHalt(),
+    ));
+    const { log } = runRoom({ room: mkRoom(), actors: [hero] }, { seed: 1, maxTicks: 20 });
+    const errors = log.map(e => e.event).filter(e => e.type === "ScriptError");
+    expect(errors.length).toBeGreaterThan(0);
+    const err = errors[0] as { type: "ScriptError"; actor: string; message: string };
+    expect(err.actor).toBe("h");
+    expect(err.message).toMatch(/expression position/);
+  });
+
+  it("non-DSL JS error thrown from a query propagates out of runRoom", () => {
+    // Temporarily replace enemies() so it throws a plain Error.
+    // The scheduler must NOT swallow this — it should propagate.
+    const orig = (queries as Record<string, unknown>)["enemies"];
+    (queries as Record<string, unknown>)["enemies"] = () => { throw new Error("query_boom"); };
+    try {
+      const hero = mkHero(script(exprStmt(call("enemies")), cHalt()));
+      expect(() => runRoom({ room: mkRoom(), actors: [hero] }, { seed: 1, maxTicks: 20 })).toThrow("query_boom");
+    } finally {
+      (queries as Record<string, unknown>)["enemies"] = orig;
+    }
   });
 });
