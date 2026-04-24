@@ -113,6 +113,9 @@ export interface Actor {
   visual?: string;
   baseVisual?: string;
   colors?: Record<string, string>;
+  // Phase 13: damage-absorption pool added by the shield effect. Drained before
+  // hp on incoming physical hits. Zeroed on shield expiry.
+  shieldHp?: number;
 }
 
 // ──────────────────────────── Items (Phase 7) ────────────────────────────
@@ -156,7 +159,10 @@ export interface Cloud {
 
 // ──────────────────────────── Effects ────────────────────────────
 
-export type EffectKind = "burning" | "regen" | "haste" | "slow" | "poison";
+export type EffectKind =
+  | "burning" | "regen" | "haste" | "slow" | "poison"
+  | "chill" | "shock" | "expose" | "might" | "iron_skin"
+  | "mana_regen" | "mana_burn" | "power" | "shield";
 
 export interface Effect {
   id: string;
@@ -216,7 +222,7 @@ export interface World {
 export type GameEvent =
   | { type: "Moved"; actor: string; from: Pos; to: Pos }
   | { type: "Attacked"; attacker: string; defender: string; damage: number }
-  | { type: "Hit"; actor: string; attacker: string; damage: number }
+  | { type: "Hit"; actor: string; attacker: string; damage: number; shieldAbsorbed?: number }
   | { type: "Missed"; actor: string; reason: string }
   | { type: "Cast"; actor: string; spell: string; target?: string; amount: number; visual?: string; element?: string }
   | { type: "Healed"; actor: string; amount: number }
@@ -231,6 +237,7 @@ export type GameEvent =
   | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: string }
   | { type: "EffectTick"; actor: string; kind: EffectKind; magnitude?: number }
   | { type: "EffectExpired"; actor: string; kind: EffectKind }
+  | { type: "ManaChanged"; actor: string; amount: number }
   | { type: "CloudSpawned"; id: string; pos: Pos; kind: string; visual?: string; element?: string }
   | { type: "CloudTicked"; id: string; appliedTo: string[] }
   | { type: "CloudExpired"; id: string }
