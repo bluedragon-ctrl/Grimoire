@@ -18,7 +18,7 @@ function mkHero(over: Partial<Actor> & Pick<Actor, "id" | "pos">): Actor {
     hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
     script: script(cHalt()),
     mp: 20, maxMp: 20, atk: 3, def: 0, int: 0, effects: [],
-    knownSpells: ["bolt", "heal", "firebolt", "chill", "bless", "firewall"],
+    knownSpells: ["bolt", "heal", "firebolt", "frost_lance", "bless", "firewall"],
     ...over,
   };
 }
@@ -53,16 +53,16 @@ describe("visual metadata on events", () => {
     expect(spawn.element).toBe("fire");
   });
 
-  it("stub explode emits ActionFailed + VisualBurst with provided visual", () => {
+  it("explode emits VisualBurst with provided visual and element", () => {
     const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
     const w = mkWorld([h]);
     const events = PRIMITIVES.explode.execute(w, h, { x: 2, y: 2 }, {
-      visual: "burst_ember", element: "fire",
+      radius: 1, damage: 3, visual: "explosion_fire", element: "fire",
     });
-    const failed = events.find(e => e.type === "ActionFailed") as any;
+    expect(events.find(e => e.type === "ActionFailed")).toBeUndefined();
     const burst = events.find(e => e.type === "VisualBurst") as any;
-    expect(failed.reason).toContain("not implemented");
-    expect(burst.visual).toBe("burst_ember");
+    expect(burst.visual).toBe("explosion_fire");
     expect(burst.element).toBe("fire");
+    expect(burst.pos).toEqual({ x: 2, y: 2 });
   });
 });
