@@ -74,6 +74,16 @@ function validateSpellVisuals(): void {
             `Spell '${id}' op 'explode': visual '${visual}' not found in BURST_PRESETS.`,
           );
         }
+      } else if (op.op === "inflict" || op.op === "heal") {
+        // inflict/heal visuals are optional; when present they must resolve in
+        // PROJECTILE_PRESETS (for ranged inflict like curse) or BURST_PRESETS
+        // (for self-buff spells like might/shield).
+        const visual = op.args.visual as string | undefined;
+        if (visual && !PROJECTILE_PRESETS[visual] && !BURST_PRESETS[visual]) {
+          throw new Error(
+            `Spell '${id}' op '${op.op}': visual '${visual}' not found in PROJECTILE_PRESETS or BURST_PRESETS.`,
+          );
+        }
       }
     }
   }
