@@ -145,6 +145,14 @@ const RAW_TEMPLATES: MonsterTemplate[] = [
   },
 ];
 
+// ──────────────────────────── registry validation ────────────────────────────
+// Validate required fields at module load — a missing field is a content bug,
+// not a runtime default.
+for (const tpl of RAW_TEMPLATES) {
+  if (!tpl.visual) throw new Error(`Monster template '${tpl.id}': missing required field 'visual'.`);
+  if (tpl.stats.atk === undefined) throw new Error(`Monster template '${tpl.id}': missing required stat 'stats.atk'.`);
+}
+
 // ──────────────────────────── parse cache ────────────────────────────
 // Parse every AI source once; cache the Script so each createActor() call
 // attaches the same immutable AST. Parse errors throw on import — we want

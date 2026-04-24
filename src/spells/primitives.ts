@@ -100,8 +100,11 @@ const heal: Primitive = {
   },
 };
 
-let nextCloudId = 1;
-function genCloudId(): string { return `cl${nextCloudId++}`; }
+function genCloudId(world: World): string {
+  const n = (world.primitiveSeq ?? 0) + 1;
+  world.primitiveSeq = n;
+  return `cl${n}`;
+}
 
 const spawn_cloud: Primitive = {
   name: "spawn_cloud",
@@ -113,7 +116,7 @@ const spawn_cloud: Primitive = {
     const baseDur = Number(args.duration ?? 0);
     const duration = scale(baseDur, caster.int ?? 0);
     const cloud: Cloud = {
-      id: genCloudId(),
+      id: genCloudId(world),
       pos: { ...pos },
       kind,
       duration,

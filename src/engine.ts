@@ -144,6 +144,9 @@ function buildWorld(setup: RoomSetup, seed: number): World {
     ended: false,
     rngSeed: seed >>> 0,
     floorSeq: 0,
+    effectSeq: 0,
+    primitiveSeq: 0,
+    itemSeq: 0,
   };
 }
 

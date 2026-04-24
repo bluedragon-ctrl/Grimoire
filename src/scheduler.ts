@@ -8,6 +8,7 @@ import type {
   Actor, World, PendingAction, GameEvent, EventLog, SourceLoc,
 } from "./types.js";
 import { compile, type CompiledScript } from "./interpreter.js";
+import { DSLRuntimeError } from "./lang/errors.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
   doPickup, doDrop,
@@ -53,7 +54,7 @@ export function createScheduler(world: World, opts: RunOptions = {}): SchedulerS
     const mainFrame: Frame = { gen: compiled.makeMain(), pending: null };
     return { actor, compiled, stack: [mainFrame], eventQueue: [], halted: false };
   });
-  for (const rt of runtimes) ensurePending(rt);
+  for (const rt of runtimes) ensurePending(rt, world);
   return { runtimes, opts, maxTicks: opts.maxTicks ?? 5000, lastFiredLoc: null };
 }
 
@@ -109,7 +110,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       if (action.kind === "halt") { rt.stack = []; rt.halted = true; }
       if (!rt.actor.alive)        { rt.stack = []; rt.halted = true; }
 
-      for (const r of s.runtimes) ensurePending(r);
+      for (const r of s.runtimes) ensurePending(r, world);
       const done = world.ended || world.aborted || !anyLiveWork(s);
       return { events, done };
     }
@@ -135,7 +136,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
         world.ended = true;
       }
     }
-    for (const r of s.runtimes) ensurePending(r);
+    for (const r of s.runtimes) ensurePending(r, world);
     if (world.ended || world.aborted) return { events: effectEvents, done: true };
 
     if (!anyLiveWork(s)) return { events: [], done: true };
@@ -179,7 +180,7 @@ function activeFrame(rt: ActorRuntime): Frame | null {
 
 // ──────────────────────────── generator advancement ────────────────────────────
 
-function ensurePending(rt: ActorRuntime): void {
+function ensurePending(rt: ActorRuntime, world: World): void {
   // NB: `halted` means main ran halt(); per engine-design.md § Events and
   // handler preemption, handlers must still fire. So we only gate on alive —
   // a handler frame pushed onto a halted actor's stack still advances.
@@ -193,7 +194,16 @@ function ensurePending(rt: ActorRuntime): void {
     }
     if (frame.pending !== null) return;
     let r: IteratorResult<PendingAction, void>;
-    try { r = frame.gen.next(); } catch { r = { done: true, value: undefined }; }
+    try {
+      r = frame.gen.next();
+    } catch (e) {
+      if (e instanceof DSLRuntimeError) {
+        world.log.push({ t: world.tick, event: { type: "ScriptError", actor: rt.actor.id, message: e.message } });
+        r = { done: true, value: undefined };
+      } else {
+        throw e;
+      }
+    }
     if (r.done) {
       rt.stack.pop();
       const poppedWasHandler = rt.stack.length >= 1;

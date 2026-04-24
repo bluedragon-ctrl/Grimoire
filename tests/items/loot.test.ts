@@ -21,7 +21,7 @@ function mkWorld(actors: Actor[], room?: Partial<Room>): World {
 function mkGob(over: Partial<Actor> = {}): Actor {
   return {
     id: "g", kind: "goblin", hp: 0, maxHp: 5, speed: 10, energy: 0, alive: false,
-    pos: { x: 2, y: 2 }, script: script(cHalt()), ...over,
+    pos: { x: 2, y: 2 }, script: script(cHalt()), lootTable: "goblin_loot", ...over,
   };
 }
 function mkHero(over: Partial<Actor> = {}): Actor {
@@ -78,8 +78,9 @@ describe("rollDeathDrops", () => {
     expect(rollDeathDrops(w, h)).toEqual([]);
   });
 
-  it("registry key aligns with actor kinds present in the demo", () => {
-    expect(LOOT_TABLES["goblin"]).toBeTruthy();
+  it("legacy 'goblin' alias is removed; canonical 'goblin_loot' key exists", () => {
+    expect(LOOT_TABLES["goblin"]).toBeUndefined();
+    expect(LOOT_TABLES["goblin_loot"]).toBeTruthy();
   });
 });
 
@@ -105,8 +106,8 @@ describe("spawnOverflowDrop", () => {
 
   it("end-to-end: hero kills goblin, walks to drop, picks up — with a forced-drop table", () => {
     // Temporarily pin goblin loot to 100% so this test is seed-insensitive.
-    const prev = LOOT_TABLES["goblin"];
-    LOOT_TABLES["goblin"] = [{ defId: "health_potion", chance: 1 }];
+    const prev = LOOT_TABLES["goblin_loot"];
+    LOOT_TABLES["goblin_loot"] = [{ defId: "health_potion", chance: 1 }];
     try {
       const enemies0 = member(call("enemies"), "length");
       const firstEnemy = index(call("enemies"), lit(0));
@@ -135,6 +136,7 @@ describe("spawnOverflowDrop", () => {
       const gob: Actor = {
         id: "g", kind: "goblin", hp: 2, maxHp: 2, speed: 10, energy: 0,
         pos: { x: 3, y: 1 }, script: script(cHalt()), alive: true,
+        lootTable: "goblin_loot",  // must be explicit now — no actor.kind fallback
       };
       const room: Room = { w: 6, h: 6, doors: [], items: [], chests: [] };
       const h = runRoom({ room, actors: [hero, gob] }, { seed: 1, maxTicks: 500 });
@@ -146,7 +148,7 @@ describe("spawnOverflowDrop", () => {
       const heroAfter = h.world.actors.find(a => a.id === "hero")!;
       expect(heroAfter.inventory!.consumables.some(i => i.defId === "health_potion")).toBe(true);
     } finally {
-      LOOT_TABLES["goblin"] = prev!;
+      LOOT_TABLES["goblin_loot"] = prev!;
     }
   });
 
