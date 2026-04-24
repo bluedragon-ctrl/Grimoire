@@ -230,4 +230,50 @@ describe("WireRendererAdapter — Phase 5/6/7 events", () => {
     expect(effs[1]!.kind).toBe("area");
     expect(effs[1]!.at).toEqual({ x: 3, y: 3 });
   });
+
+  it("Cast heal with visual='bolt_green' pushes a green bolt preset", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 2, y: 1 })]);
+
+    adapter.apply({ type: "Cast", actor: "hero", spell: "heal", target: "g1", amount: 5, visual: "bolt_green" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.kind).toBe("projectile");
+    expect(eff.name).toBe("bolt");
+    expect(eff.colors?.color).toBe("#44cc66");
+  });
+
+  it("Cast bless with visual='bolt_gold' pushes a gold bolt preset", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero({ x: 1, y: 1 }), goblin("g1", { x: 2, y: 1 })]);
+
+    adapter.apply({ type: "Cast", actor: "hero", spell: "bless", target: "g1", amount: 0, visual: "bolt_gold" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.kind).toBe("projectile");
+    expect(eff.name).toBe("bolt");
+    expect(eff.colors?.color).toBe("#ffcc00");
+  });
+
+  it("EffectApplied regen pushes a 'healing' overlay with green colors", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "EffectApplied", actor: "hero", kind: "regen" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.name).toBe("healing");
+    expect(eff.colors?.color).toBe("#66ff99");
+  });
+
+  it("EffectApplied poison pushes a 'dripping' overlay", () => {
+    const { adapter } = makeAdapter();
+    mount(adapter, [hero()]);
+
+    adapter.apply({ type: "EffectApplied", actor: "hero", kind: "poison" });
+
+    const eff = adapter.getState()!.activeEffects[0]!;
+    expect(eff.name).toBe("dripping");
+    expect(eff.effectKind).toBe("poison");
+  });
 });
