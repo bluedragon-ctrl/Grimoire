@@ -1,22 +1,23 @@
-// Tile drawing — floor, wall, doors, and all variants.
-// drawStairs is exported for use by render-objects.js (stairs are dungeon objects).
-// Each drawer takes (ctx, gx, gy, col?) where col is an optional partial color override.
-// Defaults come from TILE_DEFS.defaultColors (config/tiles.js).
-//
-// Color convention (all tiles):
-//   col1 — boundary / structure  (grid lines, border rect, wall outline)
-//   col2 — decorative content    (cracks, moss, pattern, rune, rivets)
-//   Background fill on floor tiles is always hardcoded black — not a color slot.
+// Typed tile-draw registry.
+// Extracted from vendor/ui/render-tiles.js; implementations are identical.
+// Adds stairs_down / stairs_up to TILE_RENDERERS and a throwing drawTile.
 
-import { TILE, C, wire, lighten } from './render-context.js';
-import { TILE_DEFS } from '../config/tiles.js';
+import { TILE, C, wire, lighten } from "./context.js";
+import { TILE_DEFS } from "./vendor/config/tiles.js";
 
-const FLOOR_BG = '#0a0600';
+type Ctx = CanvasRenderingContext2D;
 
-// ── Base floor / wall ─────────────────────────────────────
+export type TileColors = { col1?: string; col2?: string };
 
-export function drawFloorTile(ctx, gx, gy, col) {
-  const col1 = col?.col1 ?? TILE_DEFS.floor.defaultColors.col1;
+/** Signature shared by all tile-draw functions. */
+export type TileDraw = (ctx: Ctx, gx: number, gy: number, colors?: TileColors) => void;
+
+const FLOOR_BG = "#0a0600";
+
+// ── Base floor / wall ──────────────────────────────────────────────────────
+
+export function drawFloorTile(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const col1 = col?.col1 ?? (TILE_DEFS as any).floor.defaultColors.col1 as string;
   const x = gx * TILE, y = gy * TILE;
 
   ctx.fillStyle = FLOOR_BG;
@@ -35,8 +36,8 @@ export function drawFloorTile(ctx, gx, gy, col) {
   }));
 }
 
-export function drawWallTile(ctx, gx, gy, col) {
-  const col1 = col?.col1 ?? TILE_DEFS.wall.defaultColors.col1;
+export function drawWallTile(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const col1 = col?.col1 ?? (TILE_DEFS as any).wall.defaultColors.col1 as string;
   const x = gx * TILE, y = gy * TILE;
 
   wire(ctx, col1, 3);
@@ -54,11 +55,11 @@ export function drawWallTile(ctx, gx, gy, col) {
   ctx.stroke();
 }
 
-// ── Floor variants ────────────────────────────────────────
+// ── Floor variants ─────────────────────────────────────────────────────────
 
-export function drawFloorCracked(ctx, gx, gy, col) {
-  const d = TILE_DEFS.floor_cracked.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawFloorCracked(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).floor_cracked.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   ctx.fillStyle = FLOOR_BG; ctx.fillRect(x, y, TILE, TILE);
   wire(ctx, col1, 2);
@@ -72,9 +73,9 @@ export function drawFloorCracked(ctx, gx, gy, col) {
   }
 }
 
-export function drawFloorMosaic(ctx, gx, gy, col) {
-  const d = TILE_DEFS.floor_mosaic.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawFloorMosaic(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).floor_mosaic.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   ctx.fillStyle = FLOOR_BG; ctx.fillRect(x, y, TILE, TILE);
   wire(ctx, col1, 2);
@@ -87,9 +88,9 @@ export function drawFloorMosaic(ctx, gx, gy, col) {
   }
 }
 
-export function drawFloorDirt(ctx, gx, gy, col) {
-  const d = TILE_DEFS.floor_dirt.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawFloorDirt(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).floor_dirt.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   ctx.fillStyle = FLOOR_BG; ctx.fillRect(x, y, TILE, TILE);
   wire(ctx, col1, 1.5);
@@ -100,9 +101,9 @@ export function drawFloorDirt(ctx, gx, gy, col) {
   }
 }
 
-export function drawFloorMossy(ctx, gx, gy, col) {
-  const d = TILE_DEFS.floor_mossy.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawFloorMossy(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).floor_mossy.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   ctx.fillStyle = FLOOR_BG; ctx.fillRect(x, y, TILE, TILE);
   ctx.strokeStyle = col1; ctx.lineWidth = 0.5; ctx.shadowBlur = 0;
@@ -127,9 +128,9 @@ export function drawFloorMossy(ctx, gx, gy, col) {
   ctx.globalAlpha = 1;
 }
 
-export function drawFloorRune(ctx, gx, gy, col) {
-  const d = TILE_DEFS.floor_rune.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawFloorRune(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).floor_rune.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   ctx.fillStyle = FLOOR_BG; ctx.fillRect(x, y, TILE, TILE);
   wire(ctx, col1, 2);
@@ -151,10 +152,10 @@ export function drawFloorRune(ctx, gx, gy, col) {
   ctx.globalAlpha = 1;
 }
 
-// ── Wall variants ────────────────────────────────────────
+// ── Wall variants ──────────────────────────────────────────────────────────
 
-export function drawWallRough(ctx, gx, gy, col) {
-  const col1 = col?.col1 ?? TILE_DEFS.wall_rough.defaultColors.col1;
+export function drawWallRough(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const col1 = col?.col1 ?? (TILE_DEFS as any).wall_rough.defaultColors.col1 as string;
   const x = gx * TILE, y = gy * TILE;
   wire(ctx, col1, 4);
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
@@ -167,9 +168,9 @@ export function drawWallRough(ctx, gx, gy, col) {
   ctx.beginPath(); ctx.moveTo(x + 38, y + TILE / 2); ctx.lineTo(x + 40, y + TILE - 2); ctx.stroke();
 }
 
-export function drawWallReinforced(ctx, gx, gy, col) {
-  const d = TILE_DEFS.wall_reinforced.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawWallReinforced(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).wall_reinforced.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   wire(ctx, col1, 4);
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
@@ -185,9 +186,9 @@ export function drawWallReinforced(ctx, gx, gy, col) {
   }
 }
 
-export function drawWallMossy(ctx, gx, gy, col) {
-  const d = TILE_DEFS.wall_mossy.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawWallMossy(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).wall_mossy.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   const x = gx * TILE, y = gy * TILE;
   wire(ctx, col1, 4);
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
@@ -202,8 +203,8 @@ export function drawWallMossy(ctx, gx, gy, col) {
   ctx.globalAlpha = 1;
 }
 
-export function drawWallCyclopean(ctx, gx, gy, col) {
-  const col1 = col?.col1 ?? TILE_DEFS.wall_cyclopean.defaultColors.col1;
+export function drawWallCyclopean(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const col1 = col?.col1 ?? (TILE_DEFS as any).wall_cyclopean.defaultColors.col1 as string;
   const x = gx * TILE, y = gy * TILE;
   wire(ctx, col1, 4);
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
@@ -212,8 +213,8 @@ export function drawWallCyclopean(ctx, gx, gy, col) {
   ctx.beginPath(); ctx.moveTo(x + 28, y + 2); ctx.lineTo(x + 28, y + split); ctx.stroke();
 }
 
-export function drawWallCave(ctx, gx, gy, col) {
-  const col1 = col?.col1 ?? TILE_DEFS.wall_cave.defaultColors.col1;
+export function drawWallCave(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
+  const col1 = col?.col1 ?? (TILE_DEFS as any).wall_cave.defaultColors.col1 as string;
   const x = gx * TILE, y = gy * TILE;
   wire(ctx, col1, 4);
   ctx.beginPath();
@@ -226,12 +227,12 @@ export function drawWallCave(ctx, gx, gy, col) {
   ctx.beginPath(); ctx.moveTo(x + 8, y + 22); ctx.lineTo(x + 28, y + 18); ctx.lineTo(x + 38, y + 18); ctx.stroke();
 }
 
-// ── Stairs ───────────────────────────────────────────────
+// ── Stairs ─────────────────────────────────────────────────────────────────
 
 /** Draw stairs centered at pixel (cx, cy). direction: 'down' | 'up'. */
-export function drawStairs(ctx, cx, cy, direction, col) {
-  const col1 = col?.col1 ?? (direction === 'down' ? C.stairsDown : C.stairsUp);
-  const sign = direction === 'down' ? 1 : -1;
+export function drawStairs(ctx: Ctx, cx: number, cy: number, direction: "down" | "up", col?: TileColors): void {
+  const col1 = col?.col1 ?? (direction === "down" ? C.stairsDown : C.stairsUp);
+  const sign = direction === "down" ? 1 : -1;
   const outerR = 21, innerR = 3, rayCount = 16;
 
   wire(ctx, col1, 5);
@@ -269,12 +270,12 @@ export function drawStairs(ctx, cx, cy, direction, col) {
   ctx.globalAlpha = 1;
 }
 
-// ── Doors ────────────────────────────────────────────────
+// ── Doors ──────────────────────────────────────────────────────────────────
 
 /** Closed door body — draws at (cx, cy) pixel center, no floor underneath. */
-export function drawDoorBody(ctx, cx, cy, col) {
-  const d = TILE_DEFS.door.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawDoorBody(ctx: Ctx, cx: number, cy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).door.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   wire(ctx, col1, 4);
   ctx.beginPath(); ctx.moveTo(cx - 10, cy + 16); ctx.lineTo(cx - 10, cy - 12); ctx.lineTo(cx + 10, cy - 12); ctx.lineTo(cx + 10, cy + 16); ctx.stroke();
   ctx.beginPath(); ctx.arc(cx, cy - 12, 10, Math.PI, 0); ctx.stroke();
@@ -287,9 +288,9 @@ export function drawDoorBody(ctx, cx, cy, col) {
 }
 
 /** Open door body — draws at (cx, cy) pixel center, no floor underneath. */
-export function drawDoorOpenBody(ctx, cx, cy, col) {
-  const d = TILE_DEFS.door_open.defaultColors;
-  const col1 = col?.col1 ?? d.col1, col2 = col?.col2 ?? d.col2;
+export function drawDoorOpenBody(ctx: Ctx, cx: number, cy: number, col?: TileColors): void {
+  const d = (TILE_DEFS as any).door_open.defaultColors;
+  const col1 = col?.col1 ?? d.col1 as string, col2 = col?.col2 ?? d.col2 as string;
   ctx.fillStyle = col2;
   ctx.beginPath(); ctx.moveTo(cx - 9, cy + 16); ctx.lineTo(cx - 9, cy - 12); ctx.lineTo(cx + 9, cy - 12); ctx.lineTo(cx + 9, cy + 16); ctx.closePath(); ctx.fill();
   wire(ctx, lighten(col1, 0.15), 4);
@@ -301,42 +302,52 @@ export function drawDoorOpenBody(ctx, cx, cy, col) {
 }
 
 /** Closed door tile — draws floor then body. */
-export function drawDoorTile(ctx, gx, gy, col) {
+function drawDoorTile(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
   drawFloorTile(ctx, gx, gy);
   drawDoorBody(ctx, gx * TILE + TILE / 2, gy * TILE + TILE / 2, col);
 }
 
 /** Open door tile — draws floor then body. */
-export function drawDoorOpenTile(ctx, gx, gy, col) {
+function drawDoorOpenTile(ctx: Ctx, gx: number, gy: number, col?: TileColors): void {
   drawFloorTile(ctx, gx, gy);
   drawDoorOpenBody(ctx, gx * TILE + TILE / 2, gy * TILE + TILE / 2, col);
 }
 
-// ── Dispatch map ─────────────────────────────────────────
-// Keyed by tile string. Each entry draws the tile at (gx, gy) with optional per-cell color override.
+/** Stairs tile — draws floor then stairs centered on tile. */
+function drawStairsTile(direction: "down" | "up"): TileDraw {
+  return (ctx, gx, gy, col) => {
+    drawFloorTile(ctx, gx, gy);
+    drawStairs(ctx, gx * TILE + TILE / 2, gy * TILE + TILE / 2, direction, col);
+  };
+}
 
-export const TILE_RENDERERS = {
-  floor:           (ctx, gx, gy, col) => drawFloorTile(ctx, gx, gy, col),
-  floor_cracked:   (ctx, gx, gy, col) => drawFloorCracked(ctx, gx, gy, col),
-  floor_mosaic:    (ctx, gx, gy, col) => drawFloorMosaic(ctx, gx, gy, col),
-  floor_dirt:      (ctx, gx, gy, col) => drawFloorDirt(ctx, gx, gy, col),
-  floor_mossy:     (ctx, gx, gy, col) => drawFloorMossy(ctx, gx, gy, col),
-  floor_rune:      (ctx, gx, gy, col) => drawFloorRune(ctx, gx, gy, col),
+// ── Dispatch map ───────────────────────────────────────────────────────────
 
-  wall:            (ctx, gx, gy, col) => drawWallTile(ctx, gx, gy, col),
-  wall_rough:      (ctx, gx, gy, col) => drawWallRough(ctx, gx, gy, col),
-  wall_reinforced: (ctx, gx, gy, col) => drawWallReinforced(ctx, gx, gy, col),
-  wall_mossy:      (ctx, gx, gy, col) => drawWallMossy(ctx, gx, gy, col),
-  wall_cyclopean:  (ctx, gx, gy, col) => drawWallCyclopean(ctx, gx, gy, col),
-  wall_cave:       (ctx, gx, gy, col) => drawWallCave(ctx, gx, gy, col),
+export const TILE_RENDERERS: Record<string, TileDraw> = {
+  floor:           drawFloorTile,
+  floor_cracked:   drawFloorCracked,
+  floor_mosaic:    drawFloorMosaic,
+  floor_dirt:      drawFloorDirt,
+  floor_mossy:     drawFloorMossy,
+  floor_rune:      drawFloorRune,
 
-  door:            (ctx, gx, gy, col) => drawDoorTile(ctx, gx, gy, col),
-  door_open:       (ctx, gx, gy, col) => drawDoorOpenTile(ctx, gx, gy, col),
+  wall:            drawWallTile,
+  wall_rough:      drawWallRough,
+  wall_reinforced: drawWallReinforced,
+  wall_mossy:      drawWallMossy,
+  wall_cyclopean:  drawWallCyclopean,
+  wall_cave:       drawWallCave,
+
+  door:            drawDoorTile,
+  door_closed:     drawDoorTile,
+  door_open:       drawDoorOpenTile,
+  stairs_down:     drawStairsTile("down"),
+  stairs_up:       drawStairsTile("up"),
 };
 
-/** Draw any tile by its string key. Falls back to floor for unknowns. */
-export function drawTile(ctx, tile, gx, gy, col) {
+/** Draw any tile by its string key. Throws for unknown tile kinds. */
+export function drawTile(ctx: Ctx, tile: string, gx: number, gy: number, col?: TileColors): void {
   const fn = TILE_RENDERERS[tile];
-  if (fn) { fn(ctx, gx, gy, col); return; }
-  drawFloorTile(ctx, gx, gy, col);
+  if (!fn) throw new Error(`drawTile: unknown tile kind '${tile}'`);
+  fn(ctx, gx, gy, col);
 }

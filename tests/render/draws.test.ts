@@ -40,7 +40,7 @@ describe("render/items — smoke (every exported draw)", () => {
   const ctx = makeCanvasMock();
   for (const [name, fn] of Object.entries(items)) {
     if (typeof fn !== "function") continue;
-    if (name === "ITEM_DRAWS") continue;
+    if (name === "ITEM_DRAWS" || name === "drawItem") continue;
     it(`${name} renders without throwing`, () => {
       expect(() => (fn as (c: unknown, x: number, y: number, t?: number) => void)(ctx, 20, 20, 0.3)).not.toThrow();
     });

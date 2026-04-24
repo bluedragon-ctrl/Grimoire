@@ -22,10 +22,16 @@ import {
   type ProjectilePreset, type BurstPreset,
 } from "../content/visuals.js";
 import { validateVisuals } from "../content/visuals-validate.js";
-import { MONSTER_RENDERERS } from "./vendor/ui/render-entities.js";
+import { MONSTER_RENDERERS } from "./monsters.js";
+import { TILE_RENDERERS } from "./tiles.js";
+import { OBJECT_RENDERERS } from "./objects.js";
 
 // Validate all visual wiring once at module load — missing preset → hard throw.
-validateVisuals(new Set(Object.keys(MONSTER_RENDERERS)));
+validateVisuals(
+  new Set(Object.keys(MONSTER_RENDERERS)),
+  new Set(Object.keys(TILE_RENDERERS)),
+  new Set(Object.keys(OBJECT_RENDERERS)),
+);
 
 // ── VisualState shape (mirrors what the vendor renderer reads) ──────────
 
