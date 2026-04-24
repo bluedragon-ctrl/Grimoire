@@ -2,11 +2,14 @@
 // Target resolution goes through a single seam: `resolveTarget`.
 
 import type {
-  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, ResolveFailureMode,
+  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode,
 } from "./types.js";
 import { hasEffect, listEffects } from "./effects.js";
 import { castSpell } from "./spells/cast.js";
 import { useItem, onHitHook } from "./items/execute.js";
+import { doPickup, doDrop } from "./items/loot.js";
+
+export { doPickup, doDrop };
 
 // ──────────────────────────── cost table ────────────────────────────
 
@@ -19,6 +22,8 @@ export const COST = {
   exit: 10,
   halt: 0,
   use: 15,
+  pickup: 10,
+  drop: 5,
 } as const;
 
 const DAMAGE_BY_KIND: Record<string, number> = {
@@ -172,6 +177,21 @@ export const queries = {
   mp: (_world: World, self: Actor): number => self.mp ?? 0,
   max_mp: (_world: World, self: Actor): number => self.maxMp ?? 0,
   known_spells: (_world: World, self: Actor): string[] => [...(self.knownSpells ?? [])],
+  // Phase 9: floor-item queries. Zero-cost. `items_here()` returns the stack
+  // on the hero's tile (topmost first — LIFO, matches doPickup() default).
+  // `items_nearby(r?)` Manhattan-sorted by distance; radius defaults to 4.
+  items_here: (world: World, self: Actor): FloorItem[] => {
+    const floor = world.room.floorItems ?? [];
+    const here = floor.filter(f => f.pos.x === self.pos.x && f.pos.y === self.pos.y);
+    here.reverse();
+    return here.map(f => ({ ...f, pos: { ...f.pos } }));
+  },
+  items_nearby: (world: World, self: Actor, r?: unknown): FloorItem[] => {
+    const radius = typeof r === "number" && r >= 0 ? Math.floor(r) : 4;
+    const floor = world.room.floorItems ?? [];
+    const within = floor.filter(f => manhattan(f.pos, self.pos) <= radius);
+    return sortByDistance(self, within).map(f => ({ ...f, pos: { ...f.pos } }));
+  },
 };
 
 // ──────────────────────────── command impls ────────────────────────────
@@ -264,6 +284,15 @@ export function doUse(world: World, self: Actor, itemRef: unknown): GameEvent[] 
 
 // Mirrors castFailedCleanly: failed use() emits only ActionFailed → refund.
 export function useFailedCleanly(events: GameEvent[]): boolean {
+  return events.length === 1 && events[0]!.type === "ActionFailed";
+}
+
+// Phase 9: same refund shape for pickup/drop so bag-full loops don't drain
+// energy while the hero retries.
+export function pickupFailedCleanly(events: GameEvent[]): boolean {
+  return events.length === 1 && events[0]!.type === "ActionFailed";
+}
+export function dropFailedCleanly(events: GameEvent[]): boolean {
   return events.length === 1 && events[0]!.type === "ActionFailed";
 }
 
