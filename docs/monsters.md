@@ -41,6 +41,80 @@ the loot-table key for [`rollDeathDrops`](../src/items/loot.ts).
 The registry is frozen at module load, so there's no need (or way) to mutate
 it at runtime.
 
+## Phase 14: families, immunities, scaling
+
+Each `MonsterTemplate` now carries a **family** axis and a tier **level**.
+
+### Family
+
+`family` is one of `undead | beast | humanoid | elemental | construct | demon`. Used by future loot/biome systems and as a thematic grouping for immunities.
+
+### Immunities
+
+`immunities?: EffectKind[]` declares effect kinds that the monster silently rejects. The `Hit` event from `project` / `explode` still lands — only the *effect attachment* (burning, poison, chill, …) is suppressed. Implementation: `applyEffect` short-circuits early when the kind is in `actor.immunities`. Damage from clouds applies via the per-tick path which is also gated.
+
+Common patterns:
+- Undead: `["poison", "mana_burn"]` (and often `chill` for high-tier).
+- Constructs: `["chill", "poison", "burning"]`.
+- Elementals: usually immune to their own element.
+
+### Defense semantics
+
+`def` reduces incoming **melee damage only**. Spell damage (`project`/`explode`/`inflict` damage tick) bypasses `def` entirely — the spec choice is to keep magic as the universal antidote. This is why the Ghost can run with `def: 8` and still die quickly to a `bolt`.
+
+### Level scaling
+
+Templates declare stats at level-1 baseline. At spawn, `createActor()` applies:
+
+```ts
+function scaleByLevel(base: number, level: number): number {
+  return Math.floor(base * (1 + 0.15 * (level - 1)));
+}
+```
+
+…to `hp / maxHp / mp / maxMp / atk / def / int`. **`speed` is not scaled.** Neither is `family` or `immunities`. So a `dragon` (level 10, base hp 100) spawns with hp 235, but its speed stays at the declared 9.
+
+### Reserved boss flag
+
+`boss?: boolean` is added to MonsterTemplate but currently has no behaviour wired up. A later phase introduces boss rooms with special encounters; this flag is the marker.
+
+### `tint` field
+
+`tint?: Record<string, string>` is a render-color override merged into `actor.colors` at spawn (existing renderer plumbing). Used for variant skins of shared sprites — e.g. `lesser_slime` reuses the slime sprite with a paler body color.
+
+### `startingInventory`
+
+Monsters can spawn carrying consumables (`{ itemId, count? }[]`). Their AI scripts can `use("might_potion")` — the same `use()` command the hero uses. To prevent these monster-affinity items from leaking into player loot tables in future phases, set `playerLootable: false` on the `ItemDef`.
+
+## AI archetype catalog
+
+Reusable DSL turn-loops live in [src/content/ai-archetypes.ts](../src/content/ai-archetypes.ts). Templates set `aiArchetype: "name"` and optionally `aiVars: { SPELL: "firebolt" }` to substitute placeholders. The resolved source is parsed once at module load and backfilled into `tpl.ai` so the help catalog reads it like any other DSL string.
+
+| archetype          | shape                                                      |
+|--------------------|------------------------------------------------------------|
+| `melee_chase`      | step toward foe, attack adjacent. Reference AI.            |
+| `melee_chase_flee` | melee_chase, but flee below 30% hp.                        |
+| `hit_and_run`      | adjacent → attack → step away one tile.                    |
+| `slow_chase`       | melee_chase; pass when path blocked rather than thrash.    |
+| `kite_and_cast`    | cast `__SPELL__` while in range, maintain ~3 tiles.        |
+| `stationary_caster`| never moves; cast or pass.                                 |
+| `erratic_caster`   | random pick of 3 spells per turn.                          |
+| `regen_brute`      | melee + chance(40) self-cast `__SPELL__`.                  |
+| `aura_brawler`     | chance(70) self-cast aura pulse + melee.                   |
+| `mushroom_passive` | stationary; `on hit` handler casts `poison_cloud` at self. |
+| `dragon_breath`    | counter local; every 3rd turn cast `fireball`.             |
+| `lich_caster`      | kite with chance(60) cast gate + 5% notify flavour.        |
+
+For one-off behaviour (vampire, knight with two-stage potions, etc.) the template uses `ai: "..."` with a raw DSL string. The resolution rule is: `ai` overrides `aiArchetype`.
+
+### Notify flavour
+
+Intelligent monsters (lich, dark wizard, vampire, dragon, cultist, mage) get a `chance(5)` `notify(...)` line each turn that picks from a 2-line bank. Dumb monsters stay silent. All `chance()` / `random()` calls go through `world.rng` for determinism.
+
+## On-death procs
+
+Templates can declare `onDeath?: { summon?: { template, count } }`. The scheduler fires the proc after the `Died` event and before `appendDeathDrops`. Currently used for slime split (2× `lesser_slime`). Spawned summons are flagged `summoned: true` (skips loot) but their `owner` is left blank so the death-cascade despawn pass doesn't immediately kill them. `lesser_slime` deliberately does not declare its own `onDeath` — split is one-shot.
+
 ## Starter roster (Phase 11)
 
 | id       | role               | notes                                               |

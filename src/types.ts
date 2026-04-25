@@ -102,8 +102,13 @@ export interface Actor {
   mp?: number;
   maxMp?: number;
   atk?: number;
+  /** reduces incoming melee damage only */
   def?: number;
   int?: number;
+  // Phase 14: copied from MonsterTemplate at spawn. applyEffect short-circuits
+  // when the incoming kind is in this list (the Hit/damage event still fires;
+  // only the effect attachment is suppressed).
+  immunities?: EffectKind[];
   effects?: Effect[];
   // Phase 6: list of spell names the actor has learned. Default hero = ["bolt","heal"],
   // default monster = []. Cast validation rejects unknown/unlearned names.
@@ -210,6 +215,12 @@ export interface ItemDef {
   // Shared optional
   visualPreset?: string;
   help?: import("./ui/help/types.js").HelpMeta;
+  // Phase 14: when explicitly false, this item is excluded from any
+  // future player-facing loot generation (loot tables, drop pools, prep
+  // panel choices). Defaults to true (undefined ≡ true). Used by
+  // monster-affinity consumables that ride along in template
+  // startingInventory but should never reach the player's hands.
+  playerLootable?: boolean;
 }
 
 /** @deprecated Use ItemDef with kind checks instead. */

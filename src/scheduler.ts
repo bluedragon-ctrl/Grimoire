@@ -17,6 +17,7 @@ import {
 import { tickEffects, effectiveStats } from "./effects.js";
 import { tickClouds } from "./clouds.js";
 import { rollDeathDrops } from "./items/loot.js";
+import { MONSTER_TEMPLATES, createActor } from "./content/monsters.js";
 
 interface Frame {
   gen: Generator<PendingAction, void, unknown>;
@@ -90,6 +91,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       s.lastFiredLoc = action.loc ?? null;
 
       const events = fireAction(world, rt.actor, action);
+      appendOnDeathProcs(world, events);
       appendDeathDrops(world, events);
       appendRoomExitDespawn(world, events);
       // Phase 6: failed casts don't cost energy (actor tries again next tick).
@@ -142,6 +144,7 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     // Cloud phase: after effects, before next action. Emits its own events
     // (CloudTicked, CloudExpired) and may also emit EffectApplied/Died/etc.
     effectEvents.push(...tickClouds(world));
+    appendOnDeathProcs(world, effectEvents);
     appendDeathDrops(world, effectEvents);
     if (effectEvents.length > 0) {
       dispatch(world, s.runtimes, effectEvents);
@@ -153,6 +156,66 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
     if (world.ended || world.aborted) return { events: effectEvents, done: true };
 
     if (!anyLiveWork(s)) return { events: [], done: true };
+  }
+}
+
+// Phase 14: for each Died, fire the victim's template-level on_death proc
+// (currently: summon-on-death for slime → 2× lesser_slime). Runs BEFORE
+// appendDeathDrops so corpse cleanup sees the spawned summons.
+//
+// Spec shape on MonsterTemplate:
+//   onDeath?: { summon?: { template: string; count: number } }
+//
+// Spawned actors take the dying actor's faction (so a slime split keeps the
+// slime's side) and are flagged summoned=true with owner=victim.id, which
+// makes them follow the existing summoned-actor rules (no loot drops, etc).
+// Loop guard: spawned summons themselves can declare onDeath, but their own
+// death is a fresh Died event in a later tick — no recursion within a single
+// scan. summoned=true also means a player-spawned slime split won't yield
+// player loot.
+function appendOnDeathProcs(world: World, events: GameEvent[]): void {
+  const end = events.length;
+  for (let i = 0; i < end; i++) {
+    const ev = events[i]!;
+    if (ev.type !== "Died") continue;
+    const victim = world.actors.find(a => a.id === ev.actor);
+    if (!victim) continue;
+    const tpl = MONSTER_TEMPLATES[victim.kind];
+    if (!tpl || !tpl.onDeath) continue;
+    const sum = tpl.onDeath.summon;
+    if (!sum) continue;
+    const childTpl = MONSTER_TEMPLATES[sum.template];
+    if (!childTpl) continue;
+    let spawned = 0;
+    const cx = victim.pos.x;
+    const cy = victim.pos.y;
+    // Walk the 8 adjacent tiles in a stable order; bail when we hit count.
+    const offsets: Array<[number, number]> = [
+      [-1, -1], [0, -1], [1, -1],
+      [-1,  0],          [1,  0],
+      [-1,  1], [0,  1], [1,  1],
+    ];
+    for (const [dx, dy] of offsets) {
+      if (spawned >= sum.count) break;
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= world.room.w || ny >= world.room.h) continue;
+      if (world.actors.some(a => a.alive && a.pos.x === nx && a.pos.y === ny)) continue;
+      const n = (world.actorSeq ?? 0) + 1;
+      world.actorSeq = n;
+      const child = createActor(sum.template, { x: nx, y: ny }, `s${n}`);
+      child.faction = victim.faction ?? (victim.isHero ? "player" : "enemy");
+      // Mark summoned so the loot path skips them, but DO NOT set owner —
+      // appendDeathDrops cascades despawnOwned(victim.id) right after this
+      // helper, which would immediately kill any actor we just spawned.
+      child.summoned = true;
+      world.actors.push(child);
+      events.push({
+        type: "Summoned", actor: child.id, summoner: victim.id,
+        template: sum.template, pos: { x: nx, y: ny },
+      });
+      spawned += 1;
+    }
   }
 }
 

@@ -100,6 +100,23 @@ export const SPELLS: Record<string, Spell> = {
     targetType: "self", range: 0, mpCost: 11,
     body: [{ op: "explode", args: { radius: 2, damage: 3, kind: "chill" as EffectKind, duration: 25, magnitude: 2, selfCenter: true, visual: "explosion_frost", element: "frost" } }],
   },
+  // ── Aura pulses (self-centred, small radius) ───────────────────────────
+  // Phase 14: primary use is fire/water elemental auto-cast each turn, but
+  // they are valid for the player to learn too — no special gating.
+  fire_aura_pulse: {
+    name: "fire_aura_pulse",
+    description: "Pulses fire in a small radius around the caster.",
+    targetType: "self", range: 0, mpCost: 4,
+    body: [{ op: "explode", args: { radius: 1, damage: 2, kind: "burning" as EffectKind,
+             duration: 15, selfCenter: true, visual: "explosion_fire", element: "fire" } }],
+  },
+  frost_aura_pulse: {
+    name: "frost_aura_pulse",
+    description: "Pulses frost in a small radius around the caster.",
+    targetType: "self", range: 0, mpCost: 4,
+    body: [{ op: "explode", args: { radius: 1, damage: 2, kind: "chill" as EffectKind,
+             duration: 15, magnitude: 1, selfCenter: true, visual: "explosion_frost", element: "frost" } }],
+  },
   thunderclap: {
     name: "thunderclap",
     description: "A shockwave that shocks adjacent enemies.",

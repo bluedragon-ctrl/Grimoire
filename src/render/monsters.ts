@@ -58,6 +58,7 @@ export const MONSTER_RENDERERS: Record<string, MonsterDraw> = {
   air_elemental:     drawAirElemental,
   earth_elemental:   drawEarthElemental,
   giant_snail:       drawGiantSnail,
+  mage:              drawMage,
 };
 
 /**

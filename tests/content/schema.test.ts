@@ -22,7 +22,15 @@ function validateLootEntries(key: string, entries: LootEntry[]): void {
   }
 }
 
-const KNOWN_RENDERERS = new Set(["skeleton", "bat", "slime", "dark_wizard"]);
+// Phase 14: every visual referenced by a stock MonsterTemplate.
+const KNOWN_RENDERERS = new Set([
+  "skeleton", "bat", "slime", "dark_wizard", "rat", "giant_snail",
+  "mushroom", "spider", "zombie", "skeleton_archer", "orc_warrior",
+  "ghost", "wisp", "serpent", "orc_knight", "gargoyle", "wraith",
+  "knight", "troll", "mage", "vampire", "golem", "orc_mage",
+  "fire_elemental", "water_elemental", "air_elemental",
+  "earth_elemental", "crystal_elemental", "lich", "dragon",
+]);
 
 // ── monster template validation ───────────────────────────────────────────────
 
@@ -31,14 +39,14 @@ describe("monster template validation", () => {
 
   it("valid template passes", () => {
     const tpl: MonsterTemplate = {
-      id: "test", name: "Test", visual: "goblin", stats: baseStats, ai: "halt",
+      id: "test", name: "Test", visual: "goblin", family: "humanoid", level: 1, stats: baseStats, ai: "halt",
     };
     expect(() => validateMonsterTemplate(tpl)).not.toThrow();
   });
 
   it("missing 'visual' throws", () => {
     const tpl = {
-      id: "no_visual", name: "Bad", visual: "", stats: baseStats, ai: "halt",
+      id: "no_visual", name: "Bad", visual: "", family: "humanoid", level: 1, stats: baseStats, ai: "halt",
     } as MonsterTemplate;
     expect(() => validateMonsterTemplate(tpl)).toThrow("visual");
   });
@@ -46,7 +54,7 @@ describe("monster template validation", () => {
   it("missing 'stats.atk' throws", () => {
     const noAtk: MonsterStats = { hp: 5, maxHp: 5, speed: 10 };
     const tpl: MonsterTemplate = {
-      id: "no_atk", name: "Bad", visual: "goblin", stats: noAtk, ai: "halt",
+      id: "no_atk", name: "Bad", visual: "goblin", family: "humanoid", level: 1, stats: noAtk, ai: "halt",
     };
     expect(() => validateMonsterTemplate(tpl)).toThrow("stats.atk");
   });
@@ -254,16 +262,22 @@ describe("validateVisuals — monster sprites", () => {
     vi.resetModules();
     vi.doMock("../../src/content/monsters.js", async (importOriginal) => {
       const real = await importOriginal<typeof import("../../src/content/monsters.js")>();
+      // Only ghost_thing should fail validation: drop the real `ghost`
+      // template so it's not what gets reported first.
+      const { ghost: _drop, ...rest } = real.MONSTER_TEMPLATES;
       return {
         ...real,
         MONSTER_TEMPLATES: {
-          ...real.MONSTER_TEMPLATES,
+          ...rest,
           ghost_thing: { id: "ghost_thing", name: "Ghost", visual: "ghost", stats: { hp: 3, maxHp: 3, speed: 8, atk: 1 } },
         },
       };
     });
     const { validateVisuals } = await import("../../src/content/visuals-validate.js");
-    const noGhost = new Set(["skeleton", "bat", "slime", "dark_wizard"]);
+    // Phase 14: every real template's visual is present except `ghost`,
+    // so the only template that should fail is the injected `ghost_thing`.
+    const noGhost = new Set(KNOWN_RENDERERS);
+    noGhost.delete("ghost");
     expect(() => validateVisuals(noGhost)).toThrow("ghost_thing");
     expect(() => validateVisuals(noGhost)).toThrow("ghost");
   });
