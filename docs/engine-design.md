@@ -517,6 +517,102 @@ Scrolls are always removed from the bag. Non-scroll items are untouched. If `doE
 
 ---
 
+## Phase 13.4: Wearables — structured data, auras, and proc hooks
+
+### Wearable data shape (`WearableDef`)
+
+All wearables are pure data — no DSL `script` field. The type lives in `src/types.ts`:
+
+```ts
+interface WearableDef {
+  id: string; name: string; slot: Slot; category: "wearable";
+  bonuses?:   Partial<Record<StatKey, number>>;   // additive stat bonuses
+  on_hit?:    ProcSpec;   // fires after wearer lands a melee hit
+  on_damage?: ProcSpec;   // fires after wearer takes melee damage
+  on_kill?:   ProcSpec;   // fires when wearer's hit kills the target
+  on_cast?:   ProcSpec;   // fires after wearer successfully casts a spell
+  aura?:      AuraSpec;   // continuous effect while item is equipped
+}
+```
+
+**Bonuses are additive.** `getEquipmentBonuses` sums values across all equipped slots; equipping two items each with `def:3` yields `def:6`. This replaces the former monotone-max approach.
+
+```ts
+interface ProcSpec {
+  target:  "self" | "attacker" | "target";  // who receives the effect / damage
+  chance?: number;          // 0–100; omitted means 100
+  effect?: { kind: EffectKind; duration: number };
+  damage?: number;          // positive = damage; negative = heal (-4 heals 4 hp)
+}
+interface AuraSpec {
+  kind:       EffectKind;
+  magnitude?: number;       // passed through to the Effect record
+}
+```
+
+### Item catalog (31 wearables across 5 slots)
+
+**Hats (7):** cloth_cap, wizard_hat, iron_helm, stoic_helm, crown_of_ages, lucky_crown, arcane_diadem
+
+**Robes (6):** leather_robe, silk_robe, chain_vestment, thorned_robe, shadow_cloak, spellweaver_robe
+
+**Staves (5):** wooden_staff, fire_staff, shock_staff, draining_staff, crystal_staff
+
+**Daggers (7):** bone_dagger, steel_dagger, venom_dagger, shadow_blade, frost_shard, wild_dagger, vampiric_blade
+
+**Foci (6):** quartz_focus, runed_focus, void_focus, bloodstone, star_fragment, necromancer_focus
+
+### Aura lifecycle
+
+An aura is a continuous effect that lasts exactly as long as the item is equipped:
+
+1. **Equip** — `applyEffect(world, actor, aura.kind, Infinity, { source: { type:"item", id:defId } })` is called. Duration `Infinity` signals a permanent (until-unequip) effect.
+2. **Unequip** — `removeItemEffects(world, actor, defId)` strips all effects where `source.type === "item" && source.id === defId`.
+3. **Swap** — the old item's aura is removed synchronously *before* the new item's aura is applied, guaranteeing no gap and no double application.
+4. **Cleanse immunity** — `useItem`'s cleanse operation skips effects with `source?.type === "item"`. A cleanse_potion cannot remove an equipped aura.
+
+`Effect.source` is a discriminated union `{ type:"actor"|"item"; id:string }` (was a plain string). This lets the engine distinguish combat-inflicted effects from equipment-granted ones.
+
+### Proc hook contract
+
+All four hooks share the `fireProcSpec(world, wearer, proc, target, defId)` engine:
+
+1. **Chance gate** — if `proc.chance` is defined and `worldRandom(world)*100 ≥ proc.chance`, the proc does not fire. This consumes one RNG step regardless.
+2. **Target resolution** — `"self"` → wearer; `"attacker"` → the entity that dealt damage; `"target"` → the entity that was hit.
+3. **Effect application** — if `proc.effect` is defined, `applyEffect` is called on the resolved target.
+4. **Damage / heal** — if `proc.damage` is defined and non-zero: positive values deal damage (minimum 1 after defense) and emit `Hit { fromProc: true }`; negative values heal (clamped to `maxHp`) and emit `Healed`.
+
+| Hook | Trigger |
+|---|---|
+| `on_hit` | After a melee attack lands (`doAttack`, target hit) |
+| `on_damage` | After the wearer takes melee damage from any attacker |
+| `on_kill` | When a melee hit or DoT tick kills the target |
+| `on_cast` | After the wearer successfully casts a spell (`doCast`, not `ActionFailed`) |
+
+**Loop guard.** Proc damage emits `Hit { fromProc: true }`. `onDamageHook` returns `[]` immediately when called with `fromProc = true`, preventing a chain where a proc hit triggers another `on_damage`, which triggers another proc hit ad infinitum.
+
+**DoT kill attribution.** When `burning` or `poison` ticks kill an actor, `effects.ts` calls `callOnKillHook(world, killer, victim)`. The killer is the actor whose id is stored in `effect.source.id`. This avoids a circular import: `effects.ts` exposes `wireOnKillHook(fn)` and `callOnKillHook()`; `execute.ts` registers the implementation at module load via `wireOnKillHook(_onKillImpl)`.
+
+### Melee damage formula
+
+```
+rawDamage = max(1, effectiveStats(attacker).atk − effectiveStats(defender).def)
+```
+
+`effectiveStats` folds in all equipped-item bonuses additive-sum style before the formula runs. Minimum damage is 1 (never zero or negative, regardless of how high the defender's def is).
+
+### Non-goals (Phase 13.4)
+
+- Level scaling for items (flat bonuses only).
+- Set bonuses (no cross-item synergy).
+- Damage-type affinities (no elemental resistances).
+- Cursed items (no equip-lock mechanic).
+- Threshold-gated procs (`on_low_hp`, `on_ally_death`).
+- Grants-spell items (`grants_spell`).
+- Room-transition hooks (`on_enter_room`).
+
+---
+
 ## Open questions (flagging, not blocking)
 
 - Do queries see a snapshot of world state at yield time, or live state each evaluation? **Proposed: live** — simpler, and scripts are single-threaded per actor so no race.

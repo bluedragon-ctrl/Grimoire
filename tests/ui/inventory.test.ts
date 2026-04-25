@@ -46,8 +46,9 @@ describe("mountInventoryPanel", () => {
     const picker = document.querySelector(".inv-picker");
     expect(picker).not.toBeNull();
     const rows = picker!.querySelectorAll(".inv-picker-row");
-    // 1 empty + 2 hats (cloth_cap, wizard_hat).
-    expect(rows.length).toBe(3);
+    // 1 empty + 7 hats (cloth_cap, wizard_hat, iron_helm, stoic_helm,
+    // crown_of_ages, lucky_crown, arcane_diadem).
+    expect(rows.length).toBe(8);
     expect(Array.from(rows).map(r => r.textContent)).toContain("Wizard Hat");
   });
 

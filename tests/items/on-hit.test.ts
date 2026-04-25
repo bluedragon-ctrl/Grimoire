@@ -17,15 +17,26 @@ describe("onHitHook", () => {
     expect(g.effects!.some(e => e.kind === "poison")).toBe(true);
   });
 
-  it("no dagger → no on-hit proc", () => {
+  it("fire_staff on_hit inflicts burning", () => {
     const h = mkHero();
     const g = mkGoblin();
+    const staff = mintInstance("fire_staff");
+    ensureInventory(h).consumables.push(staff);
+    equipItem(mkWorld([h, g]), h, staff);
     const w = mkWorld([h, g]);
     const events = doAttack(w, h, g);
+    expect(events.some(e => e.type === "OnHitTriggered")).toBe(true);
+    expect(g.effects!.some(e => e.kind === "burning")).toBe(true);
+  });
+
+  it("no equipment → no on-hit proc", () => {
+    const h = mkHero();
+    const g = mkGoblin();
+    const events = doAttack(mkWorld([h, g]), h, g);
     expect(events.some(e => e.type === "OnHitTriggered")).toBe(false);
   });
 
-  it("plain dagger (no on_hit ops) → no proc emitted", () => {
+  it("bone_dagger (no on_hit) → no proc emitted", () => {
     const h = mkHero();
     const g = mkGoblin();
     const dagger = mintInstance("bone_dagger");
@@ -37,7 +48,7 @@ describe("onHitHook", () => {
 
   it("on-hit skipped when defender dies from the strike", () => {
     const h = mkHero();
-    const g = mkGoblin({ hp: 1 });
+    const g = mkGoblin({ hp: 1, def: 0 });
     const dagger = mintInstance("venom_dagger");
     ensureInventory(h).consumables.push(dagger);
     equipItem(mkWorld([h, g]), h, dagger);

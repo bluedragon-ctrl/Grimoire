@@ -1,7 +1,7 @@
-// ITEMS — data-only item registry. Equipment scripts are parsed lazily on
-// first access via getItemOps so stale content fails at the call site.
-// Consumables carry SpellOp[] body dispatched through PRIMITIVES at use-time.
-// Scrolls carry a spell name consumed at room completion.
+// ITEMS — data-only item registry.
+// Consumables: SpellOp[] body dispatched through PRIMITIVES at use-time.
+// Equipment (wearables): structured data (bonuses, procs, aura). No DSL script.
+// Scrolls: spell name consumed at room completion.
 //
 // Bag size: 4 consumable slots (constant; UI wiring will clamp/reject).
 
@@ -15,45 +15,36 @@ export function emptyEquipped(): Record<Slot, null> {
   return { hat: null, robe: null, staff: null, dagger: null, focus: null };
 }
 
-// ──────────────────────────── registry ────────────────────────────
+// ──────────────────────────── consumables ────────────────────────────
 
-// Existing consumables — migrated to SpellOp[] body shape.
 const health_potion: ItemDef = {
-  id: "health_potion",
-  name: "Health Potion",
+  id: "health_potion", name: "Health Potion",
   description: "Heals an ally for 10 HP.",
   kind: "consumable", level: 1,
   useTarget: "ally", range: 4, polarity: "buff",
   body: [{ op: "heal", args: { amount: 10 } }],
 };
 const mana_crystal: ItemDef = {
-  id: "mana_crystal",
-  name: "Mana Crystal",
+  id: "mana_crystal", name: "Mana Crystal",
   description: "Grants a burst of mana regeneration.",
   kind: "consumable", level: 1,
   useTarget: "ally", range: 4, polarity: "buff",
   body: [{ op: "inflict", args: { kind: "mana_regen" as EffectKind, duration: 15, magnitude: 3 } }],
 };
 const haste_potion: ItemDef = {
-  id: "haste_potion",
-  name: "Haste Potion",
+  id: "haste_potion", name: "Haste Potion",
   description: "Quickens an ally's step.",
   kind: "consumable", level: 1,
   useTarget: "ally", range: 4, polarity: "buff",
   body: [{ op: "inflict", args: { kind: "haste" as EffectKind, duration: 40, magnitude: 2 } }],
 };
 const cleanse_potion: ItemDef = {
-  id: "cleanse_potion",
-  name: "Cleanse Potion",
+  id: "cleanse_potion", name: "Cleanse Potion",
   description: "Purges all debuffs from an ally.",
   kind: "consumable", level: 1,
   useTarget: "ally", range: 4, polarity: "buff",
   body: [{ op: "cleanse", args: {} }],
 };
-
-// ─── Effect potions ─────────────────────────────────────────────────────────
-// 6 new potions (haste_potion already above).
-
 const shield_potion: ItemDef = {
   id: "shield_potion", name: "Shield Potion",
   description: "Grants a magical shield that absorbs damage.",
@@ -174,8 +165,6 @@ const smoke_bomb: ItemDef = {
 };
 
 // ─── Scrolls (auto-consumed at room exit) ────────────────────────────────────
-// One scroll per learnable spell. Summon spells are not on scrolls
-// (they are monster-only). Scroll id: "scroll_<spell_id>".
 
 const scroll_bolt: ItemDef = {
   id: "scroll_bolt", name: "Scroll of Bolt",
@@ -258,62 +247,199 @@ const scroll_heal: ItemDef = {
   description: "Teaches the heal spell.", kind: "scroll", level: 1, spell: "heal",
 };
 
-// Equipment (wearables) — renamed kind from "wearable" → "equipment", level added.
+// ──────────────────────────── equipment: hats (7) ────────────────────────────
+
 const cloth_cap: ItemDef = {
   id: "cloth_cap", name: "Cloth Cap", description: "A soft cap.",
   kind: "equipment", level: 1, slot: "hat",
-  script: "merge int 1",
+  bonuses: { maxHp: 6 },
 };
 const wizard_hat: ItemDef = {
   id: "wizard_hat", name: "Wizard Hat", description: "Pointy and arcane.",
   kind: "equipment", level: 1, slot: "hat",
-  script: "merge int 2\nmerge maxMp 5",
+  bonuses: { int: 4 },
 };
+const iron_helm: ItemDef = {
+  id: "iron_helm", name: "Iron Helm", description: "Heavy iron headgear.",
+  kind: "equipment", level: 1, slot: "hat",
+  bonuses: { def: 3, maxHp: 10 },
+};
+const stoic_helm: ItemDef = {
+  id: "stoic_helm", name: "Stoic Helm", description: "Pain sharpens the will.",
+  kind: "equipment", level: 1, slot: "hat",
+  bonuses: { def: 2 },
+  on_damage: { target: "self", effect: { kind: "might", duration: 5, magnitude: 2 } },
+};
+const crown_of_ages: ItemDef = {
+  id: "crown_of_ages", name: "Crown of Ages", description: "Ancient royal crown.",
+  kind: "equipment", level: 1, slot: "hat",
+  bonuses: { int: 5, def: 2, maxHp: 5 },
+  aura: { kind: "regen", magnitude: 1 },
+};
+const lucky_crown: ItemDef = {
+  id: "lucky_crown", name: "Lucky Crown", description: "Fortune smiles on the bold.",
+  kind: "equipment", level: 1, slot: "hat",
+  bonuses: { int: 2 },
+  on_damage: { target: "self", chance: 25, effect: { kind: "shield", duration: 10, magnitude: 10 } },
+};
+const arcane_diadem: ItemDef = {
+  id: "arcane_diadem", name: "Arcane Diadem", description: "Spellwork fuels the wearer's strength.",
+  kind: "equipment", level: 1, slot: "hat",
+  bonuses: { int: 3 },
+  on_cast: { target: "self", chance: 20, effect: { kind: "might", duration: 5, magnitude: 2 } },
+};
+
+// ──────────────────────────── equipment: robes (6) ────────────────────────────
+
 const leather_robe: ItemDef = {
   id: "leather_robe", name: "Leather Robe", description: "Sturdy traveller's robe.",
   kind: "equipment", level: 1, slot: "robe",
-  script: "merge def 1\nmerge maxHp 4",
+  bonuses: { def: 2, maxHp: 5 },
 };
 const silk_robe: ItemDef = {
   id: "silk_robe", name: "Silk Robe", description: "Finely-woven mage's robe.",
   kind: "equipment", level: 1, slot: "robe",
-  script: "merge int 2\nmerge def 1",
+  bonuses: { def: 3, maxMp: 10 },
 };
+const chain_vestment: ItemDef = {
+  id: "chain_vestment", name: "Chain Vestment", description: "Interlocked rings of steel.",
+  kind: "equipment", level: 1, slot: "robe",
+  bonuses: { def: 5, maxHp: 8 },
+};
+const thorned_robe: ItemDef = {
+  id: "thorned_robe", name: "Thorned Robe", description: "Strike me and bleed.",
+  kind: "equipment", level: 1, slot: "robe",
+  bonuses: { def: 3 },
+  on_damage: { target: "attacker", effect: { kind: "poison", duration: 15 } },
+};
+const shadow_cloak: ItemDef = {
+  id: "shadow_cloak", name: "Shadow Cloak", description: "Woven from umbral thread.",
+  kind: "equipment", level: 1, slot: "robe",
+  bonuses: { def: 2, atk: 3, speed: 1 },
+  aura: { kind: "haste", magnitude: 1 },
+};
+const spellweaver_robe: ItemDef = {
+  id: "spellweaver_robe", name: "Spellweaver Robe", description: "Each cast mends its wearer.",
+  kind: "equipment", level: 1, slot: "robe",
+  bonuses: { def: 2, maxMp: 8 },
+  on_cast: { target: "self", damage: -1 },
+};
+
+// ──────────────────────────── equipment: staves (5) ────────────────────────────
+
 const wooden_staff: ItemDef = {
   id: "wooden_staff", name: "Wooden Staff", description: "A plain oak staff.",
   kind: "equipment", level: 1, slot: "staff",
-  script: "merge atk 2\nmerge int 1",
+  bonuses: { int: 3 },
 };
 const fire_staff: ItemDef = {
   id: "fire_staff", name: "Fire Staff", description: "Wreathed in embers.",
   kind: "equipment", level: 1, slot: "staff",
-  script: "merge atk 2\nmerge int 3",
+  bonuses: { int: 8 },
+  on_hit: { target: "victim", effect: { kind: "burning", duration: 20 } },
 };
+const shock_staff: ItemDef = {
+  id: "shock_staff", name: "Shock Staff", description: "Crackling with static.",
+  kind: "equipment", level: 1, slot: "staff",
+  bonuses: { int: 5 },
+  on_hit: { target: "victim", effect: { kind: "shock", duration: 15 } },
+};
+const draining_staff: ItemDef = {
+  id: "draining_staff", name: "Draining Staff", description: "Saps the mind.",
+  kind: "equipment", level: 1, slot: "staff",
+  bonuses: { int: 6 },
+  on_hit: { target: "victim", effect: { kind: "mana_burn", duration: 15 } },
+};
+const crystal_staff: ItemDef = {
+  id: "crystal_staff", name: "Crystal Staff", description: "Pure arcane conduit.",
+  kind: "equipment", level: 1, slot: "staff",
+  bonuses: { int: 10 },
+};
+
+// ──────────────────────────── equipment: daggers (7) ────────────────────────────
+
 const bone_dagger: ItemDef = {
   id: "bone_dagger", name: "Bone Dagger", description: "Carved from old bone.",
   kind: "equipment", level: 1, slot: "dagger",
-  script: "merge atk 2",
+  bonuses: { atk: 3 },
+};
+const steel_dagger: ItemDef = {
+  id: "steel_dagger", name: "Steel Dagger", description: "Well-balanced blade.",
+  kind: "equipment", level: 1, slot: "dagger",
+  bonuses: { atk: 5, speed: 1 },
 };
 const venom_dagger: ItemDef = {
   id: "venom_dagger", name: "Venom Dagger", description: "Its edge glistens.",
   kind: "equipment", level: 1, slot: "dagger",
-  script: "merge atk 2\non_hit inflict poison $TARGET 20 $L",
+  bonuses: { atk: 2 },
+  on_hit: { target: "victim", effect: { kind: "poison", duration: 20 } },
 };
+const shadow_blade: ItemDef = {
+  id: "shadow_blade", name: "Shadow Blade", description: "Opens hidden wounds.",
+  kind: "equipment", level: 1, slot: "dagger",
+  bonuses: { atk: 4 },
+  on_hit: { target: "victim", effect: { kind: "expose", duration: 15 } },
+};
+const frost_shard: ItemDef = {
+  id: "frost_shard", name: "Frost Shard", description: "Leaves foes sluggish.",
+  kind: "equipment", level: 1, slot: "dagger",
+  bonuses: { atk: 3 },
+  on_hit: { target: "victim", effect: { kind: "chill", duration: 15 } },
+};
+const wild_dagger: ItemDef = {
+  id: "wild_dagger", name: "Wild Dagger", description: "Unpredictably volatile.",
+  kind: "equipment", level: 1, slot: "dagger",
+  bonuses: { atk: 4 },
+  on_hit: { target: "victim", chance: 30, effect: { kind: "burning", duration: 15 } },
+};
+const vampiric_blade: ItemDef = {
+  id: "vampiric_blade", name: "Vampiric Blade", description: "Drink deep from the dying.",
+  kind: "equipment", level: 1, slot: "dagger",
+  bonuses: { atk: 4 },
+  on_kill: { target: "self", damage: -4 },
+};
+
+// ──────────────────────────── equipment: foci (6) ────────────────────────────
+
 const quartz_focus: ItemDef = {
   id: "quartz_focus", name: "Quartz Focus", description: "A humming crystal shard.",
   kind: "equipment", level: 1, slot: "focus",
-  script: "merge int 1\nmerge maxMp 5",
+  bonuses: { int: 3 },
 };
 const runed_focus: ItemDef = {
   id: "runed_focus", name: "Runed Focus", description: "Etched with spellwork.",
   kind: "equipment", level: 1, slot: "focus",
-  script: "merge int 3\nmerge maxMp 10",
+  bonuses: { int: 5, maxMp: 8 },
+};
+const void_focus: ItemDef = {
+  id: "void_focus", name: "Void Focus", description: "Channels pure emptiness.",
+  kind: "equipment", level: 1, slot: "focus",
+  bonuses: { int: 9 },
+};
+const bloodstone: ItemDef = {
+  id: "bloodstone", name: "Bloodstone", description: "Power drawn from life itself.",
+  kind: "equipment", level: 1, slot: "focus",
+  bonuses: { int: 4, maxHp: 12 },
+};
+const star_fragment: ItemDef = {
+  id: "star_fragment", name: "Star Fragment", description: "A sliver of distant light.",
+  kind: "equipment", level: 1, slot: "focus",
+  bonuses: { int: 6, maxMp: 12 },
+  aura: { kind: "mana_regen", magnitude: 1 },
+};
+const necromancer_focus: ItemDef = {
+  id: "necromancer_focus", name: "Necromancer's Focus", description: "Death feeds the caster.",
+  kind: "equipment", level: 1, slot: "focus",
+  bonuses: { int: 4 },
+  on_kill: { target: "self", effect: { kind: "mana_regen", duration: 15, magnitude: 2 } },
 };
 
+// ──────────────────────────── registry ────────────────────────────
+
 export const ITEMS: Record<string, ItemDef> = {
-  // Flat consumables (direct heal/restore)
+  // Flat consumables
   health_potion, mana_crystal,
-  // Effect potions (buffs)
+  // Effect potions
   haste_potion, shield_potion, might_potion, iron_skin_potion,
   regen_potion, power_potion, focus_potion,
   // Cleanse
@@ -330,10 +456,20 @@ export const ITEMS: Record<string, ItemDef> = {
   scroll_meteor, scroll_firewall, scroll_poison_cloud,
   scroll_bless, scroll_might, scroll_iron_skin, scroll_mind_spark,
   scroll_focus, scroll_shield, scroll_heal,
-  // Equipment
-  cloth_cap, wizard_hat, leather_robe, silk_robe,
-  wooden_staff, fire_staff, bone_dagger, venom_dagger,
-  quartz_focus, runed_focus,
+  // Equipment: hats (7)
+  cloth_cap, wizard_hat, iron_helm, stoic_helm, crown_of_ages,
+  lucky_crown, arcane_diadem,
+  // Equipment: robes (6)
+  leather_robe, silk_robe, chain_vestment, thorned_robe, shadow_cloak,
+  spellweaver_robe,
+  // Equipment: staves (5)
+  wooden_staff, fire_staff, shock_staff, draining_staff, crystal_staff,
+  // Equipment: daggers (7)
+  bone_dagger, steel_dagger, venom_dagger, shadow_blade, frost_shard,
+  wild_dagger, vampiric_blade,
+  // Equipment: foci (6)
+  quartz_focus, runed_focus, void_focus, bloodstone, star_fragment,
+  necromancer_focus,
 };
 
 // ──────────────────────────── load-time validation ────────────────────────────
@@ -370,5 +506,20 @@ for (const [id, def] of Object.entries(ITEMS)) {
   }
   if (def.kind === "equipment") {
     if (!def.slot) throw new Error(`ITEMS['${id}']: equipment missing slot`);
+    const procHooks = [def.on_hit, def.on_damage, def.on_kill, def.on_cast];
+    for (const proc of procHooks) {
+      if (!proc) continue;
+      if (proc.effect) {
+        if (!_VALID_EFFECT_KINDS.has(proc.effect.kind)) {
+          throw new Error(`ITEMS['${id}']: proc effect kind '${proc.effect.kind}' unknown`);
+        }
+      }
+      if (proc.chance !== undefined && (proc.chance < 0 || proc.chance > 100)) {
+        throw new Error(`ITEMS['${id}']: proc chance ${proc.chance} out of range`);
+      }
+    }
+    if (def.aura && !_VALID_EFFECT_KINDS.has(def.aura.kind)) {
+      throw new Error(`ITEMS['${id}']: aura kind '${def.aura.kind}' unknown`);
+    }
   }
 }

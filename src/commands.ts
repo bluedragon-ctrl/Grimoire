@@ -4,9 +4,9 @@
 import type {
   Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef,
 } from "./types.js";
-import { hasEffect, listEffects } from "./effects.js";
+import { hasEffect, listEffects, effectiveStats } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
-import { useItem, onHitHook } from "./items/execute.js";
+import { useItem, onHitHook, onDamageHook, onKillHook, onCastHook } from "./items/execute.js";
 import { doPickup, doDrop } from "./items/loot.js";
 import { ITEMS } from "./content/items.js";
 import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
@@ -290,9 +290,14 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
     return [fail(self, "attack", "not adjacent")];
   }
 
+  // Phase 13.4: use effectiveStats so equipment bonuses and effect modifiers
+  // (might, chill, etc.) are reflected. Defender's def is subtracted; minimum 1.
+  const selfStats   = effectiveStats(self);
+  const targetStats = effectiveStats(target);
+  let rawDmg = Math.max(1, selfStats.atk - targetStats.def);
+
   // Phase 13: expose — target's incoming physical damage is multiplied by
   // (1 + magnitude%). Applied before shield absorption.
-  let rawDmg = self.atk ?? 1;
   const exposeEff = (target.effects ?? []).find(e => e.kind === "expose");
   if (exposeEff) rawDmg = Math.floor(rawDmg * (1 + (exposeEff.magnitude ?? 25) / 100));
 
@@ -312,16 +317,22 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
     { type: "Hit", actor: target.id, attacker: self.id, damage: hpDmg,
       ...(shieldAbsorbed > 0 ? { shieldAbsorbed } : {}) },
   ];
-  if (target.hp <= 0) {
+
+  const killed = target.hp <= 0;
+  if (killed) {
     target.alive = false;
     events.push({ type: "Died", actor: target.id });
-    if (target.isHero) {
-      events.push({ type: "HeroDied", actor: target.id });
-    }
+    if (target.isHero) events.push({ type: "HeroDied", actor: target.id });
+    // on_kill: wearer kills the target.
+    events.push(...onKillHook(world, self, target));
   }
-  // Phase 7: on-hit proc from attacker's dagger (if any). Skipped if defender
-  // died — onHitHook re-checks alive internally, so this is belt-and-braces.
+
+  // on_hit: fires on any connected melee (even lethal — effect still applies).
   events.push(...onHitHook(world, self, target));
+
+  // on_damage: fires on the defender after hp update. fromProc=false for melee.
+  events.push(...onDamageHook(world, target, self, false));
+
   return events;
 }
 
@@ -447,7 +458,13 @@ export function doCast(
   if (spell === "heal" && (targetRef === null || targetRef === undefined)) {
     targetRef = self;
   }
-  return castSpell(world, self, spell, targetRef);
+  const events = castSpell(world, self, spell, targetRef);
+  // on_cast: fires after a successful cast (mp spent, body executed).
+  // Failed casts (ActionFailed only) do not trigger.
+  if (!castFailedCleanly(events)) {
+    events.push(...onCastHook(world, self));
+  }
+  return events;
 }
 
 // True when a cast emitted only an ActionFailed and no other effects — used

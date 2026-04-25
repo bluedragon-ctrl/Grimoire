@@ -139,8 +139,9 @@ export interface Inventory {
   equipped: Record<Slot, ItemInstance | null>;
 }
 
-// Phase 13.3: unified item kind (replaces ItemCategory). "equipment" = wearable.
+// Phase 13.3: unified item kind. "equipment" = wearable.
 export type ItemKind = "consumable" | "equipment" | "scroll";
+export type StatKey = "atk" | "def" | "int" | "speed" | "maxHp" | "maxMp";
 
 // Primitive op shape — moved here from content/spells.ts so ItemDef can reference
 // it without a circular import (spells.ts imports types.ts, not vice-versa).
@@ -154,29 +155,50 @@ export interface SpellOp {
   args: Record<string, unknown>;
 }
 
+export interface ProcSpec {
+  target: "attacker" | "self" | "victim";
+  chance?: number;          // 0–100; default 100 (always fires)
+  effect?: { kind: EffectKind; duration: number; magnitude?: number };
+  damage?: number;          // negative value = heal the target by |damage|
+}
+
+export interface AuraSpec {
+  kind: EffectKind;
+  magnitude?: number;
+}
+
 export interface ItemDef {
   id: string;
   name: string;
   description: string;
-  /** Phase 13.3: replaces `category`. "equipment" = old "wearable". */
+  /** Phase 13.3: unified kind. "equipment" = wearable. */
   kind: ItemKind;
-  /** Phase 13.3: item level; all current items are level 1. */
   level: number;
-  // Equipment-only fields (present iff kind === "equipment")
+  // Equipment-only (kind === "equipment")
   slot?: Slot;
-  script?: string;        // merge / on_hit_inflict ops; parsed at registry load
-  // Consumable-only fields (present iff kind === "consumable")
+  script?: string;        // DSL merge/on_hit_inflict ops; parsed at registry load
+  bonuses?: Partial<Record<StatKey, number>>;   // Phase 13.4: additive stat bonuses
+  on_hit?:    ProcSpec;
+  on_damage?: ProcSpec;
+  on_kill?:   ProcSpec;
+  on_cast?:   ProcSpec;
+  aura?: AuraSpec;
+  // Consumable-only (kind === "consumable")
   useTarget?: "self" | "ally" | "enemy" | "tile";
-  range?: number;         // Chebyshev; 0 for self-only
-  body?: SpellOp[];       // dispatched through PRIMITIVES on use
+  range?: number;
+  body?: SpellOp[];
   polarity?: "buff" | "debuff";
-  // Scroll-only fields (present iff kind === "scroll")
-  spell?: string;         // spell name learned on room completion
+  // Scroll-only (kind === "scroll")
+  spell?: string;
   // Shared optional
-  visualPreset?: string;  // key into ITEM_VISUAL_PRESETS (default: id)
-  /** Phase 12: optional help override. If absent, help auto-generates from other fields. */
+  visualPreset?: string;
   help?: import("./ui/help/types.js").HelpMeta;
 }
+
+/** @deprecated Use ItemDef with kind checks instead. */
+export type ConsumableDef = ItemDef;
+/** @deprecated Use ItemDef with kind checks instead. */
+export type WearableDef = ItemDef;
 
 // ──────────────────────────── Clouds (Phase 6) ────────────────────────────
 
@@ -197,6 +219,10 @@ export type EffectKind =
   | "mana_regen" | "mana_burn" | "power" | "shield"
   | "blinded";
 
+export type EffectSource =
+  | { type: "actor"; id: string }
+  | { type: "item";  id: string };
+
 export interface Effect {
   id: string;
   kind: EffectKind;
@@ -205,7 +231,7 @@ export interface Effect {
   duration: number;       // total ticks; Infinity for permanent
   remaining: number;      // ticks left until expire
   tickEvery: number;      // cadence between onTick calls
-  source?: string;        // optional: who applied it
+  source?: EffectSource;  // discriminated union: actor or item origin
 }
 
 export type Direction = "N" | "S" | "E" | "W";
@@ -257,7 +283,7 @@ export interface World {
 export type GameEvent =
   | { type: "Moved"; actor: string; from: Pos; to: Pos }
   | { type: "Attacked"; attacker: string; defender: string; damage: number }
-  | { type: "Hit"; actor: string; attacker: string; damage: number; shieldAbsorbed?: number }
+  | { type: "Hit"; actor: string; attacker: string; damage: number; shieldAbsorbed?: number; fromProc?: boolean }
   | { type: "Missed"; actor: string; reason: string }
   | { type: "Cast"; actor: string; spell: string; target?: string; amount: number; visual?: string; element?: string }
   | { type: "Healed"; actor: string; amount: number }
@@ -269,7 +295,7 @@ export type GameEvent =
   | { type: "Idled"; actor: string }
   | { type: "ActionFailed"; actor: string; action: string; reason: string }
   | { type: "See"; actor: string; what: string }
-  | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: string }
+  | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: EffectSource }
   | { type: "EffectTick"; actor: string; kind: EffectKind; magnitude?: number }
   | { type: "EffectExpired"; actor: string; kind: EffectKind }
   | { type: "ManaChanged"; actor: string; amount: number }

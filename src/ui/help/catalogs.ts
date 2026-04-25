@@ -5,6 +5,7 @@
 // fields stay required — this reader is purely additive.
 
 import type { HelpEntry, HelpExample } from "./types.js";
+import type { ProcSpec } from "../../types.js";
 import { SPELLS } from "../../content/spells.js";
 import { ITEMS, SLOTS } from "../../content/items.js";
 import { MONSTER_TEMPLATES } from "../../content/monsters.js";
@@ -52,6 +53,19 @@ function autoSpellExample(name: string, tgt: string): HelpExample[] {
   return [{ caption: "Cast on the nearest enemy.", code: `if can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
 }
 
+function procLine(name: string, proc: ProcSpec): string {
+  const parts: string[] = [name];
+  if (proc.chance !== undefined && proc.chance < 100) parts.push(`${proc.chance}% chance`);
+  parts.push(`→ ${proc.target}`);
+  if (proc.effect) {
+    parts.push(`apply ${proc.effect.kind} ${proc.effect.duration}t${proc.effect.magnitude !== undefined ? ` (×${proc.effect.magnitude})` : ""}`);
+  }
+  if (proc.damage !== undefined) {
+    parts.push(proc.damage < 0 ? `heal ${-proc.damage}` : `damage ${proc.damage}`);
+  }
+  return parts.join(", ");
+}
+
 export function itemEntries(): HelpEntry[] {
   const out: HelpEntry[] = [];
   for (const d of Object.values(ITEMS)) {
@@ -65,8 +79,21 @@ export function itemEntries(): HelpEntry[] {
           : [];
     const related = d.help?.related ?? (d.kind === "consumable" ? ["commands/use"] : ["data/item"]);
     const meta: Array<[string, string]> = [["kind", d.kind]];
-    if (d.slot) meta.push(["slot", d.slot]);
-    if (d.script) meta.push(["script", d.script]);
+
+    if (d.kind === "equipment") {
+      if (d.slot) meta.push(["slot", d.slot]);
+      meta.push(["level", String(d.level)]);
+      if (d.bonuses) {
+        const bonusList = Object.entries(d.bonuses).map(([k, v]) => `${k}:+${v}`).join(", ");
+        meta.push(["bonuses", bonusList]);
+      }
+      if (d.aura) meta.push(["aura", `${d.aura.kind}${d.aura.magnitude !== undefined ? ` ×${d.aura.magnitude}` : ""}`]);
+      if (d.on_hit)    meta.push(["on_hit",    procLine("on_hit",    d.on_hit)]);
+      if (d.on_damage) meta.push(["on_damage", procLine("on_damage", d.on_damage)]);
+      if (d.on_kill)   meta.push(["on_kill",   procLine("on_kill",   d.on_kill)]);
+      if (d.on_cast)   meta.push(["on_cast",   procLine("on_cast",   d.on_cast)]);
+      if (d.script)    meta.push(["script", d.script]);
+    }
     out.push({
       id: d.id,
       path: `items/${d.id}`,

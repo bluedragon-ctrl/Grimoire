@@ -40,29 +40,38 @@ describe("equip / unequip", () => {
     expect(events.some(e => e.type === "ItemUnequipped")).toBe(true);
   });
 
-  it("merge aggregation: monotone-max, not sum", () => {
-    // silk_robe: int +2. fire_staff: int +3. Expect int bonus = 3, not 5.
+  it("bonus aggregation: additive across slots", () => {
+    // leather_robe: {def:2, maxHp:5}, iron_helm: {def:3, maxHp:10}
+    // Additive: def=5, maxHp=15 (not max(2,3)=3)
     const h = mkHero();
-    const robe = mintInstance("silk_robe");
-    const staff = mintInstance("fire_staff");
-    ensureInventory(h).consumables.push(robe, staff);
+    const robe = mintInstance("leather_robe");
+    const helm = mintInstance("iron_helm");
+    ensureInventory(h).consumables.push(robe, helm);
     equipItem(mkWorld([h]), h, robe);
-    equipItem(mkWorld([h]), h, staff);
+    equipItem(mkWorld([h]), h, helm);
     const bonuses = getEquipmentBonuses(h);
-    expect(bonuses.int).toBe(3); // max(2,3) — not 5
+    expect(bonuses.def).toBe(5);    // 2 + 3 additive
+    expect(bonuses.maxHp).toBe(15); // 5 + 10 additive
     const eff = effectiveStats(h);
-    expect(eff.int).toBe(3); // base 0 + bonus 3
-    expect(eff.atk).toBe(3 + 2); // base + fire_staff atk
+    expect(eff.def).toBe(5);
+    expect(eff.maxHp).toBe(35);    // base 20 + 15
   });
 
-  it("effectiveStats includes maxHp/maxMp merges", () => {
+  it("effectiveStats includes int and maxMp from wearables", () => {
     const h = mkHero();
+    // wizard_hat: {int:4}
     const hat = mintInstance("wizard_hat");
     ensureInventory(h).consumables.push(hat);
     equipItem(mkWorld([h]), h, hat);
     const eff = effectiveStats(h);
-    expect(eff.int).toBe(2);
-    expect(eff.maxMp).toBe(20 + 5);
+    expect(eff.int).toBe(4);
+    // runed_focus: {int:5, maxMp:8}
+    const focus = mintInstance("runed_focus");
+    ensureInventory(h).consumables.push(focus);
+    equipItem(mkWorld([h]), h, focus);
+    const eff2 = effectiveStats(h);
+    expect(eff2.int).toBe(9);       // 4 + 5
+    expect(eff2.maxMp).toBe(28);    // base 20 + 8
   });
 
   it("unequip from empty slot → ActionFailed", () => {

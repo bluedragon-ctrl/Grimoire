@@ -1,13 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { ITEMS, BAG_SIZE, SLOTS } from "../../src/content/items.js";
-import { parseAllItems, getItemOps } from "../../src/items/execute.js";
+import { parseAllItems, getItemOps, validateAllWearables } from "../../src/items/execute.js";
+import { ITEM_VISUAL_PRESETS } from "../../src/content/item-visuals.js";
 
 describe("items registry", () => {
-  it("all ITEMS entries parse at load (parseAllItems)", () => {
+  it("parseAllItems: parses without throwing", () => {
     expect(() => parseAllItems()).not.toThrow();
   });
 
-  it("every equipment item gets a non-empty ItemOp[] after parse", () => {
+  it("validateAllWearables: all 31 wearables pass load-time validation", () => {
+    expect(() => validateAllWearables()).not.toThrow();
+  });
+
+  it("equipment items with DSL script parse to non-empty ItemOp[]", () => {
     for (const [id, def] of Object.entries(ITEMS)) {
       if (def.kind === "equipment" && def.script) {
         const ops = getItemOps(id);
@@ -46,6 +51,30 @@ describe("items registry", () => {
   it("all items have level", () => {
     for (const [id, def] of Object.entries(ITEMS)) {
       expect(typeof def.level === "number", `${id} missing level`).toBe(true);
+    }
+  });
+
+  it("every slot has at least 5 wearables", () => {
+    const counts: Record<string, number> = {};
+    for (const def of Object.values(ITEMS)) {
+      if (def.kind === "equipment" && def.slot) {
+        counts[def.slot] = (counts[def.slot] ?? 0) + 1;
+      }
+    }
+    for (const slot of SLOTS) {
+      expect(counts[slot] ?? 0, `slot '${slot}' has too few wearables`).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it("total equipment count is 31", () => {
+    const equipment = Object.values(ITEMS).filter(d => d.kind === "equipment");
+    expect(equipment.length).toBe(31);
+  });
+
+  it("every item has a visual preset", () => {
+    for (const [id, def] of Object.entries(ITEMS)) {
+      const key = def.visualPreset ?? id;
+      expect(ITEM_VISUAL_PRESETS[key], `${id} missing visual preset`).toBeTruthy();
     }
   });
 

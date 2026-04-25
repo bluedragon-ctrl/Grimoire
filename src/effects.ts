@@ -13,7 +13,7 @@
 //   NOT mutate base stats. Callers use effectiveStats(actor) for the modified
 //   view. Direct stat changes (damage, healing, mana) still mutate fields.
 
-import type { Actor, Effect, EffectKind, GameEvent, World } from "./types.js";
+import type { Actor, Effect, EffectKind, EffectSource, GameEvent, World } from "./types.js";
 
 export interface EffectSpec {
   kind: EffectKind;
@@ -39,7 +39,7 @@ const burning: EffectSpec = {
   defaultDuration: 50,
   defaultMagnitude: 1,
   tickEvery: 10,
-  onTick: (_w, eff, actor) => {
+  onTick: (w, eff, actor) => {
     const dmg = eff.magnitude ?? 1;
     actor.hp -= dmg;
     const events: GameEvent[] = [
@@ -48,8 +48,10 @@ const burning: EffectSpec = {
     if (actor.hp <= 0 && actor.alive) {
       actor.alive = false;
       events.push({ type: "Died", actor: actor.id });
-      if (actor.isHero) {
-        events.push({ type: "HeroDied", actor: actor.id });
+      if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
+      if (eff.source?.type === "actor") {
+        const killer = w.actors.find(a => a.id === (eff.source as { id: string }).id);
+        if (killer?.alive) events.push(...callOnKillHook(w, killer, actor));
       }
     }
     return events;
@@ -99,7 +101,7 @@ const poison: EffectSpec = {
   defaultDuration: 30,
   defaultMagnitude: 1,
   tickEvery: 15,
-  onTick: (_w, eff, actor) => {
+  onTick: (w, eff, actor) => {
     const dmg = eff.magnitude ?? 1;
     actor.hp -= dmg;
     const events: GameEvent[] = [
@@ -109,6 +111,10 @@ const poison: EffectSpec = {
       actor.alive = false;
       events.push({ type: "Died", actor: actor.id });
       if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
+      if (eff.source?.type === "actor") {
+        const killer = w.actors.find(a => a.id === (eff.source as { id: string }).id);
+        if (killer?.alive) events.push(...callOnKillHook(w, killer, actor));
+      }
     }
     return events;
   },
@@ -278,7 +284,7 @@ function genId(world: World, kind: EffectKind): string {
 export interface ApplyOpts {
   magnitude?: number;
   tickEvery?: number;
-  source?: string;
+  source?: EffectSource;
 }
 
 export function applyEffect(
@@ -456,6 +462,15 @@ type StatBonuses = Partial<Record<"atk" | "def" | "int" | "speed" | "maxHp" | "m
 let _equipmentBonuses: ((a: Actor) => StatBonuses) | null = null;
 export function wireEquipmentBonuses(fn: (a: Actor) => StatBonuses): void {
   _equipmentBonuses = fn;
+}
+
+// on_kill wire — injected by items/execute.ts at module load so DoT/effect
+// deaths can credit kills to wearable procs without a circular import.
+type OnKillFn = (world: World, killer: Actor, victim: Actor) => GameEvent[];
+let _onKillHook: OnKillFn | null = null;
+export function wireOnKillHook(fn: OnKillFn): void { _onKillHook = fn; }
+export function callOnKillHook(world: World, killer: Actor, victim: Actor): GameEvent[] {
+  return _onKillHook ? _onKillHook(world, killer, victim) : [];
 }
 
 export function hasEffect(actor: Actor, kind: string): boolean {
