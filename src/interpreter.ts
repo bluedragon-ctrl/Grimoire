@@ -291,7 +291,7 @@ function buildPendingAction(name: string, args: unknown[]): PendingAction {
     case "wait":     return { kind: "wait",     cost: COST.wait };
     case "exit":     return { kind: "exit",     cost: COST.exit,     door: (args[0] as Direction) };
     case "halt":     return { kind: "halt",     cost: 0 };
-    case "use":      return { kind: "use",      cost: COST.use,      item: args[0] };
+    case "use":      return { kind: "use",      cost: COST.use,      item: args[0], ...(args[1] !== undefined ? { target: args[1] } : {}) };
     case "pickup":   return { kind: "pickup",   cost: COST.pickup,   target: args[0] };
     case "drop":     return { kind: "drop",     cost: COST.drop,     target: args[0] };
     case "summon":   return { kind: "summon",   cost: COST.summon,   template: String(args[0] ?? ""), target: args[1] };

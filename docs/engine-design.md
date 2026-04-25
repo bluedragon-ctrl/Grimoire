@@ -434,8 +434,88 @@ Both advance `world.rngSeed`. Because the world seed is deterministic from `RunO
 - Monster script universalization (full rewrite for faction-aware selectors) — deferred to the monster-content phase.
 - Neutral actors as content — infrastructure only.
 - `teleport`, `push` primitives — still stubs.
-- Consumables / scrolls — Phase 13.3.
 - Summon visuals beyond portal / despawn puff — summons use their template's `MONSTER_VISUALS` entry unchanged.
+
+---
+
+## Phase 13.3: Consumables
+
+### Item shape
+
+`ItemDef` now has a `kind: ItemKind` field (`"consumable" | "equipment" | "scroll"`) replacing the old `category`. Every item also carries `level: number` (used for loot-table weighting in a later phase).
+
+**Consumables** replace the old script DSL with a `body: SpellOp[]` list dispatched through the same `PRIMITIVES` registry as spells. Required fields: `useTarget`, `range`, `polarity` (`"buff" | "debuff"`), `body`.
+
+**Scrolls** carry a `spell: string` field. They have no `body` — they are processed at room exit only (see below).
+
+**Equipment** retains `slot` and `script`. The `script` field is now optional on the base type (scrolls/consumables omit it).
+
+### EffectSpec polarity
+
+Every `EffectSpec` has `polarity: "buff" | "debuff"`. Buffs: `regen`, `haste`, `might`, `iron_skin`, `power`, `mana_regen`, `shield`. Debuffs: `burning`, `slow`, `poison`, `chill`, `shock`, `expose`, `mana_burn`, `blinded`.
+
+The `cleanse` primitive uses polarity to decide which effects to remove: it strips all debuffs and preserves all buffs, emitting `EffectExpired` for each removed debuff.
+
+### Blinded effect
+
+`blinded` (polarity: debuff, defaultDuration: 1) prevents the actor from targeting anything at Chebyshev distance > 1. The gate lives in `validateCast` step 5 (cast path) and `validateUseGates` (item use path). A blinded actor can still act — they just can't reach far targets.
+
+### Smoke clouds
+
+Cloud kind `"smoke"` (added to `CLOUD_KINDS`) blocks line of sight and applies `blinded` to actors standing on the tile. LOS helper `src/los.ts` is shared between `commands.ts` and `spells/cast.ts` to avoid circular imports.
+
+**LOS model:** Bresenham-style ray from caster to target. The source tile is never opaque (you can always see from where you stand). Adjacent targets (Chebyshev ≤ 1) always have LOS. Only smoke clouds with `remaining > 0` create dynamic opacity; structural walls are not yet modelled.
+
+**LOS gate in cast path (step 4b):** non-self spells at range > 1 are blocked if smoke occludes the line. Emits `ActionFailed` with reason `"No line of sight to target (smoke)."`.
+
+**LOS gate in use() path:** same rule — non-self items with a tile/actor target at range > 1 are blocked by smoke.
+
+### `use()` contract
+
+`doUse(world, self, itemRef, targetRef?)` validates gates before consuming the item (**pre-spend discipline** — mirrors the cast path):
+
+1. Resolve item instance from ref (by instance or name).
+2. Look up `ItemDef`; must be `kind === "consumable"`.
+3. Faction gate: `useTarget === "ally"` requires same faction; `"enemy"` requires different.
+4. Range gate: Chebyshev distance to target must be ≤ `def.range`.
+5. LOS gate: smoke must not block the path (skipped for adjacent and self targets).
+6. Blinded gate: if caster has `blinded`, target must be at Chebyshev ≤ 1.
+
+Only after all gates pass is the item removed from the bag and its `body` dispatched through `PRIMITIVES`.
+
+### New primitives
+
+**`cleanse`** (targetType: `"actor"`): removes all debuff effects from the target, emitting `EffectExpired` for each. Buffs are preserved.
+
+**`permanent_boost`** (targetType: `"actor"`): permanently increments a base stat (`hp`/`mp`/`atk`/`def`/`speed`/`int`). For `hp`/`mp`, both the current value and the max are increased. Unknown stats are a no-op.
+
+### Scroll auto-consume
+
+When a hero successfully exits a room (`doExit` reaches a door tile), all scroll items in the bag are processed before `HeroExited` is emitted:
+
+- If the scroll's `spell` is **not** in `hero.knownSpells`: add it, emit `SpellLearned`, emit `ScrollDiscarded(reason:"learned")`.
+- If the spell is **already known**: emit `ScrollDiscarded(reason:"duplicate")`.
+
+Scrolls are always removed from the bag. Non-scroll items are untouched. If `doExit` returns `ActionFailed` (not on a door tile), the bag is unchanged.
+
+### Content catalogue (Phase 13.3 additions)
+
+| Category | IDs |
+|---|---|
+| Flat consumables (existing) | `health_potion`, `mana_crystal` |
+| Effect potions | `haste_potion`, `shield_potion`, `might_potion`, `iron_skin_potion`, `regen_potion`, `power_potion`, `focus_potion`, `cleanse_potion` |
+| Elixirs (permanent) | `vitality_elixir`, `insight_elixir`, `might_elixir`, `guard_elixir`, `swift_elixir`, `focus_elixir` |
+| Bombs (tile) | `fire_bomb`, `frost_bomb`, `shock_bomb`, `smoke_bomb` |
+| Scrolls | `scroll_bolt` … `scroll_heal` (20 learnable spells; summon spells excluded) |
+
+### Phase 13.3: Non-goals
+
+- Neutral actors as full content — infrastructure only.
+- `teleport`, `push` primitives — still stubs.
+- Structural wall LOS — walls are not yet modelled in the room map.
+- Bag size enforcement beyond the BAG_SIZE constant — UI clamps; engine trusts the bag.
+
+---
 
 ## Open questions (flagging, not blocking)
 

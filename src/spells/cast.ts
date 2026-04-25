@@ -6,6 +6,8 @@
 import type { Actor, GameEvent, Pos, World } from "../types.js";
 import { SPELLS, type Spell } from "../content/spells.js";
 import { PRIMITIVES, type TargetRef } from "./primitives.js";
+import { hasEffect } from "../effects.js";
+import { hasLineOfSight } from "../los.js";
 import { didYouMean } from "../lang/errors.js";
 
 function fail(caster: Actor, reason: string): GameEvent {
@@ -112,9 +114,23 @@ export function validateCast(
     if (dist > spell.range) {
       return { ok: false, reason: `Target is out of range (max ${spell.range} tiles).` };
     }
+
+    // 4b. LOS gate — smoke clouds between caster and target block line of sight.
+    // Self-targeted and adjacent targets always have LOS.
+    if (spell.targetType !== "self" && dist > 1 && !hasLineOfSight(world, caster.pos, targetPos!)) {
+      return { ok: false, reason: "No line of sight to target (smoke)." };
+    }
   }
 
-  // 5. Mana.
+  // 5. Blinded gate: if caster is blinded, ranged targets (Chebyshev > 1) are denied.
+  if (!opts.skipTarget && hasEffect(caster, "blinded") && targetPos) {
+    const dist = chebyshev(caster.pos, targetPos);
+    if (dist > 1) {
+      return { ok: false, reason: "You are blinded and can only target adjacent tiles." };
+    }
+  }
+
+  // 6. Mana.
   const mp = caster.mp ?? 0;
   if (mp < spell.mpCost) {
     return { ok: false, reason: `Not enough mana (needs ${spell.mpCost}, you have ${mp}).` };

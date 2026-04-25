@@ -2,14 +2,18 @@
 // Target resolution goes through a single seam: `resolveTarget`.
 
 import type {
-  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode,
+  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef,
 } from "./types.js";
 import { hasEffect, listEffects } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
 import { useItem, onHitHook } from "./items/execute.js";
 import { doPickup, doDrop } from "./items/loot.js";
+import { ITEMS } from "./content/items.js";
 import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
 import { worldRandom } from "./rng.js";
+import { hasLineOfSight } from "./los.js";
+
+export { hasLineOfSight };
 
 export { doPickup, doDrop };
 
@@ -321,10 +325,79 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
   return events;
 }
 
-// Phase 7: consumable use. Accepts an ItemInstance or a bare defId (string).
-// defId lookup picks the first matching instance in the bag (deterministic
-// by insertion order).
-export function doUse(world: World, self: Actor, itemRef: unknown): GameEvent[] {
+// ──────────────────────────── LOS helper ────────────────────────────
+
+// ──────────────────────────── use() generalization ────────────────────────────
+
+// Faction helper — mirrors sameFaction in spells/cast.ts.
+function sameFaction(a: Actor, b: Actor): boolean {
+  const fa = a.faction ?? (a.isHero ? "player" : "enemy");
+  const fb = b.faction ?? (b.isHero ? "player" : "enemy");
+  if (fa === "neutral" && fb === "neutral") return false;
+  return fa === fb;
+}
+
+function chebyshev(a: Pos, b: Pos): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+type UseValidation =
+  | { ok: true; targetActor: Actor | null; targetPos: Pos | null }
+  | { ok: false; reason: string };
+
+function validateUseGates(
+  world: World,
+  self: Actor,
+  def: ItemDef,
+  targetRef: unknown,
+): UseValidation {
+  const useTarget = def.useTarget ?? "self";
+  let targetActor: Actor | null = null;
+  let targetPos: Pos | null = null;
+
+  if (useTarget === "self") {
+    targetActor = self;
+    targetPos = { ...self.pos };
+  } else if (useTarget === "tile") {
+    // Accept a bare Pos or an actor position.
+    const pos = resolvePos(world, targetRef);
+    if (!pos) return { ok: false, reason: `${def.name} needs a tile target.` };
+    targetPos = pos;
+  } else {
+    // ally or enemy — must be a live actor.
+    targetActor = resolveActor(world, targetRef);
+    if (!targetActor) {
+      const need = useTarget === "ally" ? "an ally" : "an enemy";
+      return { ok: false, reason: `${def.name} needs ${need} target.` };
+    }
+    if (useTarget === "ally" && !sameFaction(self, targetActor)) {
+      return { ok: false, reason: `${def.name} can only target allies.` };
+    }
+    if (useTarget === "enemy" && sameFaction(self, targetActor)) {
+      return { ok: false, reason: `${def.name} can only target enemies.` };
+    }
+    targetPos = { ...targetActor.pos };
+  }
+
+  // Range gate.
+  const range = def.range ?? 0;
+  if (targetPos && chebyshev(self.pos, targetPos) > range) {
+    return { ok: false, reason: `Target is out of range (max ${range} tiles).` };
+  }
+
+  // LOS gate (skip for self-target — you always affect yourself).
+  if (useTarget !== "self" && targetPos && !hasLineOfSight(world, self.pos, targetPos)) {
+    return { ok: false, reason: "No line of sight to target." };
+  }
+
+  return { ok: true, targetActor, targetPos };
+}
+
+// Consumable use. Accepts an ItemInstance or a bare defId (string) as itemRef.
+// Optional targetRef: omit for self-target items; provide an actor or tile for
+// ally/enemy/tile-targeted items. All validation (faction, range, LOS) runs
+// here BEFORE the item is consumed (pre-spend discipline).
+export function doUse(world: World, self: Actor, itemRef: unknown, targetRef?: unknown): GameEvent[] {
   let instance: ItemInstance | null = null;
   if (itemRef && typeof itemRef === "object") {
     const r = itemRef as ItemInstance;
@@ -336,7 +409,18 @@ export function doUse(world: World, self: Actor, itemRef: unknown): GameEvent[] 
     else return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `No '${itemRef}' in bag.` }];
   }
   if (!instance) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: "no item" }];
-  return useItem(world, self, instance);
+
+  const def = ITEMS[instance.defId];
+  if (!def) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `Unknown item '${instance.defId}'.` }];
+  if (def.kind !== "consumable") {
+    return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `${def.name} is not a consumable.` }];
+  }
+
+  // Pre-spend gate: all validations before item is removed from bag.
+  const v = validateUseGates(world, self, def, targetRef ?? self);
+  if (!v.ok) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: v.reason }];
+
+  return useItem(world, self, instance, v.targetActor, v.targetPos);
 }
 
 // Mirrors castFailedCleanly: failed use() emits only ActionFailed → refund.
@@ -380,12 +464,53 @@ export function doWait(world: World, self: Actor): GameEvent[] {
 // `exit` is position-driven: any door tile works. The arg is accepted for
 // backward compat with `exit("N")` / `exit(doors()[0])` but ignored —
 // whichever door the hero is standing on exits.
+// Before emitting HeroExited, any scroll items in the bag are processed:
+// new spells are learned; duplicates are silently discarded.
 export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent[] {
   const door = world.room.doors.find(
     d => d.pos.x === self.pos.x && d.pos.y === self.pos.y,
   );
   if (!door) return [fail(self, "exit", "not on a door tile")];
-  return [{ type: "HeroExited", actor: self.id, door: door.dir }];
+  const events: GameEvent[] = processScrolls(self);
+  events.push({ type: "HeroExited", actor: self.id, door: door.dir });
+  return events;
+}
+
+// Process all scroll items in the hero's bag at room exit.
+// For each scroll: if its spell is not yet known → learn it (SpellLearned +
+// ScrollDiscarded reason:"learned"); if already known → discard silently
+// (ScrollDiscarded reason:"duplicate"). Scrolls are always removed from bag.
+function processScrolls(hero: Actor): GameEvent[] {
+  const bag = hero.inventory?.consumables;
+  if (!bag || bag.length === 0) return [];
+
+  const events: GameEvent[] = [];
+  const keep: typeof bag = [];
+
+  for (const inst of bag) {
+    const def = ITEMS[inst.defId];
+    if (!def || def.kind !== "scroll") {
+      keep.push(inst);
+      continue;
+    }
+    const spellId = def.spell;
+    if (!spellId) {
+      // Malformed scroll — discard silently.
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "duplicate" });
+      continue;
+    }
+    const known = hero.knownSpells ?? [];
+    if (!known.includes(spellId)) {
+      hero.knownSpells = [...known, spellId];
+      events.push({ type: "SpellLearned", actor: hero.id, spell: spellId });
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "learned" });
+    } else {
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "duplicate" });
+    }
+  }
+
+  hero.inventory!.consumables = keep;
+  return events;
 }
 
 export function doHalt(world: World, self: Actor): GameEvent[] {
