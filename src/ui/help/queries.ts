@@ -54,14 +54,14 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     blurb: "Living actors of the same faction (excluding self), sorted nearest-first.",
     body: "Returns actors that share the caller's faction. Dead actors and the caller itself are excluded. Two neutrals are not considered allies. Ties break by id (lexicographic).",
     examples: [{ caption: "Heal the nearest ally if one is hurt.", code: "if len(allies()) > 0 and me.can_cast(\"heal\", allies()[0]):\n  cast(\"heal\", allies()[0])" }],
-    related: ["queries/enemies", "data/actor", "data/collection"],
+    related: ["queries/enemies", "data/actor", "data/collection", "commands/summon"],
   },
   items: {
     id: "items", name: "items", signature: "items()",
     blurb: "Static room items (designer-placed), sorted nearest-first.",
     body: "Separate from FloorItem drops. Use `items_here()` / `items_nearby()` for pickupable drops.",
     examples: [{ caption: "Walk to the first scripted item.", code: "if len(items()) > 0:\n  approach(items()[0])" }],
-    related: ["queries/items_here", "queries/items_nearby", "data/item", "data/collection"],
+    related: ["queries/items_here", "queries/items_nearby", "queries/chests", "data/item", "data/collection"],
   },
   items_here: {
     id: "items_here", name: "items_here", signature: "items_here()",
@@ -91,7 +91,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     id: "clouds", name: "clouds", signature: "clouds()",
     blurb: "Array of active cloud regions: `{id, pos, kind, remaining}`.",
     examples: [{ caption: "Avoid walking into a cloud.", code: "if len(clouds()) == 0:\n  approach(enemies()[0])" }],
-    related: ["queries/cloud_at", "data/cloud", "spells/firewall", "data/collection"],
+    related: ["queries/cloud_at", "data/cloud", "spells/firewall", "data/collection", "commands/wait"],
   },
   cloud_at: {
     id: "cloud_at", name: "cloud_at", signature: "cloud_at(target)",

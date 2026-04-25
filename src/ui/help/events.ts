@@ -15,7 +15,7 @@ export const EVENT_PAGES: Record<string, EventPage> = {
     blurb: "Every name you can use after `on`. The parser rejects anything else with a hint.",
     body: "Handlers sit alongside the main body and fire on engine events for the actor that owns the script. The valid event names are fixed — adding a new one requires touching `src/lang/event-registry.ts` and the scheduler. Today the list is:\n\n- `hit` — your owner was just struck. Binding: the attacker Actor.\n- `see` — your owner first noticed something. Binding: a description of what was seen.\n\nA misspelled handler name (`on hti:`) is a parse error with a did-you-mean hint, not a silent never-fires.\n\nHandlers keep firing even after the main body has halted — a halted caster can still retaliate via `on hit`.",
     examples: [{ caption: "Both handlers, side by side.", code: "on hit as attacker:\n  flee(attacker)\n\non see as what:\n  cast(\"shield\")" }],
-    related: ["events/hit", "events/see"],
+    related: ["events/hit", "events/see", "events/script_error"],
   },
   hit: {
     id: "hit", name: "on hit",
