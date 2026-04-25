@@ -34,7 +34,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     body:
       "Mirror of approach: one step per call, 8-directional, same tie-breaking. Use inside a loop to retreat over multiple ticks.",
     examples: [
-      { caption: "Retreat from the nearest enemy while bleeding.", code: "while hp() < 5 and enemies().length > 0:\n  flee(enemies()[0])" },
+      { caption: "Retreat from the nearest enemy while bleeding.", code: "while me.hp < 5 and len(enemies()) > 0:\n  flee(enemies()[0])" },
     ],
     related: ["commands/approach", "queries/hp", "queries/enemies"],
   },
@@ -47,7 +47,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     body:
       "Deals `self.atk` damage. Fails (ActionFailed, still costs) if the target isn't orthogonally adjacent or not alive. On-hit item procs (e.g., venom dagger) fire after the swing.",
     examples: [
-      { caption: "Walk-and-whack loop.", code: "while enemies().length > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])" },
+      { caption: "Walk-and-whack loop.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])" },
     ],
     related: ["commands/approach", "queries/enemies", "events/hit", "data/actor"],
   },
@@ -58,9 +58,9 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "cast(spellName, target?)",
     blurb: "Cast a known spell. Costs 15 energy + the spell's MP.",
     body:
-      "`spellName` must be a string matching a learned spell (see `known_spells()`). `target` depends on the spell's targetType — self, ally, enemy, any, or tile. `heal` defaults its target to self if omitted.\n\nFailed casts (out of range, out of MP, unknown spell, target resolution fail) emit ActionFailed only — the action-slot cost is refunded, so a `can_cast` gate followed by a blind `cast` doesn't drain energy while the hero tries.",
+      "`spellName` must be a string matching a learned spell (see `known_spells()`). `target` depends on the spell's targetType — self, ally, enemy, any, or tile. `heal` defaults its target to self if omitted.\n\nFailed casts (out of range, out of MP, unknown spell, target resolution fail) emit ActionFailed only — the action-slot cost is refunded, so a `me.can_cast(...)` gate followed by a blind `cast(...)` doesn't drain energy while the hero tries.\n\nIn an `if`/`while` condition, `cast(...)` resolves to `True` on success and `False` on a clean fail, so you can branch on the outcome.",
     examples: [
-      { caption: "Bolt the closest enemy when you can afford it.", code: "if can_cast(\"bolt\", enemies()[0]):\n  cast(\"bolt\", enemies()[0])" },
+      { caption: "Bolt the closest enemy when you can afford it.", code: "if me.can_cast(\"bolt\", enemies()[0]):\n  cast(\"bolt\", enemies()[0])" },
       { caption: "Heal yourself.", code: "cast(\"heal\")" },
     ],
     related: ["queries/known_spells", "queries/mp", "data/actor", "spells/bolt", "spells/heal"],
@@ -74,7 +74,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     body:
       "`item` is either an ItemInstance from `items()`/inventory or a bare defId string (the first matching bag instance is chosen). Running a use-script mid-run can apply effects, restore resources, or cleanse. Failed uses (no such item, empty bag) refund the action slot.",
     examples: [
-      { caption: "Pop a health potion when low.", code: "if hp() < 8:\n  use(\"health_potion\")" },
+      { caption: "Pop a health potion when low.", code: "if me.hp < 8:\n  use(\"health_potion\")" },
     ],
     related: ["items/health_potion", "items/mana_crystal", "data/item"],
   },
@@ -126,7 +126,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     blurb: "Do nothing this tick. Costs 5 energy.",
     body: "A deliberate idle. Useful to hold position, tick down an effect on an enemy, or let an ally pass.",
     examples: [
-      { caption: "Stall while burning ticks down on a foe.", code: "while has_effect(enemies()[0], \"burning\"):\n  wait()" },
+      { caption: "Stall while burning ticks down on a foe.", code: "while enemies()[0].has_effect(\"burning\"):\n  wait()" },
     ],
     related: ["data/actor"],
   },
@@ -139,7 +139,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     body:
       "Ends the hero's main script. Event handlers (e.g., `on hit`) continue to fire — halt only closes the main body's turn machine. Writing `halt` at the end of a loop is the canonical way to idle once enemies are cleared.",
     examples: [
-      { caption: "Clean end after clearing.", code: "while enemies().length > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
+      { caption: "Clean end after clearing.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
     ],
     related: ["events/hit", "events/see"],
   },

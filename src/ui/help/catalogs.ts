@@ -50,7 +50,7 @@ function autoSpellExample(name: string, tgt: string): HelpExample[] {
   if (tgt === "tile") {
     return [{ caption: "Cast on the enemy's tile.", code: `cast("${name}", enemies()[0])` }];
   }
-  return [{ caption: "Cast on the nearest enemy.", code: `if can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
+  return [{ caption: "Cast on the nearest enemy.", code: `if me.can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
 }
 
 function procLine(name: string, proc: ProcSpec): string {

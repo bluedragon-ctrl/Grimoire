@@ -48,7 +48,7 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
   cast_or_approach: {
     id: "cast_or_approach", name: "Cast at range, else approach",
     blurb: "Bolt when in range with mana, otherwise close distance.",
-    body: "`can_cast(\"bolt\", target)` gates on learned + in-range + sufficient MP, so the branch below only runs when a bolt would actually fly.",
+    body: "`me.can_cast(\"bolt\", target)` gates on learned + in-range + sufficient MP, so the branch below only runs when a bolt would actually fly.",
     examples: [{
       code:
         "while len(enemies()) > 0:\n" +

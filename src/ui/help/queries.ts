@@ -14,8 +14,8 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   me: {
     id: "me", name: "me", signature: "me",
     blurb: "The hero's own Actor. Zero cost.",
-    body: "Shorthand for the acting actor. Useful with `has_effect(me, ...)` or `distance(me, foo)`.",
-    examples: [{ caption: "Check a self-effect.", code: "if has_effect(me, \"burning\"):\n  wait()" }],
+    body: "Shorthand for the acting actor. Read fields off it (`me.hp`, `me.mp`) and call its methods (`me.has_effect(\"burning\")`, `me.distance_to(foe)`, `me.can_cast(\"bolt\", foe)`). See the Actor data page for the full surface.",
+    examples: [{ caption: "Check a self-effect.", code: "if me.has_effect(\"burning\"):\n  wait()" }],
     related: ["data/actor"],
   },
   hp: {
@@ -39,28 +39,28 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   known_spells: {
     id: "known_spells", name: "known_spells", signature: "known_spells()",
     blurb: "Array of spell-name strings the hero has learned.",
-    examples: [{ caption: "Only cast what you know.", code: "if known_spells().length > 0:\n  cast(known_spells()[0], enemies()[0])" }],
+    examples: [{ caption: "Only cast what you know.", code: "if len(known_spells()) > 0:\n  cast(known_spells()[0], enemies()[0])" }],
     related: ["commands/cast", "data/actor"],
   },
   enemies: {
     id: "enemies", name: "enemies", signature: "enemies()",
     blurb: "Living actors of an opposing faction, sorted nearest-first.",
-    body: "Returns actors whose faction differs from the caller's (player vs enemy). Dead actors and actors of the same faction are excluded. Two neutrals ignore each other. Ties break by id (lexicographic).",
-    examples: [{ caption: "Nearest enemy first.", code: "while enemies().length > 0:\n  approach(enemies()[0])" }],
+    body: "Returns a Collection of actors whose faction differs from the caller's (player vs enemy). Dead actors and actors of the same faction are excluded. Two neutrals ignore each other. Ties break by id (lexicographic). Use `len(enemies())` for the count, `enemies()[0]` for the closest, or `.filter` / `.min_by` for fancier picks.",
+    examples: [{ caption: "Nearest enemy first.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])" }],
     related: ["queries/allies", "data/actor"],
   },
   allies: {
     id: "allies", name: "allies", signature: "allies()",
     blurb: "Living actors of the same faction (excluding self), sorted nearest-first.",
     body: "Returns actors that share the caller's faction. Dead actors and the caller itself are excluded. Two neutrals are not considered allies. Ties break by id (lexicographic).",
-    examples: [{ caption: "Heal the nearest ally if one is hurt.", code: "if allies().length > 0 and can_cast(\"heal\", allies()[0]):\n  cast(\"heal\", allies()[0])" }],
+    examples: [{ caption: "Heal the nearest ally if one is hurt.", code: "if len(allies()) > 0 and me.can_cast(\"heal\", allies()[0]):\n  cast(\"heal\", allies()[0])" }],
     related: ["queries/enemies", "data/actor"],
   },
   items: {
     id: "items", name: "items", signature: "items()",
     blurb: "Static room items (designer-placed), sorted nearest-first.",
     body: "Separate from FloorItem drops. Use `items_here()` / `items_nearby()` for pickupable drops.",
-    examples: [{ caption: "Walk to the first scripted item.", code: "if items().length > 0:\n  approach(items()[0])" }],
+    examples: [{ caption: "Walk to the first scripted item.", code: "if len(items()) > 0:\n  approach(items()[0])" }],
     related: ["queries/items_here", "queries/items_nearby", "data/item"],
   },
   items_here: {
@@ -78,7 +78,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   chests: {
     id: "chests", name: "chests", signature: "chests()",
     blurb: "Unopened chests in the room, nearest-first.",
-    examples: [{ caption: "Walk to the first chest.", code: "if chests().length > 0:\n  approach(chests()[0])" }],
+    examples: [{ caption: "Walk to the first chest.", code: "if len(chests()) > 0:\n  approach(chests()[0])" }],
     related: ["queries/items_here"],
   },
   doors: {
@@ -90,7 +90,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
   clouds: {
     id: "clouds", name: "clouds", signature: "clouds()",
     blurb: "Array of active cloud regions: `{id, pos, kind, remaining}`.",
-    examples: [{ caption: "Avoid walking into a cloud.", code: "if clouds().length == 0:\n  approach(enemies()[0])" }],
+    examples: [{ caption: "Avoid walking into a cloud.", code: "if len(clouds()) == 0:\n  approach(enemies()[0])" }],
     related: ["queries/cloud_at", "data/cloud", "spells/firewall"],
   },
   cloud_at: {
