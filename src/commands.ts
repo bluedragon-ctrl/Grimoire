@@ -464,12 +464,53 @@ export function doWait(world: World, self: Actor): GameEvent[] {
 // `exit` is position-driven: any door tile works. The arg is accepted for
 // backward compat with `exit("N")` / `exit(doors()[0])` but ignored —
 // whichever door the hero is standing on exits.
+// Before emitting HeroExited, any scroll items in the bag are processed:
+// new spells are learned; duplicates are silently discarded.
 export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent[] {
   const door = world.room.doors.find(
     d => d.pos.x === self.pos.x && d.pos.y === self.pos.y,
   );
   if (!door) return [fail(self, "exit", "not on a door tile")];
-  return [{ type: "HeroExited", actor: self.id, door: door.dir }];
+  const events: GameEvent[] = processScrolls(self);
+  events.push({ type: "HeroExited", actor: self.id, door: door.dir });
+  return events;
+}
+
+// Process all scroll items in the hero's bag at room exit.
+// For each scroll: if its spell is not yet known → learn it (SpellLearned +
+// ScrollDiscarded reason:"learned"); if already known → discard silently
+// (ScrollDiscarded reason:"duplicate"). Scrolls are always removed from bag.
+function processScrolls(hero: Actor): GameEvent[] {
+  const bag = hero.inventory?.consumables;
+  if (!bag || bag.length === 0) return [];
+
+  const events: GameEvent[] = [];
+  const keep: typeof bag = [];
+
+  for (const inst of bag) {
+    const def = ITEMS[inst.defId];
+    if (!def || def.kind !== "scroll") {
+      keep.push(inst);
+      continue;
+    }
+    const spellId = def.spell;
+    if (!spellId) {
+      // Malformed scroll — discard silently.
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "duplicate" });
+      continue;
+    }
+    const known = hero.knownSpells ?? [];
+    if (!known.includes(spellId)) {
+      hero.knownSpells = [...known, spellId];
+      events.push({ type: "SpellLearned", actor: hero.id, spell: spellId });
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "learned" });
+    } else {
+      events.push({ type: "ScrollDiscarded", actor: hero.id, defId: inst.defId, reason: "duplicate" });
+    }
+  }
+
+  hero.inventory!.consumables = keep;
+  return events;
 }
 
 export function doHalt(world: World, self: Actor): GameEvent[] {
