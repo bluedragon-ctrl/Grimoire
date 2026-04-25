@@ -84,7 +84,7 @@ const inflict: Primitive = {
     const rawMag = args.magnitude !== undefined ? Number(args.magnitude) : undefined;
     const magnitude = rawMag !== undefined ? scale(rawMag, caster.int ?? 0) : undefined;
     return applyEffect(world, t.id, kind, duration, {
-      source: caster.id,
+      source: { type: "actor", id: caster.id },
       ...(magnitude !== undefined ? { magnitude } : {}),
     });
   },
@@ -205,7 +205,7 @@ const explode: Primitive = {
 
           if (kind) {
             events.push(...applyEffect(world, actor.id, kind, duration, {
-              source: caster.id,
+              source: { type: "actor", id: caster.id },
               ...(magnitude !== undefined ? { magnitude } : {}),
             }));
           }

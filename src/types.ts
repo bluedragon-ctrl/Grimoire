@@ -140,18 +140,50 @@ export interface Inventory {
 }
 
 export type ItemCategory = "consumable" | "wearable";
+export type StatKey = "atk" | "def" | "int" | "speed" | "maxHp" | "maxMp";
 
-export interface ItemDef {
+export interface ProcSpec {
+  target: "attacker" | "self" | "victim";
+  chance?: number;          // 0–100; default 100 (always fires)
+  effect?: { kind: EffectKind; duration: number; magnitude?: number };
+  damage?: number;          // negative value = heal the target by |damage|
+}
+
+export interface AuraSpec {
+  kind: EffectKind;
+  magnitude?: number;
+}
+
+/** Consumable item — uses a script body executed by useItem(). */
+export interface ConsumableDef {
   id: string;
   name: string;
   description: string;
-  category: ItemCategory;
-  slot?: Slot;            // required when category === "wearable"
-  script: string;         // item-script source; parsed at registry load
-  visualPreset?: string;  // key into ITEM_VISUAL_PRESETS (default: id)
-  /** Phase 12: optional help override. If absent, help auto-generates from other fields. */
+  category: "consumable";
+  script: string;
+  visualPreset?: string;
   help?: import("./ui/help/types.js").HelpMeta;
 }
+
+/** Wearable item — structured data; no DSL script. */
+export interface WearableDef {
+  id: string;
+  name: string;
+  description: string;
+  category: "wearable";
+  slot: Slot;
+  level: number;
+  bonuses?: Partial<Record<StatKey, number>>;
+  on_hit?:    ProcSpec;   // wearer's melee lands
+  on_damage?: ProcSpec;   // wearer takes damage
+  on_kill?:   ProcSpec;   // wearer lands killing blow
+  on_cast?:   ProcSpec;   // wearer casts any spell
+  aura?: AuraSpec;        // continuous effect while equipped
+  visualPreset?: string;
+  help?: import("./ui/help/types.js").HelpMeta;
+}
+
+export type ItemDef = ConsumableDef | WearableDef;
 
 // ──────────────────────────── Clouds (Phase 6) ────────────────────────────
 
@@ -171,6 +203,10 @@ export type EffectKind =
   | "chill" | "shock" | "expose" | "might" | "iron_skin"
   | "mana_regen" | "mana_burn" | "power" | "shield";
 
+export type EffectSource =
+  | { type: "actor"; id: string }
+  | { type: "item";  id: string };
+
 export interface Effect {
   id: string;
   kind: EffectKind;
@@ -179,7 +215,7 @@ export interface Effect {
   duration: number;       // total ticks; Infinity for permanent
   remaining: number;      // ticks left until expire
   tickEvery: number;      // cadence between onTick calls
-  source?: string;        // optional: who applied it
+  source?: EffectSource;  // discriminated union: actor or item origin
 }
 
 export type Direction = "N" | "S" | "E" | "W";
@@ -231,7 +267,7 @@ export interface World {
 export type GameEvent =
   | { type: "Moved"; actor: string; from: Pos; to: Pos }
   | { type: "Attacked"; attacker: string; defender: string; damage: number }
-  | { type: "Hit"; actor: string; attacker: string; damage: number; shieldAbsorbed?: number }
+  | { type: "Hit"; actor: string; attacker: string; damage: number; shieldAbsorbed?: number; fromProc?: boolean }
   | { type: "Missed"; actor: string; reason: string }
   | { type: "Cast"; actor: string; spell: string; target?: string; amount: number; visual?: string; element?: string }
   | { type: "Healed"; actor: string; amount: number }
@@ -243,7 +279,7 @@ export type GameEvent =
   | { type: "Idled"; actor: string }
   | { type: "ActionFailed"; actor: string; action: string; reason: string }
   | { type: "See"; actor: string; what: string }
-  | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: string }
+  | { type: "EffectApplied"; actor: string; kind: EffectKind; source?: EffectSource }
   | { type: "EffectTick"; actor: string; kind: EffectKind; magnitude?: number }
   | { type: "EffectExpired"; actor: string; kind: EffectKind }
   | { type: "ManaChanged"; actor: string; amount: number }
