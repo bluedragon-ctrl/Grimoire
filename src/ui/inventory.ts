@@ -10,7 +10,8 @@ import type { Actor, ItemDef, ItemInstance, Slot } from "../types.js";
 import { ITEMS, BAG_SIZE, SLOTS, emptyEquipped } from "../content/items.js";
 import { ITEM_DRAWS } from "../render/items.js";
 import { ITEM_VISUAL_PRESETS, FALLBACK_PRESETS, type ItemShape } from "../content/item-visuals.js";
-import { getEquipmentBonuses, getItemOps } from "../items/execute.js";
+import type { WearableDef, ProcSpec } from "../types.js";
+import { getEquipmentBonuses } from "../items/execute.js";
 import type { MergeStat } from "../items/script.js";
 
 const ICON_PX = 40;
@@ -228,27 +229,36 @@ export function mountInventoryPanel(
     }
     col.appendChild(table);
 
-    // Permanent effects = on_hit_inflict ops from equipped items. Shown with
-    // their source so the player sees where the effect comes from.
-    const onHits: string[] = [];
+    // Proc effects from equipped wearables (on_hit, on_damage, on_kill, on_cast).
+    const procLines: string[] = [];
     for (const slotKey of SLOTS) {
       const inst = hero.inventory?.equipped[slotKey];
       if (!inst) continue;
       const def = ITEMS[inst.defId];
-      if (!def) continue;
-      for (const op of getItemOps(inst.defId)) {
-        if (op.op === "on_hit_inflict") {
-          onHits.push(`${def.name}: on-hit ${op.effectId} (${op.duration}t)`);
-        }
+      if (!def || def.category !== "wearable") continue;
+      const w = def as WearableDef;
+      const addProc = (name: string, proc: ProcSpec | undefined) => {
+        if (!proc) return;
+        const chStr = proc.chance !== undefined && proc.chance < 100 ? ` (${proc.chance}%)` : "";
+        const effStr = proc.effect ? ` ${proc.effect.kind} ${proc.effect.duration}t` : "";
+        const dmgStr = proc.damage !== undefined ? (proc.damage < 0 ? ` heal ${-proc.damage}` : ` dmg ${proc.damage}`) : "";
+        procLines.push(`${def.name}: ${name}→${proc.target}${chStr}${effStr}${dmgStr}`);
+      };
+      addProc("on_hit",    w.on_hit);
+      addProc("on_damage", w.on_damage);
+      addProc("on_kill",   w.on_kill);
+      addProc("on_cast",   w.on_cast);
+      if (w.aura) {
+        procLines.push(`${def.name}: aura ${w.aura.kind}${w.aura.magnitude !== undefined ? ` ×${w.aura.magnitude}` : ""}`);
       }
     }
-    if (onHits.length) {
+    if (procLines.length) {
       const efxH = document.createElement("h3");
-      efxH.textContent = "On-hit effects";
+      efxH.textContent = "Proc effects";
       col.appendChild(efxH);
       const ul = document.createElement("ul");
       ul.className = "inv-perm";
-      for (const s of onHits) {
+      for (const s of procLines) {
         const li = document.createElement("li");
         li.textContent = s;
         ul.appendChild(li);

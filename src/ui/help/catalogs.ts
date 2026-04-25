@@ -5,6 +5,7 @@
 // fields stay required — this reader is purely additive.
 
 import type { HelpEntry, HelpExample } from "./types.js";
+import type { WearableDef, ProcSpec } from "../../types.js";
 import { SPELLS } from "../../content/spells.js";
 import { ITEMS, SLOTS } from "../../content/items.js";
 import { MONSTER_TEMPLATES } from "../../content/monsters.js";
@@ -52,6 +53,19 @@ function autoSpellExample(name: string, tgt: string): HelpExample[] {
   return [{ caption: "Cast on the nearest enemy.", code: `if can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
 }
 
+function procLine(name: string, proc: ProcSpec): string {
+  const parts: string[] = [name];
+  if (proc.chance !== undefined && proc.chance < 100) parts.push(`${proc.chance}% chance`);
+  parts.push(`→ ${proc.target}`);
+  if (proc.effect) {
+    parts.push(`apply ${proc.effect.kind} ${proc.effect.duration}t${proc.effect.magnitude !== undefined ? ` (×${proc.effect.magnitude})` : ""}`);
+  }
+  if (proc.damage !== undefined) {
+    parts.push(proc.damage < 0 ? `heal ${-proc.damage}` : `damage ${proc.damage}`);
+  }
+  return parts.join(", ");
+}
+
 export function itemEntries(): HelpEntry[] {
   const out: HelpEntry[] = [];
   for (const d of Object.values(ITEMS)) {
@@ -65,8 +79,24 @@ export function itemEntries(): HelpEntry[] {
           : [];
     const related = d.help?.related ?? (d.category === "consumable" ? ["commands/use"] : ["data/item"]);
     const meta: Array<[string, string]> = [["category", d.category]];
-    if (d.slot) meta.push(["slot", d.slot]);
-    meta.push(["script", d.script]);
+
+    if (d.category === "wearable") {
+      const w = d as WearableDef;
+      meta.push(["slot", w.slot]);
+      meta.push(["level", String(w.level)]);
+      if (w.bonuses) {
+        const bonusList = Object.entries(w.bonuses).map(([k, v]) => `${k}:+${v}`).join(", ");
+        meta.push(["bonuses", bonusList]);
+      }
+      if (w.aura) meta.push(["aura", `${w.aura.kind}${w.aura.magnitude !== undefined ? ` ×${w.aura.magnitude}` : ""}`]);
+      if (w.on_hit)    meta.push(["on_hit",    procLine("on_hit",    w.on_hit)]);
+      if (w.on_damage) meta.push(["on_damage", procLine("on_damage", w.on_damage)]);
+      if (w.on_kill)   meta.push(["on_kill",   procLine("on_kill",   w.on_kill)]);
+      if (w.on_cast)   meta.push(["on_cast",   procLine("on_cast",   w.on_cast)]);
+    } else {
+      meta.push(["script", d.script]);
+    }
+
     out.push({
       id: d.id,
       path: `items/${d.id}`,
