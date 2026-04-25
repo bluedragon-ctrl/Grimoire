@@ -172,38 +172,10 @@ export const queries = {
     if (!p) return false;
     return self.pos.x === p.x && self.pos.y === p.y;
   },
-  // Chebyshev distance — matches approach()'s 8-directional, one-tile-per-tick movement.
-  distance: (_world: World, _self: Actor, a: unknown, b: unknown): number => {
-    const pa = resolvePos(_world, a);
-    const pb = resolvePos(_world, b);
-    if (!pa || !pb) return 0;
-    return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
-  },
-  adjacent: (world: World, _self: Actor, a: unknown, b: unknown): boolean => {
-    const pa = resolvePos(world, a);
-    const pb = resolvePos(world, b);
-    if (!pa || !pb) return false;
-    const d = Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
-    return d === 1;
-  },
-  can_cast: (world: World, self: Actor, name: unknown, target?: unknown): boolean => {
-    if (typeof name !== "string") return false;
-    const v = validateCast(world, self, name, target, {
-      skipTarget: target === undefined || target === null,
-    });
-    return v.ok;
-  },
-  has_effect: (world: World, _self: Actor, target: unknown, kind: unknown): boolean => {
-    const a = resolveActor(world, target);
-    if (!a) return false;
-    if (typeof kind !== "string") return false;
-    return hasEffect(a, kind);
-  },
-  effects: (world: World, _self: Actor, target: unknown): string[] => {
-    const a = resolveActor(world, target);
-    if (!a) return [];
-    return listEffects(a);
-  },
+  // distance(a, b), adjacent(a, b), can_cast(...), has_effect(...) and the
+  // effects(...) standalone were dropped in Phase 13.5 — use the actor surface
+  // methods instead: a.distance_to(b), a.adjacent_to(b), me.can_cast(...),
+  // a.has_effect(...), a.list_effects().
   clouds: (world: World, _self: Actor): { id: string; pos: Pos; kind: string; remaining: number }[] => {
     const cs = world.room.clouds ?? [];
     return cs.map(c => ({ id: c.id, pos: { ...c.pos }, kind: c.kind, remaining: c.remaining }));

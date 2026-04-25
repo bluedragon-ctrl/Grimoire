@@ -48,14 +48,15 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
     body: "`can_cast(\"bolt\", target)` gates on learned + in-range + sufficient MP, so the branch below only runs when a bolt would actually fly.",
     examples: [{
       code:
-        "while enemies().length > 0:\n" +
-        "  if can_cast(\"bolt\", enemies()[0]):\n" +
-        "    cast(\"bolt\", enemies()[0])\n" +
+        "while len(enemies()) > 0:\n" +
+        "  foe = enemies()[0]\n" +
+        "  if me.can_cast(\"bolt\", foe):\n" +
+        "    cast(\"bolt\", foe)\n" +
         "  else:\n" +
-        "    approach(enemies()[0])\n" +
+        "    approach(foe)\n" +
         "halt",
     }],
-    related: ["commands/cast", "queries/can_cast", "spells/bolt"],
+    related: ["commands/cast", "data/actor", "spells/bolt"],
   },
   loot_after: {
     id: "loot_after", name: "Grab loot after clearing",

@@ -3,8 +3,11 @@ import type { Actor, Room } from "../../src/types.js";
 import { startRoom, runRoom } from "../../src/engine.js";
 import { applyEffect } from "../../src/effects.js";
 import {
-  script, while_, ident, call, lit, if_, cWait, cHalt,
+  script, while_, ident, call, lit, if_, member, cWait, cHalt,
 } from "../../src/ast-helpers.js";
+
+const heroHasEffect = (kind: string) =>
+  call(member(ident("me"), "has_effect"), lit(kind));
 
 function emptyRoom(): Room {
   return { w: 10, h: 10, doors: [], items: [], chests: [] };
@@ -19,11 +22,11 @@ function makeHero(scr: Actor["script"]): Actor {
 }
 
 describe("effects — query commands", () => {
-  it("if has_effect(me, 'burning'): halt() — halts immediately when burning is pre-applied", () => {
+  it("if me.has_effect('burning'): halt() — halts immediately when burning is pre-applied", () => {
     const h: Actor = {
       ...makeHero(script(
         if_(
-          call("has_effect", ident("me"), lit("burning")),
+          heroHasEffect("burning"),
           [cHalt()],
           [cWait()],
         ),
@@ -38,10 +41,10 @@ describe("effects — query commands", () => {
     expect(log.some(l => l.event.type === "Waited")).toBe(false);
   });
 
-  it("while has_effect(me, 'burning'): wait — script halts after burning expires", () => {
+  it("while me.has_effect('burning'): wait — script halts after burning expires", () => {
     const h: Actor = {
       ...makeHero(script(
-        while_(call("has_effect", ident("me"), lit("burning")), [cWait()]),
+        while_(heroHasEffect("burning"), [cWait()]),
         cHalt(),
       )),
       effects: [{

@@ -51,34 +51,37 @@ export interface MonsterTemplate {
 // Goblin: the simplest melee — always charge the nearest foe, swing when
 // adjacent, idle when the room is clear.
 const GOBLIN_AI = `
-while enemies().length > 0:
-  approach(enemies()[0])
-  attack(enemies()[0])
+while len(enemies()) > 0:
+  foe = enemies()[0]
+  approach(foe)
+  attack(foe)
 halt
 `;
 
 // Skeleton: moderate melee with armor. Avoids redundant approach steps when
 // already adjacent. Flees below 3 HP rather than dying in place.
 const SKELETON_AI = `
-while enemies().length > 0:
-  if hp() < 3:
-    flee(enemies()[0])
-  elif adjacent(me, enemies()[0]):
-    attack(enemies()[0])
+while len(enemies()) > 0:
+  foe = enemies()[0]
+  if me.hp < 3:
+    flee(foe)
+  elif me.adjacent_to(foe):
+    attack(foe)
   else:
-    approach(enemies()[0])
+    approach(foe)
 halt
 `;
 
 // Bat: very fast, paper-thin. Attacks once then immediately puts distance
 // between itself and the foe — hit-and-run, loops forever.
 const BAT_AI = `
-while enemies().length > 0:
-  if adjacent(me, enemies()[0]):
-    attack(enemies()[0])
-    flee(enemies()[0])
+while len(enemies()) > 0:
+  foe = enemies()[0]
+  if me.adjacent_to(foe):
+    attack(foe)
+    flee(foe)
   else:
-    approach(enemies()[0])
+    approach(foe)
 halt
 `;
 
@@ -87,11 +90,12 @@ halt
 // still fires on retaliation, so a cornered cultist flees whoever hit it.
 // (Phase 10.2 carry-forward: handlers must work after main halts.)
 const CULTIST_AI = `
-while enemies().length > 0:
-  if can_cast("bolt", enemies()[0]):
-    cast("bolt", enemies()[0])
+while len(enemies()) > 0:
+  foe = enemies()[0]
+  if me.can_cast("bolt", foe):
+    cast("bolt", foe)
   else:
-    approach(enemies()[0])
+    approach(foe)
 halt
 
 on hit as attacker:
@@ -101,9 +105,10 @@ on hit as attacker:
 // Slime: slow, beefy, dumb. One behavior: walk at the foe and hit it. No
 // fleeing, no branching — the reference AI for new readers.
 const SLIME_AI = `
-while enemies().length > 0:
-  approach(enemies()[0])
-  attack(enemies()[0])
+while len(enemies()) > 0:
+  foe = enemies()[0]
+  approach(foe)
+  attack(foe)
 halt
 `;
 
