@@ -27,7 +27,7 @@ export const EVENT_PAGES: Record<string, EventPage> = {
   see: {
     id: "see", name: "on see",
     blurb: "Fires when the owner actor first sees something. Binding: a description of what was seen.",
-    body: "Handler shape:\n\n```\non see as what:\n  # what describes the sighted entity\n```\n\nLike `on hit`, see-handlers continue firing even after the main body halts.",
+    body: "Handler shape:\n\n```\non see as what:\n  cast(\"shield\")\n```\n\n`what` describes the sighted entity. Like `on hit`, see-handlers continue firing even after the main body halts.",
     examples: [{ caption: "Cast a shield when you see anything.", code: "on see as what:\n  cast(\"shield\")" }],
     related: ["events/registry", "events/hit"],
   },
