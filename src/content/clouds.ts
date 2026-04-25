@@ -18,4 +18,8 @@ export const CLOUD_KINDS: Record<string, CloudKindSpec> = {
   fire:   { effect: { kind: "burning", duration: 10 }, visual: "cloud_fire"   },
   frost:  { effect: { kind: "slow",    duration: 10 }, visual: "cloud_frost"  },
   poison: { effect: { kind: "poison",  duration: 10 }, visual: "cloud_poison" },
+  // Smoke clouds block line-of-sight and blind actors standing on their tile.
+  // Duration 1 = lasts exactly one tick; the cloud itself persists until it
+  // expires — blinded is refreshed while the actor remains inside.
+  smoke:  { effect: { kind: "blinded", duration: 1  }, visual: "cloud_smoke"  },
 };
