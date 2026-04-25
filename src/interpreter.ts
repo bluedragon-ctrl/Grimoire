@@ -186,6 +186,14 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
       return undefined;
     }
     case "ArrayLit": return new Collection(e.items.map(i => evalExpr(i, env, ctx)));
+    case "Lambda": {
+      const captured = env;
+      return (...args: unknown[]) => {
+        const local = makeEnv(captured);
+        e.params.forEach((p, i) => local.vars.set(p, args[i]));
+        return evalExpr(e.body, local, ctx);
+      };
+    }
     case "BinOp": {
       // Short-circuit for && / ||
       if (e.op === "&&") {

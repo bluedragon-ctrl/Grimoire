@@ -22,6 +22,7 @@ const KEYWORDS = new Set([
   "if", "elif", "else", "while", "for", "in",
   "and", "or", "not",
   "true", "false", "halt", "on", "as", "me", "return",
+  "def", "lambda", "break", "continue", "pass",
 ]);
 
 // Two-char operators must be checked before their one-char prefixes.

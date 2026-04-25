@@ -29,7 +29,8 @@ export type Expr =
   | Member
   | BinOp
   | UnaryOp
-  | ArrayLit;
+  | ArrayLit
+  | Lambda;
 
 export interface ExprStmt { t: "ExprStmt"; expr: Expr; loc?: SourceLoc; }
 export interface Assign { t: "Assign"; target: Ident | Index | Member; value: Expr; loc?: SourceLoc; }
@@ -49,6 +50,7 @@ export interface Member { t: "Member"; obj: Expr; name: string; loc?: SourceLoc;
 export interface BinOp { t: "BinOp"; op: BinOpKind; a: Expr; b: Expr; loc?: SourceLoc; }
 export interface UnaryOp { t: "UnaryOp"; op: UnaryOpKind; a: Expr; loc?: SourceLoc; }
 export interface ArrayLit { t: "ArrayLit"; items: Expr[]; loc?: SourceLoc; }
+export interface Lambda { t: "Lambda"; params: string[]; body: Expr; loc?: SourceLoc; }
 
 export type BinOpKind =
   | "+" | "-" | "*" | "/" | "%"

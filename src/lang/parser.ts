@@ -387,6 +387,21 @@ class Parser {
         if (this.check("OP", "(")) return { t: "Ident", name: "halt", loc };
         return { t: "Call", callee: { t: "Ident", name: "halt", loc }, args: [], loc };
       }
+      if (t.value === "lambda") {
+        this.advance();
+        const params: string[] = [];
+        if (!this.check("OP", ":")) {
+          const first = this.expect("NAME", undefined, "I expected a parameter name after `lambda`.");
+          params.push(first.value);
+          while (this.match("OP", ",")) {
+            const p = this.expect("NAME", undefined, "I expected another parameter name after `,`.");
+            params.push(p.value);
+          }
+        }
+        this.expectColon("lambda");
+        const body = this.expression();
+        return { t: "Lambda", params, body, loc: this.span(start) };
+      }
       // Typo of a keyword? Offer suggestion.
       const suggestion = didYouMean(t.value, KNOWN_NAMES);
       throw new ParseError(t.line, t.col,
