@@ -125,6 +125,7 @@ export function generateRoom(level: number, rng?: Rng): RoomSetup {
     id: "hero", kind: "hero", isHero: true, hp: 20, maxHp: 20,
     speed: 12, energy: 0, pos: { ...HERO_SPAWN },
     script: buildHeroScript(), alive: true,
+    knownGear: ["wooden_staff", "leather_robe"],
     inventory: {
       consumables: [
         { id: "hp1", defId: "health_potion" },

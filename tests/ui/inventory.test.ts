@@ -1,10 +1,10 @@
-// Inventory prep panel — DOM smoke tests. Exercises rendering, slot clicks
-// that open the picker, and picker selections that mutate the actor's
-// inventory in place.
+// Inventory panel — DOM smoke tests. Equipment slots are interactive in prep
+// phase; clicking opens a picker over the hero's knownGear filtered by slot.
+// The bag stays inspect-only.
 //
 // Runs under happy-dom (provides a minimal document with canvas stubs).
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mountInventoryPanel } from "../../src/ui/inventory.js";
 import { emptyEquipped } from "../../src/content/items.js";
 import type { Actor } from "../../src/types.js";
@@ -13,8 +13,9 @@ function makeHero(): Actor {
   return {
     id: "hero", kind: "hero", hp: 20, maxHp: 20, speed: 1, energy: 0,
     pos: { x: 0, y: 0 }, script: { main: [], handlers: [], funcs: [] }, alive: true,
+    knownGear: ["wooden_staff", "fire_staff", "leather_robe"],
     inventory: {
-      consumables: [],
+      consumables: [{ id: "hp1", defId: "health_potion" }],
       equipped: { ...emptyEquipped(), staff: { id: "ws1", defId: "wooden_staff" } },
     },
   };
@@ -27,65 +28,85 @@ describe("mountInventoryPanel", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
   });
+  afterEach(() => {
+    document.querySelectorAll(".inv-picker").forEach(p => p.remove());
+  });
 
   it("renders 5 equipment slots and 4 bag slots", () => {
     const hero = makeHero();
     mountInventoryPanel(container, () => hero);
-    // Two rows of .inv-cell: equipment (5) + bag (4).
     const cells = container.querySelectorAll(".inv-cell");
     expect(cells.length).toBe(9);
   });
 
-  it("clicking an empty equip slot opens a picker with wearables for that slot", () => {
+  it("equipment slots are buttons; bag slots are divs (inspect-only)", () => {
     const hero = makeHero();
     mountInventoryPanel(container, () => hero);
-    const cells = Array.from(container.querySelectorAll<HTMLButtonElement>(".inv-cell"));
-    // First equipment cell is 'hat' (SLOTS order).
-    cells[0]!.click();
+    const cells = Array.from(container.querySelectorAll(".inv-cell"));
+    const equip = cells.slice(0, 5);
+    const bag   = cells.slice(5);
+    for (const c of equip) expect(c.tagName.toLowerCase()).toBe("button");
+    for (const c of bag)   expect(c.tagName.toLowerCase()).toBe("div");
+  });
 
+  it("shows equipped item names in their slot caption", () => {
+    const hero = makeHero();
+    mountInventoryPanel(container, () => hero);
+    const captions = Array.from(container.querySelectorAll(".inv-cap")).map(c => c.textContent);
+    expect(captions).toContain("Wooden Staff");
+    expect(captions).toContain("Health Potion");
+  });
+
+  it("clicking a staff slot opens a picker with its knownGear options + (empty)", () => {
+    const hero = makeHero();
+    mountInventoryPanel(container, () => hero);
+    // Find the staff cell by caption.
+    const staffCell = Array.from(container.querySelectorAll(".inv-cell"))
+      .find(c => c.querySelector(".inv-cap")?.textContent === "Wooden Staff") as HTMLElement;
+    staffCell.click();
     const picker = document.querySelector(".inv-picker");
     expect(picker).not.toBeNull();
-    const rows = picker!.querySelectorAll(".inv-picker-row");
-    // 1 empty + 7 hats (cloth_cap, wizard_hat, iron_helm, stoic_helm,
-    // crown_of_ages, lucky_crown, arcane_diadem).
-    expect(rows.length).toBe(8);
-    expect(Array.from(rows).map(r => r.textContent)).toContain("Wizard Hat");
+    const labels = Array.from(picker!.querySelectorAll(".inv-picker-row")).map(r => r.textContent);
+    expect(labels).toContain("— (empty) —");
+    expect(labels).toContain("Wooden Staff");
+    expect(labels).toContain("Fire Staff");
+    // robe-slot gear is excluded
+    expect(labels).not.toContain("Leather Robe");
   });
 
-  it("selecting a wearable from the picker mutates actor.inventory.equipped", () => {
+  it("selecting a different option swaps equipped instance and refreshes", () => {
+    const hero = makeHero();
+    const ctl = mountInventoryPanel(container, () => hero);
+    const staffCell = Array.from(container.querySelectorAll(".inv-cell"))
+      .find(c => c.querySelector(".inv-cap")?.textContent === "Wooden Staff") as HTMLElement;
+    staffCell.click();
+    const fireRow = Array.from(document.querySelectorAll(".inv-picker-row"))
+      .find(r => r.textContent === "Fire Staff") as HTMLElement;
+    fireRow.click();
+    expect(hero.inventory!.equipped.staff?.defId).toBe("fire_staff");
+    expect(document.querySelector(".inv-picker")).toBeNull();
+    void ctl;
+  });
+
+  it("selecting (empty) clears the slot", () => {
     const hero = makeHero();
     mountInventoryPanel(container, () => hero);
-    const firstEquip = container.querySelector<HTMLButtonElement>(".inv-cell")!;
-    firstEquip.click();
-
-    const rows = document.querySelectorAll<HTMLButtonElement>(".inv-picker-row");
-    const wizardRow = Array.from(rows).find(r => r.textContent === "Wizard Hat")!;
-    wizardRow.click();
-
-    expect(hero.inventory!.equipped.hat?.defId).toBe("wizard_hat");
-    // Picker closes after selection.
-    expect(document.querySelector(".inv-picker")).toBeNull();
+    const staffCell = Array.from(container.querySelectorAll(".inv-cell"))
+      .find(c => c.querySelector(".inv-cap")?.textContent === "Wooden Staff") as HTMLElement;
+    staffCell.click();
+    const emptyRow = Array.from(document.querySelectorAll(".inv-picker-row"))
+      .find(r => r.textContent === "— (empty) —") as HTMLElement;
+    emptyRow.click();
+    expect(hero.inventory!.equipped.staff).toBeNull();
   });
 
-  it("setEditable(false) disables all cells", () => {
+  it("setEditable(false) re-renders cells as non-interactive divs", () => {
     const hero = makeHero();
     const ctl = mountInventoryPanel(container, () => hero);
     ctl.setEditable(false);
-    const cells = Array.from(container.querySelectorAll<HTMLButtonElement>(".inv-cell"));
-    for (const c of cells) expect(c.disabled).toBe(true);
-  });
-
-  it("bag slot picker lists consumables only", () => {
-    const hero = makeHero();
-    mountInventoryPanel(container, () => hero);
-    const cells = Array.from(container.querySelectorAll<HTMLButtonElement>(".inv-cell"));
-    // Bag slots come after the 5 equipment slots.
-    cells[5]!.click();
-
-    const rows = document.querySelectorAll<HTMLButtonElement>(".inv-picker-row");
-    const labels = Array.from(rows).map(r => r.textContent);
-    expect(labels).toContain("Health Potion");
-    // No wearables.
-    expect(labels).not.toContain("Wooden Staff");
+    const cells = Array.from(container.querySelectorAll(".inv-cell")).slice(0, 5);
+    for (const c of cells) expect(c.tagName.toLowerCase()).toBe("div");
+    (cells[0] as HTMLElement).click();
+    expect(document.querySelector(".inv-picker")).toBeNull();
   });
 });

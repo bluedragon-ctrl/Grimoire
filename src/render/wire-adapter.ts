@@ -14,7 +14,11 @@
 import type { Actor, EffectKind, GameEvent, Pos, Room } from "../types.js";
 import { MONSTER_TEMPLATES } from "../content/monsters.js";
 import type { RendererAdapter } from "./adapter.js";
-import { initRenderer as vendorInit, render as vendorRender } from "./vendor/ui/renderer.js";
+import {
+  initRenderer as vendorInit,
+  render as vendorRender,
+  startRoomDeconstruction as vendorStartDeconstruction,
+} from "./vendor/ui/renderer.js";
 import { TILE } from "./context.js";
 import {
   PROJECTILE_PRESETS, BURST_PRESETS, CLOUD_PRESETS, ELEMENT_DEFAULTS,
@@ -64,6 +68,8 @@ export interface VisualEffect {
   tiles?: Pos[];
   /** Present on overlays spawned by EffectApplied — matched on EffectExpired. */
   effectKind?: EffectKind;
+  /** Present on floatingLabel area effects — rendered as drifting text. */
+  text?: string;
 }
 
 export interface VisualCloud {
@@ -268,15 +274,20 @@ export class WireRendererAdapter implements RendererAdapter {
     }
 
     // Hero spawn: glitch_pulse (dungeon) + materialize (actor).
+    // The renderer plays a ~0.9s "room construction" reveal first; we delay
+    // the spawn effects to fire AFTER the floor is built so the hero tunes
+    // in onto a finished room rather than into noise.
+    const ROOM_CONSTRUCTION_S = 0.9;
     const spawnPlayer = this.state.player;
     if (spawnPlayer) {
-      const D_MATERIALIZE = 0.5;
       this.pushEffect({
-        kind: "area", name: "glitch_pulse", duration: 0.1, elapsed: 0, delay: 0,
+        kind: "area", name: "glitch_pulse", duration: 0.25, elapsed: 0,
+        delay: ROOM_CONSTRUCTION_S,
         at: { x: Math.floor(room.w / 2), y: Math.floor(room.h / 2) }, radius: 1,
       });
       this.pushEffect({
-        kind: "overlay", name: "materialize", duration: D_MATERIALIZE, elapsed: 0, delay: 0,
+        kind: "overlay", name: "materialize", duration: 0.8, elapsed: 0,
+        delay: ROOM_CONSTRUCTION_S,
         attachTo: spawnPlayer.id,
       });
     }
@@ -284,8 +295,9 @@ export class WireRendererAdapter implements RendererAdapter {
     if (this.deps.runFrameLoop) this.startFrameLoop();
   }
 
-  /** Duration (ms) to hold the scheduler before the first tick, letting spawn animations settle. */
-  static readonly SPAWN_HOLD_MS = 500;
+  /** Duration (ms) to hold the scheduler before the first tick, letting the
+   *  room construction (~900ms) AND spawn materialize (~800ms) play out. */
+  static readonly SPAWN_HOLD_MS = 1700;
 
   apply(event: GameEvent): void {
     const s = this.state;
@@ -351,6 +363,18 @@ export class WireRendererAdapter implements RendererAdapter {
             kind: "area", name: "deathBurst", duration: D_DEATH, elapsed: 0, delay: 0,
             at: { x: e.x, y: e.y }, radius: 0.9,
           });
+          // Hero death gets the spawn beat in reverse: glitch_pulse + dematerialize
+          // so the "code collapse" reads symmetrically with the materialize on mount.
+          if (event.type === "HeroDied") {
+            this.pushEffect({
+              kind: "area", name: "glitch_pulse", duration: 0.25, elapsed: 0, delay: 0,
+              at: { x: e.x, y: e.y }, radius: 1,
+            });
+            this.pushEffect({
+              kind: "overlay", name: "dematerialize", duration: 0.8, elapsed: 0, delay: 0,
+              attachTo: e.id,
+            });
+          }
         }
         break;
       }
@@ -450,6 +474,20 @@ export class WireRendererAdapter implements RendererAdapter {
         });
         break;
       }
+      case "Notified": {
+        // Float a short label near the actor so DSL `notify` reads in-world,
+        // not just as a tiny corner toast. Position is captured at event time
+        // (the renderer treats it as an `area` effect, not entity-attached) so
+        // the label keeps drifting even if the actor moves or dies mid-fade.
+        const e = this.findEntity(event.actor);
+        if (e) {
+          this.pushEffect({
+            kind: "area", name: "floatingLabel", duration: 1.5, elapsed: 0, delay: 0,
+            at: { x: e.x, y: e.y }, text: event.text,
+          });
+        }
+        break;
+      }
       // ── Equip changes ripple through the inventory panel, not the canvas ──
       case "ItemEquipped":
       case "ItemUnequipped":
@@ -460,15 +498,21 @@ export class WireRendererAdapter implements RendererAdapter {
       case "Idled":
       case "ActionFailed":
       case "See":
-      case "Notified":
       case "Summoned":
       case "Despawned":
       case "SpellLearned":
       case "ScrollDiscarded":
+      case "GearLearned":
+      case "GearDiscarded":
       case "ManaChanged":
         break;
     }
     s.tick++;
+  }
+
+  /** Trigger the room dissolve sequence — call after hero death/exit visuals. */
+  startRoomDeconstruction(): void {
+    vendorStartDeconstruction();
   }
 
   teardown(): void {

@@ -85,7 +85,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "pickup(target?)",
     blurb: "Pick up a floor-item. Costs 10 energy.",
     body:
-      "With no argument, picks up the topmost item on the hero's tile (LIFO). With a FloorItem arg (from `items_here()` / `items_nearby()`), picks that specific drop — the hero must be standing on it. A bag-full failure refunds the action slot so a retry loop doesn't drain energy.",
+      "With no argument, picks up the topmost item on the hero's tile (LIFO). With a FloorItem arg (from `items_here()` / `items_nearby()`), picks that specific drop — the hero must be standing on it.\n\nRouting depends on the item kind:\n\n- **Consumables / scrolls** go into the bag (4 slots). A bag-full failure refunds the action slot so a retry loop doesn't drain energy.\n- **Equipment** is queued for post-run processing (no bag slot used, never fails for fullness). Scrolls and equipment are both reconciled at `exit()`: scrolls become learned spells, equipment becomes known gear available in the prep-panel picker.",
     examples: [
       { caption: "Grab whatever's under you.", code: "pickup()" },
       { caption: "Scoop drops after clearing the room.", code: "for loot in items_here():\n  pickup(loot)" },
@@ -112,7 +112,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "exit(doorOrDir?)",
     blurb: "Leave the room through the door you're standing on. Costs 10 energy.",
     body:
-      "Position-driven: whichever door tile the hero currently occupies is the one used. The argument is accepted for back-compat (`exit(\"N\")` / `exit(doors()[0])`) but ignored. Fails if not standing on a door.",
+      "Position-driven: whichever door tile the hero currently occupies is the one used. The argument is accepted for back-compat (`exit(\"N\")` / `exit(doors()[0])`) but ignored. Fails if not standing on a door.\n\nOn a successful exit, two auto-processing passes run before `HeroExited`: scrolls in the bag become `SpellLearned` (or `ScrollDiscarded` if duplicate), and equipment picked up this run becomes `GearLearned` (or duplicate-discarded), folded into the hero's known-gear list for the next prep phase.",
     examples: [
       { caption: "Walk to a door, then exit.", code: "while not at(doors()[0]):\n  approach(doors()[0])\nexit(\"N\")" },
     ],
