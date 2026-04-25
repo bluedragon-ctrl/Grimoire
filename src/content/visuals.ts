@@ -70,6 +70,7 @@ export const CLOUD_PRESETS: Record<string, CloudPreset> = Object.freeze({
   cloud_frost:  { colors: { color: "#66ccff", color2: "#ccffff" } },
   cloud_smoke:  { colors: { color: "#555555", color2: "#999999" } },
   cloud_poison: { colors: { color: "#33aa55", color2: "#aaff88" } },
+  cloud_shock:  { colors: { color: "#ffee44", color2: "#ffffff" } },
 });
 
 // Element → default preset name. Used when a spell body omits `visual`

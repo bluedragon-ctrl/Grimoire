@@ -22,4 +22,6 @@ export const CLOUD_KINDS: Record<string, CloudKindSpec> = {
   // Duration 1 = lasts exactly one tick; the cloud itself persists until it
   // expires — blinded is refreshed while the actor remains inside.
   smoke:  { effect: { kind: "blinded", duration: 1  }, visual: "cloud_smoke"  },
+  // Shock cloud — applies shock (defence reduction) to actors on the tile.
+  shock:  { effect: { kind: "shock",   duration: 10 }, visual: "cloud_shock"  },
 };
