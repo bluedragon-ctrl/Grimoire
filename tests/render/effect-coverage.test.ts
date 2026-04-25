@@ -42,11 +42,11 @@ describe("effect overlay coverage", () => {
   // All EffectKind values registered in EFFECT_OVERLAY_PRESETS.
   const effectKinds = Object.keys(EFFECT_OVERLAY_PRESETS) as (keyof typeof EFFECT_OVERLAY_PRESETS)[];
 
-  it("EFFECT_OVERLAY_PRESETS covers all 14 EffectKind values", () => {
+  it("EFFECT_OVERLAY_PRESETS covers all 15 EffectKind values", () => {
     const expected = [
       "burning", "poison", "regen", "haste", "slow",
       "chill", "shock", "expose", "might", "iron_skin",
-      "mana_regen", "mana_burn", "power", "shield",
+      "mana_regen", "mana_burn", "power", "shield", "blinded",
     ].sort();
     expect(effectKinds.sort()).toEqual(expected);
   });

@@ -109,3 +109,82 @@ describe("castSpell validation", () => {
     expect(lastFailTick - firstFailTick).toBeLessThan(5);
   });
 });
+
+// ─── blinded gate ──────────────────────────────────────────────────────────────
+
+function withBlinded(a: Actor): Actor {
+  a.effects = [...(a.effects ?? []), {
+    id: "blinded-test", kind: "blinded", target: a.id,
+    duration: 1, remaining: 1, tickEvery: 1,
+  }];
+  return a;
+}
+
+describe("blinded gate in castSpell", () => {
+  it("blinded caster can still cast at adjacent target (Chebyshev 1)", () => {
+    const h = withBlinded(mkHero({ id: "h", pos: { x: 0, y: 0 } }));
+    const g = mkGoblin({ id: "g", pos: { x: 1, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("blinded caster cannot cast at target Chebyshev > 1", () => {
+    const h = withBlinded(mkHero({ id: "h", pos: { x: 0, y: 0 } }));
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events[0]).toMatchObject({ type: "ActionFailed" });
+    expect((events[0] as any).reason).toContain("blinded");
+    expect(h.mp).toBe(20); // no mana spent
+  });
+
+  it("non-blinded caster can cast at range", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+});
+
+// ─── smoke LOS gate ────────────────────────────────────────────────────────────
+
+describe("smoke LOS gate in castSpell", () => {
+  it("smoke between caster and target blocks spell", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect((events[0] as any).type).toBe("ActionFailed");
+    expect((events[0] as any).reason).toContain("line of sight");
+    expect(h.mp).toBe(20);
+  });
+
+  it("adjacent target is never blocked by smoke", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 1, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("smoke on caster's own tile does not block ranged cast", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 0, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("self-targeted spell ignores smoke", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 }, hp: 5, knownSpells: ["heal"] });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h], { clouds: [smoke] });
+    const events = castSpell(w, h, "heal", h);
+    expect(events.some(e => e.type === "Healed")).toBe(true);
+  });
+});

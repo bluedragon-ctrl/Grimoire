@@ -6,17 +6,14 @@
 // damage / duration / magnitude / radius all scale with caster INT via
 // scale() and scaleRadius() in primitives — never here.
 
-import type { PrimitiveName } from "../spells/primitives.js";
 import type { HelpMeta } from "../ui/help/types.js";
-import type { EffectKind } from "../types.js";
+import type { EffectKind, SpellOp } from "../types.js";
 import { MONSTER_TEMPLATES } from "./monsters.js";
 
-export type SpellTargetType = "self" | "ally" | "enemy" | "any" | "tile";
+// Re-export so existing importers of SpellOp/PrimitiveName from spells.ts still work.
+export type { SpellOp } from "../types.js";
 
-export interface SpellOp {
-  op: PrimitiveName;
-  args: Record<string, unknown>;
-}
+export type SpellTargetType = "self" | "ally" | "enemy" | "any" | "tile";
 
 export interface Spell {
   name: string;
@@ -213,11 +210,12 @@ export const SPELLS: Record<string, Spell> = {
 
 const _VALID_PRIMITIVE_NAMES = new Set<string>([
   "project", "inflict", "heal", "spawn_cloud", "explode", "summon", "teleport", "push",
+  "cleanse", "permanent_boost",
 ]);
 const _VALID_EFFECT_KINDS = new Set<string>([
   "burning", "poison", "regen", "haste", "slow",
   "chill", "shock", "expose", "might", "iron_skin",
-  "mana_regen", "mana_burn", "power", "shield",
+  "mana_regen", "mana_burn", "power", "shield", "blinded",
 ]);
 
 for (const [id, spell] of Object.entries(SPELLS)) {

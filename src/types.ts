@@ -125,7 +125,7 @@ export interface Actor {
   summoned?: boolean;
 }
 
-// ──────────────────────────── Items (Phase 7) ────────────────────────────
+// ──────────────────────────── Items (Phase 7 / 13.3) ────────────────────────────
 
 export type Slot = "hat" | "robe" | "staff" | "dagger" | "focus";
 
@@ -139,15 +139,40 @@ export interface Inventory {
   equipped: Record<Slot, ItemInstance | null>;
 }
 
-export type ItemCategory = "consumable" | "wearable";
+// Phase 13.3: unified item kind (replaces ItemCategory). "equipment" = wearable.
+export type ItemKind = "consumable" | "equipment" | "scroll";
+
+// Primitive op shape — moved here from content/spells.ts so ItemDef can reference
+// it without a circular import (spells.ts imports types.ts, not vice-versa).
+export type PrimitiveName =
+  | "project" | "inflict" | "heal" | "spawn_cloud"
+  | "explode" | "summon" | "teleport" | "push"
+  | "cleanse" | "permanent_boost";
+
+export interface SpellOp {
+  op: PrimitiveName;
+  args: Record<string, unknown>;
+}
 
 export interface ItemDef {
   id: string;
   name: string;
   description: string;
-  category: ItemCategory;
-  slot?: Slot;            // required when category === "wearable"
-  script: string;         // item-script source; parsed at registry load
+  /** Phase 13.3: replaces `category`. "equipment" = old "wearable". */
+  kind: ItemKind;
+  /** Phase 13.3: item level; all current items are level 1. */
+  level: number;
+  // Equipment-only fields (present iff kind === "equipment")
+  slot?: Slot;
+  script?: string;        // merge / on_hit_inflict ops; parsed at registry load
+  // Consumable-only fields (present iff kind === "consumable")
+  useTarget?: "self" | "ally" | "enemy" | "tile";
+  range?: number;         // Chebyshev; 0 for self-only
+  body?: SpellOp[];       // dispatched through PRIMITIVES on use
+  polarity?: "buff" | "debuff";
+  // Scroll-only fields (present iff kind === "scroll")
+  spell?: string;         // spell name learned on room completion
+  // Shared optional
   visualPreset?: string;  // key into ITEM_VISUAL_PRESETS (default: id)
   /** Phase 12: optional help override. If absent, help auto-generates from other fields. */
   help?: import("./ui/help/types.js").HelpMeta;
@@ -169,7 +194,8 @@ export interface Cloud {
 export type EffectKind =
   | "burning" | "regen" | "haste" | "slow" | "poison"
   | "chill" | "shock" | "expose" | "might" | "iron_skin"
-  | "mana_regen" | "mana_burn" | "power" | "shield";
+  | "mana_regen" | "mana_burn" | "power" | "shield"
+  | "blinded";
 
 export interface Effect {
   id: string;
@@ -259,7 +285,9 @@ export type GameEvent =
   | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos }
   | { type: "ScriptError"; actor: string; message: string }
   | { type: "Summoned"; actor: string; summoner: string; template: string; pos: Pos }
-  | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" };
+  | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" }
+  | { type: "SpellLearned"; actor: string; spell: string }
+  | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -272,7 +300,7 @@ export type PendingAction =
   | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
-  | { kind: "use"; cost: number; item: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "use"; cost: number; item: unknown; target?: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "pickup"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }

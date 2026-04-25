@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Actor, World, Cloud } from "../../src/types.js";
 import { tickClouds } from "../../src/clouds.js";
 import { hasEffect, effectiveStats } from "../../src/effects.js";
+import { hasLineOfSight } from "../../src/los.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
 
 function mkWorld(actors: Actor[], clouds: Cloud[] = []): World {
@@ -64,5 +65,55 @@ describe("clouds", () => {
     expect(hasEffect(a, "slow")).toBe(true);
     const ticks = ev.filter(e => e.type === "CloudTicked");
     expect(ticks.length).toBe(2);
+  });
+});
+
+// ─── smoke cloud ──────────────────────────────────────────────────────────────
+
+describe("smoke cloud", () => {
+  it("actor on smoke tile gets blinded after tickClouds", () => {
+    const a = mkActor({ id: "a", kind: "hero", pos: { x: 2, y: 2 } });
+    const cloud: Cloud = { id: "c1", pos: { x: 2, y: 2 }, kind: "smoke", duration: 10, remaining: 10 };
+    const w = mkWorld([a], [cloud]);
+    tickClouds(w);
+    expect(hasEffect(a, "blinded")).toBe(true);
+  });
+
+  it("actor off smoke tile is not blinded", () => {
+    const a = mkActor({ id: "a", kind: "hero", pos: { x: 5, y: 5 } });
+    const cloud: Cloud = { id: "c1", pos: { x: 2, y: 2 }, kind: "smoke", duration: 10, remaining: 10 };
+    const w = mkWorld([a], [cloud]);
+    tickClouds(w);
+    expect(hasEffect(a, "blinded")).toBe(false);
+  });
+
+  it("blinded effect from smoke refreshes while actor stays on tile", () => {
+    const a = mkActor({ id: "a", kind: "hero", pos: { x: 3, y: 3 } });
+    const cloud: Cloud = { id: "c1", pos: { x: 3, y: 3 }, kind: "smoke", duration: 10, remaining: 10 };
+    const w = mkWorld([a], [cloud]);
+    tickClouds(w);
+    const firstRemaining = (a.effects ?? []).find(e => e.kind === "blinded")?.remaining ?? 0;
+    // Manually decrement the blinded effect to simulate time passing
+    (a.effects ?? []).forEach(e => { if (e.kind === "blinded") e.remaining = 0; });
+    tickClouds(w);
+    // After second tick, blinded should be refreshed (remaining reset to duration)
+    expect(hasEffect(a, "blinded")).toBe(true);
+    expect(firstRemaining).toBeGreaterThan(0);
+  });
+
+  it("smoke cloud blocks hasLineOfSight", () => {
+    const w = mkWorld([], [
+      { id: "c1", pos: { x: 2, y: 0 }, kind: "smoke", duration: 10, remaining: 10 },
+    ]);
+    expect(hasLineOfSight(w, { x: 0, y: 0 }, { x: 4, y: 0 })).toBe(false);
+  });
+
+  it("expired smoke cloud no longer blocks LOS", () => {
+    const cloud: Cloud = { id: "c1", pos: { x: 2, y: 0 }, kind: "smoke", duration: 2, remaining: 2 };
+    const w = mkWorld([], [cloud]);
+    expect(hasLineOfSight(w, { x: 0, y: 0 }, { x: 4, y: 0 })).toBe(false);
+    tickClouds(w); tickClouds(w); // expire it
+    expect(w.room.clouds!.length).toBe(0);
+    expect(hasLineOfSight(w, { x: 0, y: 0 }, { x: 4, y: 0 })).toBe(true);
   });
 });
