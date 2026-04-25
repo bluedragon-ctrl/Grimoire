@@ -127,7 +127,27 @@ function resolveTarget(world, actor, ref): Actor | Tile | null
 
 MVP: returns `null` on failure, command emits `ActionFailed { reason }`, action still consumes its cost (so a bad script can't starve the scheduler). Swapping to `"throw"` later means raising inside `resolveTarget` and letting the interpreter surface it as a runtime error event; `"cancel"` means returning a sentinel the scheduler treats as a no-cost retry. One file, one function — future swap is a line change.
 
-Queries (`enemies()`, `items()`, `doors()`, `hp()`, `me`, `distance()`, `adjacent()`, `can_cast()`, …) are zero-cost: they run inline during expression eval, return arrays sorted by Manhattan distance from `actor.pos`. They never consume energy and never yield. The full set is catalogued in `dsl-queries.md`.
+Queries (`enemies()`, `items()`, `doors()`, `me`, `at(...)`, …) are zero-cost: they run inline during expression eval, return Collections sorted by Chebyshev distance from `actor.pos`. They never consume energy and never yield. The full set is catalogued in `dsl-queries.md`.
+
+Phase 13.5 unified the per-actor distance metric to Chebyshev (8-directional, matches `approach()` movement). Standalone `distance(a, b)`, `adjacent(a, b)`, `can_cast(...)`, and `has_effect(...)` queries were dropped — use the actor surface methods instead: `me.distance_to(other)`, `me.adjacent_to(other)`, `me.can_cast(spell, target?)`, `actor.has_effect("burning")`, `actor.list_effects()`. AoE shapes (`explode`, `frost_nova`) keep Euclidean math so radius-2 blasts read as rounded blobs rather than squares.
+
+### Commands return bool
+
+Phase 13.5 made command calls expressions: `if attack(foe):` is legal and resolves to `true` when the action fires cleanly, `false` when an `ActionFailed` event is emitted in the resulting bundle. The scheduler resumes the actor's generator with the bool via the per-frame `lastResult` field on `Frame`. Statement-level command calls discard the bool and look identical to before.
+
+Lambda bodies and expression-position user-function calls (`def f(x): return x*2; y = f(3)`) drive the expression generator synchronously and raise `DSLRuntimeError` if a command yield is encountered — matching Python's restriction that lambda bodies are expressions only.
+
+### Pythonic collections, lambdas, def, control flow
+
+- `enemies()`, `allies()`, `items_nearby()`, etc. return `Collection` (Pythonic list with `len()`, indexing, iteration, truthiness, `.filter(pred)`, `.sorted_by(key)`, `.first()`, `.last()`, `.min_by(key)`, `.max_by(key)`).
+- Builtins: `len(coll)`, `min(coll, key?)`, `max(coll, key?)`.
+- `lambda x: x.hp` returns a JS closure capturing the lexical Env. Expression-only body, no statements.
+- `def name(params): body` registers a user function. Nested defs respect Python LEGB: each call gets a fresh `funcs` map so inner defs don't leak to callers.
+- `break`, `continue`, `pass` work in `while` / `for`. Implemented via thrown sentinel signals caught at the loop frame.
+
+### Event registry (parse-time validation)
+
+Valid `on <event>:` names are listed in `src/lang/event-registry.ts`. The parser rejects unknown names with a `ParseError` plus a "did you mean `hit`?" suggestion — a typo like `on hti:` no longer silently never fires.
 
 ## Events and handler preemption
 
