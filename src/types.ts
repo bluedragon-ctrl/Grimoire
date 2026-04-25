@@ -18,6 +18,9 @@ export type Stmt =
   | For
   | FuncDef
   | Return
+  | Break
+  | Continue
+  | Pass
   | Block
   | EventHandler;
 
@@ -39,6 +42,9 @@ export interface While { t: "While"; cond: Expr; body: Stmt[]; loc?: SourceLoc; 
 export interface For { t: "For"; name: string; iter: Expr; body: Stmt[]; loc?: SourceLoc; }
 export interface FuncDef { t: "FuncDef"; name: string; params: string[]; body: Stmt[]; loc?: SourceLoc; }
 export interface Return { t: "Return"; value?: Expr; loc?: SourceLoc; }
+export interface Break { t: "Break"; loc?: SourceLoc; }
+export interface Continue { t: "Continue"; loc?: SourceLoc; }
+export interface Pass { t: "Pass"; loc?: SourceLoc; }
 export interface Block { t: "Block"; body: Stmt[]; loc?: SourceLoc; }
 export interface EventHandler { t: "EventHandler"; event: string; binding?: string; body: Stmt[]; loc?: SourceLoc; }
 

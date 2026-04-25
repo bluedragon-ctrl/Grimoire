@@ -5,7 +5,7 @@
 import type {
   Script, Stmt, Expr, Ident, Call, Index, Member, BinOp, UnaryOp, ArrayLit,
   Literal, If, While, For, ExprStmt, Assign, EventHandler, FuncDef, BinOpKind,
-  SourceLoc, SourcePos,
+  Break, Continue, Pass, SourceLoc, SourcePos,
 } from "../types.js";
 import { tokenize, type Token } from "./tokenizer.js";
 import { ParseError, didYouMean, KNOWN_NAMES } from "./errors.js";
@@ -96,8 +96,12 @@ class Parser {
         case "for":    return this.forStmt();
         case "on":     return this.onHandler();
         case "return": return this.returnStmt();
-        // `halt`, `me`, `true`, `false` are valid at atom level — fall through
-        // to simpleStatement so they parse as expressions.
+        case "def":    return this.defStmt();
+        case "break":    return this.simpleKeyword("Break");
+        case "continue": return this.simpleKeyword("Continue");
+        case "pass":     return this.simpleKeyword("Pass");
+        // `halt`, `me`, `true`, `false`, `lambda` are valid at atom level —
+        // fall through to simpleStatement so they parse as expressions.
       }
     }
 
@@ -213,6 +217,40 @@ class Parser {
     return binding
       ? { t: "EventHandler", event, binding, body, loc }
       : { t: "EventHandler", event, body, loc };
+  }
+
+  private defStmt(): FuncDef {
+    const start = this.posHere();
+    this.advance(); // 'def'
+    const nameTok = this.expect("NAME", undefined, "I expected a function name after `def`.");
+    if (!this.match("OP", "(")) {
+      const t = this.peek();
+      throw new ParseError(t.line, t.col, "I expected `(` after the function name.");
+    }
+    const params: string[] = [];
+    if (!this.check("OP", ")")) {
+      const first = this.expect("NAME", undefined, "I expected a parameter name.");
+      params.push(first.value);
+      while (this.match("OP", ",")) {
+        const next = this.expect("NAME", undefined, "I expected another parameter name after `,`.");
+        params.push(next.value);
+      }
+    }
+    if (!this.match("OP", ")")) {
+      const t = this.peek();
+      throw new ParseError(t.line, t.col, "I expected `)` to close the parameter list.");
+    }
+    this.expectColon("def");
+    const body = this.block();
+    return { t: "FuncDef", name: nameTok.value, params, body, loc: this.span(start) };
+  }
+
+  private simpleKeyword(t: "Break" | "Continue" | "Pass"): Break | Continue | Pass {
+    const start = this.posHere();
+    this.advance();
+    this.consumeNewline();
+    const loc = this.span(start);
+    return { t, loc } as Break | Continue | Pass;
   }
 
   private returnStmt(): Stmt {

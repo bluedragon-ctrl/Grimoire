@@ -106,6 +106,16 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
         yield action;
         return;
       }
+      // User-function call at statement level: inline the body so commands
+      // inside flow through the outer generator.
+      if (s.expr.t === "Call" && s.expr.callee.t === "Ident") {
+        const fn = env.funcs.get(s.expr.callee.name);
+        if (fn) {
+          const args = s.expr.args.map(a => evalExpr(a, env, ctx));
+          yield* runUserFuncStmt(fn, args, env, ctx);
+          return;
+        }
+      }
       evalExpr(s.expr, env, ctx);
       return;
     }
@@ -134,7 +144,13 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
     }
     case "While": {
       while (truthy(evalExpr(s.cond, env, ctx))) {
-        yield* execStmts(s.body, makeEnv(env), ctx);
+        try {
+          yield* execStmts(s.body, makeEnv(env), ctx);
+        } catch (sig) {
+          if (sig instanceof BreakSignal) return;
+          if (sig instanceof ContinueSignal) continue;
+          throw sig;
+        }
       }
       return;
     }
@@ -145,10 +161,19 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
       for (const item of items) {
         const sub = makeEnv(env);
         sub.vars.set(s.name, item);
-        yield* execStmts(s.body, sub, ctx);
+        try {
+          yield* execStmts(s.body, sub, ctx);
+        } catch (sig) {
+          if (sig instanceof BreakSignal) return;
+          if (sig instanceof ContinueSignal) continue;
+          throw sig;
+        }
       }
       return;
     }
+    case "Break": throw new BreakSignal();
+    case "Continue": throw new ContinueSignal();
+    case "Pass": return;
     case "Block": {
       yield* execStmts(s.body, makeEnv(env), ctx);
       return;
@@ -171,6 +196,24 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
 
 class ReturnSignal {
   constructor(public value: unknown) {}
+}
+class BreakSignal {}
+class ContinueSignal {}
+
+function* runUserFuncStmt(
+  fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx,
+): Generator<PendingAction, void, void> {
+  const local = makeEnv(env);
+  // Per Python LEGB, names defined inside a function (including nested defs)
+  // shouldn't leak to callers. Give the local frame its own funcs map.
+  local.funcs = new Map(local.funcs);
+  fn.params.forEach((p, i) => local.vars.set(p, args[i]));
+  try {
+    yield* execStmts(fn.body, local, ctx);
+  } catch (e) {
+    if (e instanceof ReturnSignal) return; // statement-level call drops the value
+    throw e;
+  }
 }
 
 // ──────────────────────────── expression eval (sync) ────────────────────────────
@@ -302,6 +345,7 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
 
 function callUserFunc(fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx): unknown {
   const local = makeEnv(env);
+  local.funcs = new Map(local.funcs);
   fn.params.forEach((p, i) => local.vars.set(p, args[i]));
   // Synchronous drive: run generator, discard any pending actions (command
   // calls inside expression-called funcs are not supported).
