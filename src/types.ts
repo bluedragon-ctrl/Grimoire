@@ -321,7 +321,8 @@ export type GameEvent =
   | { type: "Summoned"; actor: string; summoner: string; template: string; pos: Pos }
   | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" }
   | { type: "SpellLearned"; actor: string; spell: string }
-  | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" };
+  | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" }
+  | { type: "Notified"; actor: string; text: string; style?: "info" | "warning" | "error" | "success"; duration?: number; position?: "top" | "center" | "bottom" };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -339,7 +340,8 @@ export type PendingAction =
   | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> }
-  | { kind: "summon"; cost: number; template: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> };
+  | { kind: "summon"; cost: number; template: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "notify"; cost: 0; text: string; style?: string; duration?: number; position?: string; loc?: SourceLoc; locals?: Record<string, unknown> };
 
 // ──────────────────────────── Target resolution seam ────────────────────────────
 

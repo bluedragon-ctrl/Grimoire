@@ -11,7 +11,7 @@ import { compile, type CompiledScript } from "./interpreter.js";
 import { DSLRuntimeError } from "./lang/errors.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
-  doPickup, doDrop, doSummon,
+  doPickup, doDrop, doSummon, doNotify,
   castFailedCleanly, useFailedCleanly, pickupFailedCleanly, dropFailedCleanly, summonFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
@@ -315,6 +315,7 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "pickup":   return doPickup(world, self, action.target);
     case "drop":     return doDrop(world, self, action.target);
     case "summon":   return doSummon(world, self, action.template, action.target);
+    case "notify":   return doNotify(world, self, action.text, action.style, action.duration, action.position);
   }
 }
 
@@ -397,6 +398,10 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "Summoned": return `[t=${t}] ${event.actor}.summoned — by ${event.summoner} (${event.template}) @(${event.pos.x},${event.pos.y})`;
     case "Despawned": return `[t=${t}] ${event.actor}.despawned — ${event.reason}`;
     case "ScriptError": return `[t=${t}] ${event.actor}.scriptError — ${event.message}`;
+    case "SpellLearned": return `[t=${t}] ${event.actor}.spellLearned — ${event.spell}`;
+    case "ScrollDiscarded": return `[t=${t}] ${event.actor}.scrollDiscarded — ${event.defId} (${event.reason})`;
+    case "ManaChanged": return `[t=${t}] ${event.actor}.manaChanged — ${event.amount}`;
+    case "Notified": return `[t=${t}] ${event.actor}.notify — ${event.text}`;
   }
 }
 

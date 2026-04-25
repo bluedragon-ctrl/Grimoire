@@ -141,7 +141,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Clean end after clearing.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
     ],
-    related: ["events/registry", "events/hit", "events/see"],
+    related: ["events/registry", "events/hit", "events/see", "commands/notify"],
   },
 
   summon: {
@@ -155,5 +155,21 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
       { caption: "Summon a goblin on an adjacent tile.", code: "summon(\"goblin\", enemies()[0])" },
     ],
     related: ["spells/summon_goblin", "spells/summon_skeleton", "queries/allies"],
+  },
+
+  notify: {
+    id: "notify",
+    name: "notify",
+    signature: "notify(text, style?, duration?, position?)",
+    blurb: "Display a CRT-style overlay message. Free action — zero energy cost.",
+    body:
+      "Pushes a monospace amber-on-black notification to the screen overlay. Useful for signposting, narrative, and debugging.\n\nArguments (all positional):\n\n- `text` — required string. Leading `>` is added automatically by the UI.\n- `style` — optional: `\"info\"` (default), `\"warning\"`, `\"error\"`, or `\"success\"`.\n- `duration` — seconds on screen; default 2. `0` = persistent until the next notify pushes it off.\n- `position` — `\"top\"` (default), `\"center\"`, or `\"bottom\"`.\n\nMultiple notifies stack vertically (newest on top) and FIFO-clear when duration elapses. Because notify has zero energy cost, calling it in a tight loop is safe — it won't stall the action queue.",
+    examples: [
+      { caption: "Simple status message.", code: "notify(\"Clearing room...\")" },
+      { caption: "Warning when HP is low.", code: "if me.hp < 5:\n  notify(\"LOW HP\", \"warning\")" },
+      { caption: "Success flash when boss dies.", code: "notify(\"Boss slain!\", \"success\", 3)" },
+      { caption: "Debug variable.", code: "notify(\"target hp: \" + str(enemies()[0].hp))" },
+    ],
+    related: ["commands/halt", "commands/wait", "data/actor"],
   },
 };

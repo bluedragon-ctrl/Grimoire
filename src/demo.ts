@@ -21,7 +21,7 @@ while len(items_nearby()) > 0:
 door = doors()[0]
 while not at(door):
   approach(door)
-exit("N")
+exit()
 halt
 `;
 
@@ -45,14 +45,11 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
     speed: 12, energy: 0, pos: { x: 1, y: 5 },
     script: heroScript, alive: true,
     inventory: {
-      consumables: [
-        { id: "hp1", defId: "health_potion" },
-        { id: "mp1", defId: "mana_crystal" },
-      ],
+      consumables: [],
       equipped: {
         ...emptyEquipped(),
-        staff: { id: "ws1", defId: "wooden_staff" },
-        robe:  { id: "lr1", defId: "leather_robe" },
+        staff:  { id: "ws1", defId: "wooden_staff" },
+        dagger: { id: "bd1", defId: "bone_dagger" },
       },
     },
   };

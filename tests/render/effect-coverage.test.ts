@@ -56,6 +56,8 @@ describe("effect overlay coverage", () => {
       const adapter = makeAdapter();
       const el = document.createElement("div");
       adapter.mount(el, room, [hero()]);
+      // Spawn animations (glitch_pulse + materialize) are tested in presets.test.ts.
+      adapter.getState()!.activeEffects.splice(0);
 
       adapter.apply({ type: "EffectApplied", actor: "hero", kind });
 
