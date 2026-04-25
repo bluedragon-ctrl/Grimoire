@@ -11,6 +11,7 @@ import type {
 import { COST, queries } from "./commands.js";
 import { DSLRuntimeError } from "./lang/errors.js";
 import { isActorObj, actorMember, UNSET } from "./lang/actor-surface.js";
+import { Collection, asIterableArray, listLength } from "./lang/collection.js";
 
 // Command names that, when used at statement level, yield a PendingAction.
 const COMMAND_NAMES = new Set([
@@ -115,7 +116,8 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
       } else if (s.target.t === "Index") {
         const obj = evalExpr(s.target.obj, env, ctx) as any;
         const key = evalExpr(s.target.key, env, ctx) as any;
-        obj[key] = v;
+        if (obj instanceof Collection) obj.items[key] = v;
+        else obj[key] = v;
       } else {
         const obj = evalExpr(s.target.obj, env, ctx) as any;
         obj[s.target.name] = v;
@@ -138,8 +140,9 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
     }
     case "For": {
       const iter = evalExpr(s.iter, env, ctx);
-      if (!Array.isArray(iter)) return;
-      for (const item of iter) {
+      const items = asIterableArray(iter);
+      if (!items) return;
+      for (const item of items) {
         const sub = makeEnv(env);
         sub.vars.set(s.name, item);
         yield* execStmts(s.body, sub, ctx);
@@ -182,7 +185,7 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
       if (v !== undefined) return v;
       return undefined;
     }
-    case "ArrayLit": return e.items.map(i => evalExpr(i, env, ctx));
+    case "ArrayLit": return new Collection(e.items.map(i => evalExpr(i, env, ctx)));
     case "BinOp": {
       // Short-circuit for && / ||
       if (e.op === "&&") {
@@ -219,7 +222,9 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
     case "Index": {
       const obj = evalExpr(e.obj, env, ctx) as any;
       const key = evalExpr(e.key, env, ctx) as any;
-      return obj == null ? undefined : obj[key];
+      if (obj == null) return undefined;
+      if (obj instanceof Collection) return obj.items[key];
+      return obj[key];
     }
     case "Member": {
       const obj = evalExpr(e.obj, env, ctx) as any;
@@ -236,17 +241,47 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
         const name = e.callee.name;
         if (name in queries) {
           const args = e.args.map(a => evalExpr(a, env, ctx));
-          return (queries as any)[name](ctx.world, ctx.self, ...args);
+          const result = (queries as any)[name](ctx.world, ctx.self, ...args);
+          // Promote raw arrays from query results to Collection for chainable
+          // method dispatch. `me`/`hp`/`at` etc. don't return arrays — passthrough.
+          return Array.isArray(result) ? new Collection(result) : result;
         }
         if (COMMAND_NAMES.has(name)) {
           // Called from expression context — not supported. Return undefined.
           return undefined;
         }
+        // Pythonic builtins.
+        if (name === "len") {
+          const args = e.args.map(a => evalExpr(a, env, ctx));
+          const n = listLength(args[0]);
+          return n ?? 0;
+        }
+        if (name === "min" || name === "max") {
+          const args = e.args.map(a => evalExpr(a, env, ctx));
+          return builtinMinMax(name, args);
+        }
         const fn = env.funcs.get(name);
         if (fn) return callUserFunc(fn, e.args.map(a => evalExpr(a, env, ctx)), env, ctx);
       }
-      // Method call (Member-resolved callable) or any callable returned by
-      // an arbitrary expression (e.g. a lambda stored in a variable).
+      // Method call: evaluate obj + method separately so JS class methods
+      // (e.g. Collection.filter) retain their `this`.
+      if (e.callee.t === "Member") {
+        const obj = evalExpr(e.callee.obj, env, ctx);
+        if (obj == null) return undefined;
+        let method: unknown;
+        if (isActorObj(obj)) {
+          const v = actorMember(obj, e.callee.name, { world: ctx.world });
+          method = v === UNSET ? (obj as any)[e.callee.name] : v;
+        } else {
+          method = (obj as any)[e.callee.name];
+        }
+        if (typeof method === "function") {
+          const args = e.args.map(a => evalExpr(a, env, ctx));
+          return (method as Function).apply(obj, args);
+        }
+        return undefined;
+      }
+      // Any other callable (e.g. a lambda stored in a variable).
       const callee = evalExpr(e.callee, env, ctx);
       if (typeof callee === "function") {
         const args = e.args.map(a => evalExpr(a, env, ctx));
@@ -288,8 +323,28 @@ export function snapshotEnv(env: Env): Record<string, unknown> {
   return out;
 }
 
+function builtinMinMax(which: "min" | "max", args: unknown[]): unknown {
+  if (args.length === 0) return null;
+  const first = args[0];
+  const items = first instanceof Collection ? first.items
+              : Array.isArray(first) ? first
+              : null;
+  if (!items || items.length === 0) return null;
+  const keyFn = typeof args[1] === "function" ? args[1] as (it: unknown) => any : (it: unknown) => it;
+  let bestI = 0;
+  let bestK = keyFn(items[0]);
+  for (let i = 1; i < items.length; i++) {
+    const k = keyFn(items[i]);
+    if (which === "min" ? k < bestK : k > bestK) { bestK = k; bestI = i; }
+  }
+  return items[bestI];
+}
+
 function truthy(v: unknown): boolean {
   if (v === null || v === undefined || v === false || v === 0 || v === "") return false;
+  // Pythonic emptiness: empty list/Collection/string is falsy.
+  if (v instanceof Collection) return v.items.length > 0;
+  if (Array.isArray(v)) return v.length > 0;
   return true;
 }
 
