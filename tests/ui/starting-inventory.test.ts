@@ -37,4 +37,10 @@ describe("starting inventory (Phase 13.7)", () => {
     const hero = actors.find(a => a.isHero)!;
     expect(hero.inventory?.consumables).toHaveLength(0);
   });
+
+  it("knownGear lists the starter equipment defIds", () => {
+    const { actors } = demoSetup();
+    const hero = actors.find(a => a.isHero)!;
+    expect(hero.knownGear).toEqual(expect.arrayContaining(["wooden_staff", "bone_dagger"]));
+  });
 });

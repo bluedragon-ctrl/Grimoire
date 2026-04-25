@@ -44,6 +44,7 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
     id: "hero", kind: "hero", isHero: true, hp: 20, maxHp: 20,
     speed: 12, energy: 0, pos: { x: 1, y: 5 },
     script: heroScript, alive: true,
+    knownGear: ["wooden_staff", "bone_dagger"],
     inventory: {
       consumables: [],
       equipped: {

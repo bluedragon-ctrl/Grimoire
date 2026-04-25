@@ -56,20 +56,24 @@ export const EFFECT_KIND = {
   explosion:     'area',
   blobExplosion: 'area',
   deathBurst:    'area',
+  glitch_pulse:  'area',
+  floatingLabel: 'area',
   cloudWavy:     'tileCloud',
   burning:      'overlay',
   sparkling:    'overlay',
   dripping:     'overlay',
   healing:      'overlay',
   barrier:      'overlay',
+  materialize:   'overlay',
+  dematerialize: 'overlay',
 };
 
 /** name → drawFn(ctx, params, t, colors). */
 export const EFFECT_RENDERERS = {
   beam, bolt, arrow, zigzag, orbs, thrown,
-  explosion, blobExplosion, deathBurst,
+  explosion, blobExplosion, deathBurst, glitch_pulse, floatingLabel,
   cloudWavy,
-  burning, sparkling, dripping, healing, barrier,
+  burning, sparkling, dripping, healing, barrier, materialize, dematerialize,
 };
 
 /** Default lifetimes (seconds) — engine may override. */
@@ -83,6 +87,8 @@ export const EFFECT_DURATION = {
   explosion:    0.55,
   blobExplosion: 0.7,
   deathBurst:   0.4,
+  glitch_pulse:  0.25,
+  floatingLabel: 1.5,
   cloudWavy:     0,
   // Overlays default to 0 (infinite) — engine passes duration from status effect.
   burning:   0,
@@ -90,6 +96,8 @@ export const EFFECT_DURATION = {
   dripping:  0,
   healing:   0,
   barrier:   0,
+  materialize:   0.8,
+  dematerialize: 0.8,
 };
 
 export function drawEffect(ctx, name, params, t = 0, colors = {}) {
@@ -709,4 +717,171 @@ export function barrier(ctx, { cx, cy }, t, { color = '#ffcc66' } = {}) {
 
   ctx.globalAlpha = 1;
   ctx.lineWidth = 1.5;
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAMED PRESETS — glitch_pulse / materialize / dematerialize / floatingLabel
+// ═══════════════════════════════════════════════════════════
+
+const ARCANE_CHARS = ['#', '$', 'λ', '&', '→', '▓', '*', '?', '@', '!', '%', '§'];
+const AMBER = '#ffb040';
+
+/** Dungeon effect: viewport brightness flash + scanline jitter. */
+export function glitch_pulse(ctx, { cx, cy }, t, _colors = {}) {
+  const flash = Math.max(0, 1 - t * 5);
+  if (flash > 0) {
+    ctx.save();
+    ctx.globalAlpha = flash * 0.18;
+    ctx.fillStyle = '#fff8e0';
+    const half = TILE_PX * 8;
+    ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+    ctx.restore();
+  }
+  if (t < 0.5) {
+    const jitterY = Math.floor(hash01(t * 100) * TILE_PX * 4);
+    const jitterAmt = (4 + hash01(t * 200) * 6) * (1 - t * 2);
+    ctx.save();
+    ctx.globalAlpha = 0.4 * (1 - t * 2);
+    ctx.drawImage(ctx.canvas, 0, jitterY, ctx.canvas.width, 2, jitterAmt, jitterY, ctx.canvas.width, 2);
+    ctx.restore();
+  }
+}
+
+/** Actor effect: RF/CRT tune-in — black backdrop occludes the sprite early,
+ *  amber static-noise fills the tile and thins as t rises, a single bright
+ *  scanline sweeps top→bottom to "lock on" the channel. */
+export function materialize(ctx, { cx, cy }, t, { color = AMBER } = {}) {
+  const size = TILE_PX;
+  const x0 = cx - size / 2;
+  const y0 = cy - size / 2;
+
+  // Black backdrop hides the underlying sprite at first; clears by ~t=0.7.
+  const backdropA = Math.max(0, 1 - t * 1.4);
+  if (backdropA > 0) {
+    ctx.save();
+    ctx.globalAlpha = backdropA;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x0, y0, size, size);
+    ctx.restore();
+  }
+
+  // Static noise — density and per-dot alpha scale with (1 - t). Seed mixes
+  // index with t so the field shimmers/reseeds every frame.
+  const density = Math.max(0, 1 - t);
+  const dotCount = Math.floor(180 * density);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 3;
+  for (let i = 0; i < dotCount; i++) {
+    const seed = i * 7.3 + t * 137.0;
+    const px = x0 + hash01(seed) * size;
+    const py = y0 + hash01(seed + 0.5) * size;
+    const a = (0.4 + hash01(seed + 1.1) * 0.6) * density;
+    ctx.globalAlpha = a;
+    const ps = 1 + Math.floor(hash01(seed + 2.0) * 2);
+    ctx.fillRect(Math.floor(px), Math.floor(py), ps, ps);
+  }
+  ctx.restore();
+
+  // Single bright scanline sweeps top→bottom; brightness peaks mid-sweep.
+  const sweepY = y0 + t * size;
+  const sweepA = Math.max(0, 1 - Math.abs(t - 0.5) * 1.6) * 0.9;
+  if (sweepA > 0) {
+    ctx.save();
+    ctx.globalAlpha = sweepA;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillRect(x0 - 2, sweepY - 1, size + 4, 2);
+    ctx.restore();
+  }
+}
+
+/** Reverse of materialize: sprite dissolves into RF static, scanline sweeps,
+ *  black backdrop closes over (death/blink-out). Mirrors materialize via
+ *  (1 - t) on the static-noise + backdrop ramps. */
+export function dematerialize(ctx, { cx, cy }, t, { color = AMBER } = {}) {
+  const size = TILE_PX;
+  const x0 = cx - size / 2;
+  const y0 = cy - size / 2;
+  const u = 1 - t; // mirrored progress: 1 → 0 like materialize's (1 - t)
+
+  // Black backdrop closes over the sprite as t→1.
+  const backdropA = Math.max(0, 1 - u * 1.4);
+  if (backdropA > 0) {
+    ctx.save();
+    ctx.globalAlpha = backdropA;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x0, y0, size, size);
+    ctx.restore();
+  }
+
+  // Static noise ramps up with t.
+  const density = Math.max(0, 1 - u);
+  const dotCount = Math.floor(180 * density);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 3;
+  for (let i = 0; i < dotCount; i++) {
+    const seed = i * 7.3 + t * 137.0;
+    const px = x0 + hash01(seed) * size;
+    const py = y0 + hash01(seed + 0.5) * size;
+    const a = (0.4 + hash01(seed + 1.1) * 0.6) * density;
+    ctx.globalAlpha = a;
+    const ps = 1 + Math.floor(hash01(seed + 2.0) * 2);
+    ctx.fillRect(Math.floor(px), Math.floor(py), ps, ps);
+  }
+  ctx.restore();
+
+  // Scanline sweeps bottom→top this time, mirror of materialize.
+  const sweepY = y0 + (1 - t) * size;
+  const sweepA = Math.max(0, 1 - Math.abs(t - 0.5) * 1.6) * 0.9;
+  if (sweepA > 0) {
+    ctx.save();
+    ctx.globalAlpha = sweepA;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillRect(x0 - 2, sweepY - 1, size + 4, 2);
+    ctx.restore();
+  }
+}
+
+/** Floating notification: amber monospace text rising from the actor and fading. */
+export function floatingLabel(ctx, { cx, cy, text }, t, { color = AMBER } = {}) {
+  if (!text) return;
+  const rise = TILE_PX * 0.4 * t;
+  const y = cy - TILE_PX * 0.6 - rise;
+  const fadeIn  = Math.min(1, t / 0.15);
+  const fadeOut = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3);
+  const alpha   = fadeIn * fadeOut;
+
+  ctx.save();
+  ctx.font = "12px 'Share Tech Mono', monospace";
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const padX = 6, padY = 3;
+  const metrics = ctx.measureText(text);
+  const w = metrics.width + padX * 2;
+  const h = 14 + padY;
+  const bx = cx - w / 2;
+  const by = y - h / 2;
+
+  ctx.globalAlpha = alpha * 0.65;
+  ctx.fillStyle = '#0a0805';
+  ctx.fillRect(bx, by, w, h);
+
+  ctx.globalAlpha = alpha;
+  wire(ctx, color, 6);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, w, h);
+
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 4;
+  ctx.fillText(text, cx, y);
+  ctx.restore();
 }

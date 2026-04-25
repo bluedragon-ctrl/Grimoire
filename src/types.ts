@@ -108,6 +108,15 @@ export interface Actor {
   // Phase 6: list of spell names the actor has learned. Default hero = ["bolt","heal"],
   // default monster = []. Cast validation rejects unknown/unlearned names.
   knownSpells?: string[];
+  // Phase 13.7: list of equipment defIds the hero has discovered (mirrors
+  // knownSpells). The prep-panel picker reads this to populate per-slot
+  // choices; equipping instantiates a fresh ItemRef from the def. Found via
+  // pickup; persistent across runs (within a session).
+  knownGear?: string[];
+  // Phase 13.7: equipment defIds picked up during the current run, awaiting
+  // post-run merge into knownGear (mirrors how scrolls are queued in the bag
+  // and processed at exit). Cleared after processing.
+  foundGear?: string[];
   // Phase 7: inventory. Consumables are a small bag (BAG_SIZE); equipped is
   // one slot per Slot, always present (null when empty).
   inventory?: Inventory;
@@ -322,6 +331,8 @@ export type GameEvent =
   | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" }
   | { type: "SpellLearned"; actor: string; spell: string }
   | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" }
+  | { type: "GearLearned"; actor: string; defId: string }
+  | { type: "GearDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" }
   | { type: "Notified"; actor: string; text: string; style?: "info" | "warning" | "error" | "success"; duration?: number; position?: "top" | "center" | "bottom" };
 
 export interface LogEntry { t: number; event: GameEvent; }

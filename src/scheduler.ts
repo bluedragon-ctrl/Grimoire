@@ -400,6 +400,8 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "ScriptError": return `[t=${t}] ${event.actor}.scriptError — ${event.message}`;
     case "SpellLearned": return `[t=${t}] ${event.actor}.spellLearned — ${event.spell}`;
     case "ScrollDiscarded": return `[t=${t}] ${event.actor}.scrollDiscarded — ${event.defId} (${event.reason})`;
+    case "GearLearned": return `[t=${t}] ${event.actor}.gearLearned — ${event.defId}`;
+    case "GearDiscarded": return `[t=${t}] ${event.actor}.gearDiscarded — ${event.defId} (${event.reason})`;
     case "ManaChanged": return `[t=${t}] ${event.actor}.manaChanged — ${event.amount}`;
     case "Notified": return `[t=${t}] ${event.actor}.notify — ${event.text}`;
   }

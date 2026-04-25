@@ -1,12 +1,11 @@
-// Inventory prep panel — visible only during the idle (pre-run) phase.
-// Lets the user inspect/configure the hero's starting gear: 5 equipment
-// slots (hat/robe/staff/dagger/focus) and a 4-slot consumables bag.
-// Mutates the passed-in RoomSetup so the next Run picks up the choices.
+// Inventory panel — prep-phase loadout editor.
 //
-// Each slot renders a small canvas with the item's ported draw + preset
-// colors; clicking opens a picker of available ItemDefs for that category.
+// Equipment slots are interactive: clicking a slot opens a picker sourced from
+// `hero.knownGear` (mirrors `knownSpells`) filtered to that slot. Selecting an
+// option swaps the equipped instance; the bag (4 consumables) stays inspect-
+// only and is filled by mid-run pickup, not the picker.
 
-import type { Actor, ItemDef, ItemInstance, Slot } from "../types.js";
+import type { Actor, ItemInstance, Slot } from "../types.js";
 import { ITEMS, BAG_SIZE, SLOTS, emptyEquipped } from "../content/items.js";
 import { ITEM_DRAWS } from "../render/items.js";
 import { ITEM_VISUAL_PRESETS, FALLBACK_PRESETS, type ItemShape } from "../content/item-visuals.js";
@@ -15,12 +14,7 @@ import { formatItemProcs } from "./proc-format.js";
 import type { MergeStat } from "../items/script.js";
 
 const ICON_PX = 40;
-let instanceCounter = 0;
-
-function nextInstanceId(prefix: string): string {
-  instanceCounter++;
-  return `${prefix}_${instanceCounter}`;
-}
+const PICKER_ICON_PX = 24;
 
 function ensureInventory(a: Actor): NonNullable<Actor["inventory"]> {
   if (!a.inventory) a.inventory = { consumables: [], equipped: emptyEquipped() };
@@ -30,8 +24,6 @@ function ensureInventory(a: Actor): NonNullable<Actor["inventory"]> {
 function iconColors(defId: string): { col1?: string; col2?: string; color?: string } {
   const preset = ITEM_VISUAL_PRESETS[defId];
   if (preset) return preset.colors;
-  // Fall back by shape if no specific preset. We rarely hit this; defId is
-  // keyed 1:1 with ITEM_VISUAL_PRESETS today.
   const def = ITEMS[defId];
   const shape = def?.slot
     ? (def.slot as ItemShape)
@@ -46,83 +38,33 @@ function drawItemIcon(canvas: HTMLCanvasElement, defId: string): void {
   const drawKey = pickDrawFn(defId);
   const fn = ITEM_DRAWS[drawKey];
   if (!fn) return;
-  fn(ctx, canvas.width / 2, canvas.height / 2, 0, iconColors(defId));
+  // Item draw fns are tuned for an ~ICON_PX-sized cell; scale to fit smaller
+  // canvases (e.g., picker rows) so the art doesn't clip at the edges.
+  const scale = Math.min(canvas.width, canvas.height) / ICON_PX;
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.scale(scale, scale);
+  fn(ctx, 0, 0, 0, iconColors(defId));
+  ctx.restore();
 }
 
-// Map a defId to an ITEM_DRAWS key. Visual presets use shape names that
-// closely match the draw registry ("potion", "staff", …); items.ts exports
-// both shape-based and bespoke draws (drawHealthPotion, drawWoodenStaff, …).
+// ITEM_VISUAL_PRESETS shape names ("potion", "staff", "robe", "hat", "dagger",
+// "focus", "crystal", "scroll") map 1:1 to ITEM_DRAWS keys, so we just look up
+// the preset's shape (with a sensible fallback per item kind).
 function pickDrawFn(defId: string): string {
-  // Bespoke per-item draws available in items.ts:
-  const bespoke: Record<string, string> = {
-    health_potion: "drawHealthPotion",
-    mana_crystal: "drawManaCrystal",
-    haste_potion: "drawPotion1",
-    cleanse_potion: "drawPotion2",
-    cloth_cap: "drawHat1",
-    wizard_hat: "drawHat2",
-    leather_robe: "drawRobeFolded",
-    silk_robe: "drawRobeFoldedEmber",
-    wooden_staff: "drawWoodenStaff",
-    fire_staff: "drawFireStaff",
-    bone_dagger: "drawDaggerA",
-    venom_dagger: "drawDaggerB",
-    quartz_focus: "drawFocusA",
-    runed_focus: "drawFocusB",
-  };
-  return bespoke[defId] ?? "drawGenericItem";
+  const preset = ITEM_VISUAL_PRESETS[defId];
+  if (preset) return preset.shape;
+  const def = ITEMS[defId];
+  if (def?.slot) return def.slot as string;
+  if (def?.kind === "consumable") return "potion";
+  if (def?.kind === "scroll") return "scroll";
+  return "generic";
 }
 
-// ── Picker (inline popup) ─────────────────────────────────────────────
-
-function closePicker(): void {
-  const ex = document.querySelector(".inv-picker");
-  if (ex) ex.remove();
-}
-
-function openPicker(
-  anchor: HTMLElement,
-  options: { label: string; defId: string | null }[],
-  onPick: (defId: string | null) => void,
-): void {
-  closePicker();
-  const box = document.createElement("div");
-  box.className = "inv-picker";
-  for (const opt of options) {
-    const btn = document.createElement("button");
-    btn.className = "inv-picker-row";
-    btn.textContent = opt.label;
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      onPick(opt.defId);
-      closePicker();
-    });
-    box.appendChild(btn);
-  }
-  // Position near the anchor.
-  const rect = anchor.getBoundingClientRect();
-  box.style.position = "fixed";
-  box.style.left = `${rect.left}px`;
-  box.style.top = `${rect.bottom + 2}px`;
-  document.body.appendChild(box);
-  // Click-away to dismiss.
-  setTimeout(() => {
-    const close = (e: MouseEvent) => {
-      if (!box.contains(e.target as Node)) {
-        closePicker();
-        document.removeEventListener("mousedown", close);
-      }
-    };
-    document.addEventListener("mousedown", close);
-  }, 0);
-}
-
-// ── Public: render the inventory panel into `container` ───────────────
+// ── Public ────────────────────────────────────────────────────────────
 
 export interface InventoryController {
-  /** Redraw the panel (call after external state changes). */
   refresh: () => void;
-  /** Enable/disable editing (disable once the run starts). */
   setEditable: (yes: boolean) => void;
 }
 
@@ -131,8 +73,80 @@ export function mountInventoryPanel(
   getHero: () => Actor | null,
 ): InventoryController {
   let editable = true;
+  let instSeq = 0;
+  const mintInstId = (defId: string) => `eq_${defId}_${++instSeq}`;
+
+  function closePicker(): void {
+    document.querySelectorAll(".inv-picker").forEach(p => p.remove());
+  }
+
+  function openPicker(anchor: HTMLElement, slot: Slot, hero: Actor): void {
+    closePicker();
+    const known = (hero.knownGear ?? []).filter(id => {
+      const d = ITEMS[id];
+      return d && d.kind === "equipment" && d.slot === slot;
+    });
+
+    const picker = document.createElement("div");
+    picker.className = "inv-picker";
+    picker.style.position = "absolute";
+
+    const empty = document.createElement("button");
+    empty.className = "inv-picker-row";
+    empty.type = "button";
+    empty.textContent = "— (empty) —";
+    empty.addEventListener("click", () => {
+      ensureInventory(hero).equipped[slot] = null;
+      closePicker();
+      render();
+    });
+    picker.appendChild(empty);
+
+    for (const defId of known) {
+      const def = ITEMS[defId]!;
+      const row = document.createElement("button");
+      row.className = "inv-picker-row";
+      row.type = "button";
+      const icon = document.createElement("canvas");
+      icon.width = PICKER_ICON_PX;
+      icon.height = PICKER_ICON_PX;
+      icon.className = "inv-picker-icon";
+      drawItemIcon(icon, defId);
+      row.appendChild(icon);
+      const label = document.createElement("span");
+      label.textContent = def.name;
+      row.appendChild(label);
+      row.addEventListener("click", () => {
+        const inv = ensureInventory(hero);
+        const current = inv.equipped[slot];
+        if (current?.defId === defId) {
+          closePicker();
+          return;
+        }
+        const inst: ItemInstance = { id: mintInstId(defId), defId };
+        inv.equipped[slot] = inst;
+        closePicker();
+        render();
+      });
+      picker.appendChild(row);
+    }
+
+    document.body.appendChild(picker);
+    const r = anchor.getBoundingClientRect();
+    picker.style.left = `${r.left + window.scrollX}px`;
+    picker.style.top  = `${r.bottom + window.scrollY + 4}px`;
+
+    const onDocClick = (ev: MouseEvent) => {
+      if (!picker.contains(ev.target as Node) && ev.target !== anchor) {
+        closePicker();
+        document.removeEventListener("click", onDocClick, true);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", onDocClick, true), 0);
+  }
 
   function render(): void {
+    closePicker();
     container.innerHTML = "";
     const hero = getHero();
     if (!hero) {
@@ -144,7 +158,6 @@ export function mountInventoryPanel(
     }
     const inv = ensureInventory(hero);
 
-    // Two-column layout: slots on the left, stats on the right.
     const layout = document.createElement("div");
     layout.className = "inv-layout";
     const slotsCol = document.createElement("div");
@@ -155,7 +168,6 @@ export function mountInventoryPanel(
     layout.appendChild(statsCol);
     container.appendChild(layout);
 
-    // Equipment row
     const equipH = document.createElement("h3");
     equipH.textContent = "Equipment";
     slotsCol.appendChild(equipH);
@@ -166,14 +178,13 @@ export function mountInventoryPanel(
     }
     slotsCol.appendChild(equipRow);
 
-    // Bag row
     const bagH = document.createElement("h3");
     bagH.textContent = "Bag";
     slotsCol.appendChild(bagH);
     const bagRow = document.createElement("div");
     bagRow.className = "inv-row";
     for (let i = 0; i < BAG_SIZE; i++) {
-      bagRow.appendChild(renderBagSlot(i, inv.consumables[i] ?? null, hero));
+      bagRow.appendChild(renderBagSlot(i, inv.consumables[i] ?? null));
     }
     slotsCol.appendChild(bagRow);
 
@@ -185,9 +196,6 @@ export function mountInventoryPanel(
     h.textContent = "Stats";
     col.appendChild(h);
 
-    // Baseline stats from the actor object. Phase 5 normalizes these on
-    // the engine side via `cloneActor`, but in prep phase we read whatever
-    // the setup provides, falling back to hero defaults.
     const base: Record<string, number> = {
       hp:    hero.hp,
       maxHp: hero.maxHp,
@@ -229,8 +237,6 @@ export function mountInventoryPanel(
     }
     col.appendChild(table);
 
-    // Proc effects from equipped wearables — grouped per item, human-readable.
-    // Items with no procs render no section (no empty headers).
     for (const slotKey of SLOTS) {
       const inst = hero.inventory?.equipped[slotKey];
       if (!inst) continue;
@@ -252,10 +258,10 @@ export function mountInventoryPanel(
     }
   }
 
-  function renderSlotCell(defId: string | null, label: string): HTMLElement {
-    const cell = document.createElement("button");
+  function renderSlotCell(defId: string | null, label: string, asButton: boolean): HTMLElement {
+    const cell = document.createElement(asButton ? "button" : "div") as HTMLElement;
     cell.className = "inv-cell";
-    cell.type = "button";
+    if (asButton) (cell as HTMLButtonElement).type = "button";
     const canvas = document.createElement("canvas");
     canvas.width = ICON_PX;
     canvas.height = ICON_PX;
@@ -266,59 +272,35 @@ export function mountInventoryPanel(
     cell.appendChild(cap);
     if (defId) drawItemIcon(canvas, defId);
     else cell.classList.add("inv-empty");
-    if (!editable) cell.disabled = true;
     return cell;
   }
 
   function renderEquipSlot(slot: Slot, current: ItemInstance | null, hero: Actor): HTMLElement {
     const def = current ? ITEMS[current.defId] : undefined;
-    const cell = renderSlotCell(current?.defId ?? null, def?.name ?? slot);
+    const cell = renderSlotCell(current?.defId ?? null, def?.name ?? slot, editable);
     cell.title = def ? `${def.name} (${slot})` : `Empty ${slot}`;
-    cell.addEventListener("click", () => {
-      if (!editable) return;
-      const defs = Object.values(ITEMS).filter(d => d.kind === "equipment" && d.slot === slot);
-      const options = [
-        { label: "— Empty —", defId: null },
-        ...defs.map(d => ({ label: d.name, defId: d.id })),
-      ];
-      openPicker(cell, options, (defId) => {
-        const inv = ensureInventory(hero);
-        inv.equipped[slot] = defId
-          ? { id: nextInstanceId(defId), defId }
-          : null;
-        render();
+    if (editable) {
+      cell.addEventListener("click", ev => {
+        ev.stopPropagation();
+        openPicker(cell, slot, hero);
       });
-    });
+    }
     return cell;
   }
 
-  function renderBagSlot(idx: number, current: ItemInstance | null, hero: Actor): HTMLElement {
+  function renderBagSlot(idx: number, current: ItemInstance | null): HTMLElement {
     const def = current ? ITEMS[current.defId] : undefined;
-    const cell = renderSlotCell(current?.defId ?? null, def?.name ?? `Slot ${idx + 1}`);
+    const cell = renderSlotCell(current?.defId ?? null, def?.name ?? `Slot ${idx + 1}`, false);
     cell.title = def ? def.name : `Empty slot ${idx + 1}`;
-    cell.addEventListener("click", () => {
-      if (!editable) return;
-      const defs = Object.values(ITEMS).filter(d => d.kind === "consumable");
-      const options = [
-        { label: "— Empty —", defId: null },
-        ...defs.map((d: ItemDef) => ({ label: d.name, defId: d.id })),
-      ];
-      openPicker(cell, options, (defId) => {
-        const inv = ensureInventory(hero);
-        if (defId) {
-          inv.consumables[idx] = { id: nextInstanceId(defId), defId };
-        } else {
-          inv.consumables.splice(idx, 1);
-        }
-        render();
-      });
-    });
     return cell;
   }
 
   render();
   return {
     refresh: render,
-    setEditable: (yes) => { editable = yes; closePicker(); render(); },
+    setEditable: (yes: boolean) => {
+      editable = yes;
+      render();
+    },
   };
 }

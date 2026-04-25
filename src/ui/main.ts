@@ -119,25 +119,106 @@ export function pushNotification(text: string, opts: NotifyOpts = {}): void {
   }
 }
 
+// ── Canvas-slot typewriter (boot banner + compile flash) ──────────────────
+// Renders terminal-style lines char-by-char inside the empty #game-view,
+// where "> AWAITING RUN SIGNAL <" normally lives. Returns a Promise that
+// resolves after the final hold completes (and the screen is cleared).
+function typeLinesInCanvas(
+  host: HTMLElement,
+  lines: string[],
+  opts: { charMs?: number; lineGapMs?: number; holdMs?: number; clearOnDone?: boolean } = {},
+): Promise<void> {
+  const { charMs = 35, lineGapMs = 220, holdMs = 600, clearOnDone = true } = opts;
+  return new Promise(resolve => {
+    // Reuse an existing .boot-screen if one's still mounted — that lets the
+    // idle prompt append to the boot banner's lines instead of replacing
+    // them, so the canvas reads as one continuous console transcript.
+    let screen = host.querySelector<HTMLDivElement>(".boot-screen");
+    if (!screen) {
+      screen = document.createElement("div");
+      screen.className = "boot-screen";
+      host.appendChild(screen);
+    }
+
+    let cursorTime = 0;
+    for (const line of lines) {
+      const lineStartAt = cursorTime;
+      setTimeout(() => {
+        if (!screen.isConnected) return;
+        const li = document.createElement("div");
+        li.className = "boot-line typing";
+        const txt = document.createElement("span");
+        txt.className = "boot-text";
+        const cur = document.createElement("span");
+        cur.className = "boot-cursor";
+        cur.textContent = "_";
+        li.appendChild(txt);
+        li.appendChild(cur);
+        // Drop the previous line's cursor — only the active line blinks.
+        const prev = screen.querySelector(".boot-line.typing");
+        if (prev) prev.classList.remove("typing");
+        screen.appendChild(li);
+        let i = 0;
+        const tick = () => {
+          if (!li.isConnected) return;
+          i++;
+          txt.textContent = line.slice(0, i);
+          if (i < line.length) setTimeout(tick, charMs);
+        };
+        tick();
+      }, lineStartAt);
+      cursorTime += line.length * charMs + lineGapMs;
+    }
+    setTimeout(() => {
+      if (clearOnDone && screen.isConnected) screen.remove();
+      resolve();
+    }, cursorTime + holdMs);
+  });
+}
+
 // ── Boot banner ────────────────────────────────────────────────────────────
 let bootBannerShown = false;
 
-function showBootBanner(): void {
+function showBootBanner(): Promise<void> {
   const cfg = visualConfig.bootBanner;
-  if (!cfg.enabled) return;
-  if (cfg.firstRunOnlyPerSession && bootBannerShown) return;
+  if (!cfg.enabled) return Promise.resolve();
+  if (cfg.firstRunOnlyPerSession && bootBannerShown) return Promise.resolve();
   bootBannerShown = true;
 
+  const host = document.getElementById("game-view");
+  if (!host || host.children.length > 0) return Promise.resolve();
+
   const version = "0.13";
-  const lines = [
+  const middle = cfg.middleLines[Math.floor(Math.random() * cfg.middleLines.length)] ?? "LOADING...";
+  return typeLinesInCanvas(host, [
     `> GRIMOIRE v${version}`,
     `> COMPILING SCRIPT...`,
-    cfg.middleLines[Math.floor(Math.random() * cfg.middleLines.length)] ?? "LOADING...",
+    `> ${middle}`,
     `> RUN`,
-  ];
-  lines.forEach((line, i) => {
-    setTimeout(() => pushNotification(line, { duration: 1.5 + i * 0.2 }), i * 380);
-  });
+  ], { holdMs: 300, clearOnDone: false });
+}
+
+// ── Idle prompt ────────────────────────────────────────────────────────────
+// "> AWAITING RUN SIGNAL <" — typed in below any existing boot lines so the
+// canvas reads as one continuous transcript (boot → AWAITING). The cursor
+// keeps blinking on this line. Cleared automatically when adapter.mount
+// paints over #game-view (replaceChildren), and re-typed when the phase
+// returns to prep/recap. Idempotent — no-ops if already present.
+const IDLE_LINE = "> AWAITING RUN SIGNAL";
+let bootDone = false;
+function showIdlePrompt(): void {
+  if (!gameEl) return;
+  // Suppress until the boot banner has finished typing — otherwise the idle
+  // line interleaves with the boot lines on initial load.
+  if (!bootDone) return;
+  // Skip if the canvas is already mounted (any non-.boot-screen child).
+  const onlyChild = gameEl.children[0];
+  if (onlyChild && !onlyChild.classList.contains("boot-screen")) return;
+  // Skip if the AWAITING line was already typed in.
+  const existing = Array.from(gameEl.querySelectorAll(".boot-line .boot-text"))
+    .some(el => el.textContent === IDLE_LINE);
+  if (existing) return;
+  void typeLinesInCanvas(gameEl, [IDLE_LINE], { holdMs: 0, clearOnDone: false });
 }
 
 function clearPlayTimer() {
@@ -180,13 +261,9 @@ function drainLogToAdapter(): void {
   while (applyCursor < log.length) {
     const entry = log[applyCursor++]!;
     currentAdapter.apply(entry.event);
-    if (entry.event.type === "Notified") {
-      pushNotification(entry.event.text, {
-        style: entry.event.style,
-        duration: entry.event.duration,
-        position: entry.event.position,
-      });
-    }
+    // Notified events render as floating canvas labels next to the actor
+    // (see WireRendererAdapter.apply → "Notified"). Direct pushNotification
+    // calls (boot banner, COMPILING flash) still use the CSS overlay.
     appendLine(formatLogEntry(entry), entry.event.type === "ActionFailed" ? "fail" : undefined);
   }
 }
@@ -237,24 +314,44 @@ function playTick(): void {
   playTimer = setTimeout(playTick, tickDelayMs());
 }
 
+// How long to hold the running phase after a terminal event so the hero's
+// exit/death animation (~0.8s) and the room deconstruction (~0.9s) can play
+// out before the recap modal pops. The dissolve trigger fires partway in,
+// just after the actor visual has read.
+const DECON_TRIGGER_MS = 800;
+const PLAYOUT_MS = 1700;
+
 function onRunEnded(): void {
   if (!currentHandle) return;
   const outcome = terminalOutcome();
   const turns = currentHandle.world.tick;
   setActiveGutterLine(null);
-  if (outcome === "success") {
-    appendLine(`— cleared (tick=${turns}) —`);
-    runCtl.succeed(turns);
-  } else if (outcome === "death") {
-    appendLine(`— hero died (tick=${turns}) —`, "fail");
-    runCtl.die(turns, deathCause());
-  } else {
-    appendLine(`— failed (tick=${turns}) —`, "fail");
+  appendLine(
+    outcome === "success" ? `— cleared (tick=${turns}) —` :
+    outcome === "death"   ? `— hero died (tick=${turns}) —` :
+                            `— failed (tick=${turns}) —`,
+    outcome === "success" ? undefined : "fail",
+  );
+
+  // Stop / fail outcomes go straight to recap — no dissolve.
+  if (outcome !== "success" && outcome !== "death") {
     runCtl.fail();
+    return;
   }
+
+  // Trigger deconstruction after the actor's death/exit animation reads.
+  setTimeout(() => {
+    if (currentAdapter) currentAdapter.startRoomDeconstruction();
+  }, DECON_TRIGGER_MS);
+
+  // Hold the recap modal until the room finishes dissolving.
+  setTimeout(() => {
+    if (outcome === "success") runCtl.succeed(turns);
+    else runCtl.die(turns, deathCause());
+  }, PLAYOUT_MS);
 }
 
-function startFromSource(): boolean {
+async function startFromSource(): Promise<boolean> {
   teardownCurrent();
   clearLog();
   const source = editorEl.value;
@@ -271,12 +368,15 @@ function startFromSource(): boolean {
   }
 
   appendLine("— run —");
-  // COMPILING flash — confirms the script was accepted before the first tick.
-  pushNotification("> COMPILING SCRIPT...", { duration: 1 });
 
   // Stamp the current editor script onto the prep-phase hero.
   const setup: RoomSetup = runCtl.getState().current;
   setup.actors[0]!.script = heroScript;
+
+  // COMPILING flash inside the canvas slot — confirms the script was accepted
+  // before the room appears. We wait for it to finish before mounting so the
+  // typewriter line isn't clobbered by adapter.mount's replaceChildren.
+  await typeLinesInCanvas(gameEl, ["> COMPILING SCRIPT..."], { holdMs: 250 });
 
   // Transition prep → running. This snapshots the setup for fail-restore.
   runCtl.startRun();
@@ -295,9 +395,10 @@ const SPAWN_HOLD_MS = WireRendererAdapter.SPAWN_HOLD_MS;
 
 // ── Button wiring ───────────────────────────────────────────────────────────
 
-btnRun.addEventListener("click", () => {
+btnRun.addEventListener("click", async () => {
   if (runCtl.getState().phase !== "prep") return;
-  if (!startFromSource()) return;
+  const ok = await startFromSource();
+  if (!ok) return;
   // Hold for spawn animation (glitch_pulse + materialize) before first tick.
   playTimer = setTimeout(playTick, Math.max(tickDelayMs(), SPAWN_HOLD_MS));
 });
@@ -409,6 +510,9 @@ function renderPhase(): void {
     }
     currentHandle = null;
     applyCursor = 0;
+    // Re-type the idle prompt unless the boot banner is still playing in
+    // this slot (#game-view will already have a .boot-screen child).
+    showIdlePrompt();
   }
 
   // Inventory visible only in prep (and editable there); hidden during the
@@ -562,5 +666,10 @@ const helpPane = mountHelpPane(helpEl, {
   },
 });
 speedOut.textContent = `${tickDelayMs()}ms`;
+// Kick off the boot banner before the first renderPhase so its .boot-screen
+// occupies #game-view. renderPhase's showIdlePrompt is suppressed while
+// boot is in progress; once boot finishes, we flip the gate and append the
+// AWAITING line below the boot transcript.
+const bootPromise = showBootBanner();
 renderPhase();
-showBootBanner();
+bootPromise.then(() => { bootDone = true; showIdlePrompt(); });

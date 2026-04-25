@@ -116,6 +116,21 @@ export function doPickup(world: World, self: Actor, ref: unknown): GameEvent[] {
   if (!def) return [fail(self, "pickup", `Unknown item '${fi.defId}'.`)];
 
   const inv = ensureInventory(self);
+
+  // Equipment is queued in foundGear during the run and processed at exit
+  // (mirrors how scrolls are processed: knownGear is the long-term record,
+  // foundGear is the per-run buffer). Pickup consumes no bag slot.
+  if (def.kind === "equipment") {
+    if (!self.foundGear) self.foundGear = [];
+    self.foundGear.push(fi.defId);
+    floor.splice(idx, 1);
+    return [{
+      type: "ItemPickedUp",
+      actor: self.id, item: fi.id, defId: fi.defId,
+      pos: { ...self.pos },
+    }];
+  }
+
   if (inv.consumables.length >= BAG_SIZE) {
     return [fail(self, "pickup", "Bag full")];
   }

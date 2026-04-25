@@ -73,6 +73,30 @@ describe("doPickup", () => {
     const events = doPickup(w, h, undefined);
     expect(events[0]!.type).toBe("ActionFailed");
   });
+
+  it("equipment pickup queues into foundGear (not bag) and consumes no slot", () => {
+    const h = mkHero();
+    const inv = ensureInventory(h);
+    for (let i = 0; i < BAG_SIZE; i++) inv.consumables.push(mintInstance("health_potion"));
+    const w = mkWorld([h]);
+    spawnFloorItem(w, "fire_staff", { x: 2, y: 2 }, "death", null);
+
+    const events = doPickup(w, h, undefined);
+    expect(events[0]!.type).toBe("ItemPickedUp");
+    expect(h.foundGear).toContain("fire_staff");
+    expect(h.knownGear ?? []).not.toContain("fire_staff");
+    expect(h.inventory!.consumables.length).toBe(BAG_SIZE);
+    expect(w.room.floorItems!.length).toBe(0);
+  });
+
+  it("equipment pickup queues even if defId already known (processed at exit)", () => {
+    const h = mkHero({ knownGear: ["fire_staff"] });
+    const w = mkWorld([h]);
+    spawnFloorItem(w, "fire_staff", { x: 2, y: 2 }, "death", null);
+
+    doPickup(w, h, undefined);
+    expect(h.foundGear).toEqual(["fire_staff"]);
+  });
 });
 
 describe("doDrop", () => {

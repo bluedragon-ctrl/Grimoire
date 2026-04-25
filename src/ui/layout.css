@@ -411,17 +411,43 @@ body::before {
   position: relative;
   display: block;
 }
-#game-view:empty {
+/* The "> AWAITING RUN SIGNAL <" prompt is now typed in via JS using the
+   same .boot-screen / .boot-line typewriter as the boot banner and the
+   compile flash — see showIdlePrompt() in src/ui/main.ts. */
+
+/* Boot sequence — sits inside #game-view so it occupies the same spot
+   that "> AWAITING RUN SIGNAL <" normally fills. Lines append one by
+   one for the classic terminal feel. */
+.boot-screen {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-}
-#game-view:empty::before {
-  content: "> AWAITING RUN SIGNAL <";
-  color: var(--dim);
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 24px 32px;
   font-family: "VT323", monospace;
-  font-size: 16px;
-  letter-spacing: 3px;
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-shadow: var(--glow);
+  background: #000;
+}
+.boot-line {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+/* Cursor only renders for the actively-typing line; previous lines drop it. */
+.boot-cursor { visibility: hidden; }
+.boot-line.typing .boot-cursor {
+  visibility: visible;
+  animation: boot-cursor-blink 0.8s steps(1, end) infinite;
+}
+@keyframes boot-cursor-blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 .pane.game[data-phase="prep"] #game-view,
 .pane.game[data-phase="recap"] #game-view {
@@ -687,8 +713,8 @@ body::before {
     0 0 0 1px rgba(255, 170, 51, 0.25),
     0 6px 22px rgba(255, 100, 0, 0.4),
     0 12px 34px rgba(0, 0, 0, 0.85);
-  padding: 20px 28px;
-  min-width: 260px;
+  padding: 28px 40px;
+  min-width: 360px;
   text-align: center;
 }
 .modal-box h2 {
@@ -709,11 +735,12 @@ body::before {
   min-height: 1em;
 }
 .recap-cta {
-  margin: 12px 0 0;
+  margin: 14px auto 18px;
   font-size: 11px;
   color: var(--dim);
   letter-spacing: 1px;
-  max-width: 260px;
+  max-width: 320px;
+  line-height: 1.5;
 }
 .recap-stats {
   margin: 0 auto 16px;
@@ -883,7 +910,9 @@ body::before {
     0 8px 24px rgba(0, 0, 0, 0.8);
 }
 .inv-picker-row {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 4px 10px;
@@ -897,6 +926,10 @@ body::before {
   text-shadow: var(--glow);
 }
 .inv-picker-row:hover { background: var(--fg); color: #0a0400; text-shadow: none; }
+.inv-picker-icon {
+  flex: 0 0 auto;
+  image-rendering: pixelated;
+}
 
 /* ─────── Scrollbars — amber phosphor ─────── */
 /* Firefox */

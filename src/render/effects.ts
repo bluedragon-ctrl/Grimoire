@@ -21,6 +21,7 @@ export type ProjectileParams = { x1: number; y1: number; x2: number; y2: number 
 export type AreaParams = { cx: number; cy: number; radius?: number };
 export type TileCloudParams = { cx: number; cy: number; tileX?: number; tileY?: number };
 export type OverlayParams = { cx: number; cy: number };
+export type FloatingLabelParams = { cx: number; cy: number; text?: string };
 export type EffectColors = { color?: string; color2?: string };
 
 /** Effect kind — drives how params are interpreted in the renderer. */
@@ -35,6 +36,7 @@ export const EFFECT_KIND = {
   blobExplosion: "area",
   deathBurst:    "area",
   glitch_pulse:  "area",
+  floatingLabel: "area",
   cloudWavy:     "tileCloud",
   burning:       "overlay",
   sparkling:     "overlay",
@@ -59,6 +61,7 @@ export const EFFECT_DURATION: Record<EffectKind, number> = {
   blobExplosion: 0.7,
   deathBurst: 0.4,
   glitch_pulse: 0.1,
+  floatingLabel: 1.5,
   cloudWavy: 0,
   burning: 0,
   sparkling: 0,
@@ -700,6 +703,50 @@ export function materialize(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { co
   ctx.shadowBlur = 0;
 }
 
+/** Floating notification: amber monospace text rising from the actor and fading. */
+export function floatingLabel(
+  ctx: Ctx,
+  { cx, cy, text }: FloatingLabelParams,
+  t: number,
+  { color = AMBER }: EffectColors = {},
+): void {
+  if (!text) return;
+  const rise = TILE_PX * 0.9 * t;            // total drift in px
+  const y = cy - TILE_PX * 0.6 - rise;       // start above the actor
+  // Two-phase alpha: quick fade-in (0..0.15), long hold, soft fade-out (0.7..1).
+  const fadeIn  = Math.min(1, t / 0.15);
+  const fadeOut = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3);
+  const alpha   = fadeIn * fadeOut;
+
+  ctx.save();
+  ctx.font = "12px 'Share Tech Mono', monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // Bordered backdrop so the text reads against busy tiles.
+  const padX = 6, padY = 3;
+  const metrics = ctx.measureText(text);
+  const w = metrics.width + padX * 2;
+  const h = 14 + padY;
+  const bx = cx - w / 2;
+  const by = y - h / 2;
+
+  ctx.globalAlpha = alpha * 0.65;
+  ctx.fillStyle = "#0a0805";
+  ctx.fillRect(bx, by, w, h);
+
+  ctx.globalAlpha = alpha;
+  wire(ctx, color, 6);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, w, h);
+
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 4;
+  ctx.fillText(text, cx, y);
+  ctx.restore();
+}
+
 /** Reverse stub: glyph swarm dispersing outward. Reserved for blink-out etc. */
 export function dematerialize(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { color = AMBER }: EffectColors = {}): void {
   const glyphCount = 12;
@@ -725,7 +772,7 @@ export function dematerialize(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { 
 
 export const EFFECT_RENDERERS = {
   beam, bolt, arrow, zigzag, orbs, thrown,
-  explosion, blobExplosion, deathBurst, glitch_pulse,
+  explosion, blobExplosion, deathBurst, glitch_pulse, floatingLabel,
   cloudWavy,
   burning, sparkling, dripping, healing, barrier, materialize, dematerialize,
 } as const;

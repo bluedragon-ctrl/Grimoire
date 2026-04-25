@@ -130,14 +130,14 @@ describe("hero spawn fires glitch_pulse + materialize", () => {
     expect(mat!.attachTo).toBe("hero");
   });
 
-  it("materialize effect has the correct duration (0.5s)", () => {
+  it("materialize effect has the correct duration (0.8s)", () => {
     const adapter = makeAdapter();
     const el = document.createElement("div");
     adapter.mount(el, room, [hero()]);
 
     const effs = adapter.getState()!.activeEffects;
     const mat = effs.find(e => e.name === "materialize");
-    expect(mat!.duration).toBe(0.5);
+    expect(mat!.duration).toBe(0.8);
   });
 });
 
@@ -148,11 +148,11 @@ describe("WireRendererAdapter.SPAWN_HOLD_MS", () => {
     expect(typeof WireRendererAdapter.SPAWN_HOLD_MS).toBe("number");
   });
 
-  it("is at least 400ms to cover the materialize animation", () => {
-    expect(WireRendererAdapter.SPAWN_HOLD_MS).toBeGreaterThanOrEqual(400);
+  it("is at least 1700ms to cover room construction + materialize", () => {
+    expect(WireRendererAdapter.SPAWN_HOLD_MS).toBeGreaterThanOrEqual(1700);
   });
 
-  it("equals 500ms as specified", () => {
-    expect(WireRendererAdapter.SPAWN_HOLD_MS).toBe(500);
+  it("equals 1700ms as specified", () => {
+    expect(WireRendererAdapter.SPAWN_HOLD_MS).toBe(1700);
   });
 });

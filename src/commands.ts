@@ -469,7 +469,35 @@ export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent
   );
   if (!door) return [fail(self, "exit", "not on a door tile")];
   const events: GameEvent[] = processScrolls(self);
+  events.push(...processFoundGear(self));
   events.push({ type: "HeroExited", actor: self.id, door: door.dir });
+  return events;
+}
+
+// Process equipment picked up this run. New defIds are merged into knownGear
+// (GearLearned + GearDiscarded reason:"learned"); already-known defIds are
+// discarded silently (GearDiscarded reason:"duplicate"). foundGear is cleared.
+function processFoundGear(hero: Actor): GameEvent[] {
+  const found = hero.foundGear;
+  if (!found || found.length === 0) return [];
+  const events: GameEvent[] = [];
+  const known = hero.knownGear ? [...hero.knownGear] : [];
+  for (const defId of found) {
+    const def = ITEMS[defId];
+    if (!def || def.kind !== "equipment") {
+      events.push({ type: "GearDiscarded", actor: hero.id, defId, reason: "duplicate" });
+      continue;
+    }
+    if (!known.includes(defId)) {
+      known.push(defId);
+      events.push({ type: "GearLearned", actor: hero.id, defId });
+      events.push({ type: "GearDiscarded", actor: hero.id, defId, reason: "learned" });
+    } else {
+      events.push({ type: "GearDiscarded", actor: hero.id, defId, reason: "duplicate" });
+    }
+  }
+  hero.knownGear = known;
+  hero.foundGear = [];
   return events;
 }
 
