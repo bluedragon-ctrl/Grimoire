@@ -12,6 +12,7 @@ import type { Actor, World } from "../types.js";
 import { hasEffect, listEffects } from "../effects.js";
 import { hasLineOfSight } from "../los.js";
 import { validateCast } from "../spells/cast.js";
+import { Collection } from "./collection.js";
 
 export const UNSET: unique symbol = Symbol("UNSET");
 export type ActorSurfaceCtx = { world: World };
@@ -78,7 +79,7 @@ export function actorMember(actor: Actor, name: string, ctx: ActorSurfaceCtx): u
       const eff = (actor.effects ?? []).find(e => e.kind === kind);
       return eff ? (eff.magnitude ?? 0) : 0;
     };
-    case "list_effects": return () => listEffects(actor);
+    case "list_effects": return () => new Collection(listEffects(actor));
     case "can_cast": return (spell: unknown, target?: unknown) => {
       if (typeof spell !== "string") return false;
       const v = validateCast(ctx.world, actor, spell, target, {

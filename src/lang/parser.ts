@@ -9,6 +9,7 @@ import type {
 } from "../types.js";
 import { tokenize, type Token } from "./tokenizer.js";
 import { ParseError, didYouMean, KNOWN_NAMES } from "./errors.js";
+import { EVENT_NAMES, isValidEventName } from "./event-registry.js";
 
 export function parse(source: string): Script {
   const tokens = tokenize(source);
@@ -205,7 +206,14 @@ class Parser {
       const t = this.peek();
       throw new ParseError(t.line, t.col, "I expected an event name after `on` (like `on hit:`).");
     }
-    const event = this.advance().value;
+    const eventTok = this.advance();
+    const event = eventTok.value;
+    if (!isValidEventName(event)) {
+      const suggestion = didYouMean(event, EVENT_NAMES as readonly string[]);
+      const valid = EVENT_NAMES.join(", ");
+      const tail = suggestion ? ` Did you mean \`${suggestion}\`?` : ` Valid events: ${valid}.`;
+      throw new ParseError(eventTok.line, eventTok.col, `\`on ${event}\` isn't a known event.${tail}`);
+    }
     let binding: string | undefined;
     if (this.match("KEYWORD", "as")) {
       const b = this.expect("NAME", undefined, "I expected a binding name after `as`.");

@@ -141,7 +141,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Clean end after clearing.", code: "while enemies().length > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
     ],
-    related: ["events/hit", "events/died"],
+    related: ["events/hit", "events/see"],
   },
 
   summon: {
