@@ -1,10 +1,12 @@
 # Language
 
-Grimoire scripts use a small Python-flavored DSL. Whitespace matters; blocks are defined by indentation; there are no semicolons.
+Grimoire scripts look a lot like Python. There are no semicolons; blocks are grouped by how far in they're indented; everything else should feel familiar.
+
+If something is wrong with your script the game can't run it — it'll show you the line and a short hint instead of failing silently.
 
 # Indentation and blocks
 
-A colon at the end of a header line opens a block. Every line in the block must use the same indent (2 spaces is the convention).
+A line that ends with a colon (`:`) opens a block. Every line *inside* that block has to start with the same number of spaces. Two spaces is what the rest of the docs use — pick that and stick to it.
 
 ```
 while len(enemies()) > 0:
@@ -12,7 +14,7 @@ while len(enemies()) > 0:
   attack(enemies()[0])
 ```
 
-Mixing tabs and spaces within the same block is a parse error. Stick to 2 spaces.
+Don't mix tabs and spaces in the same block — the game will refuse to read it.
 
 # if / elif / else
 
@@ -27,7 +29,7 @@ else:
 
 # while
 
-Condition checked once per iteration. A `halt` inside does NOT break — it ends the main body entirely. Use a falsy condition to exit naturally.
+Keeps repeating the block as long as the condition is true. The check happens once at the start of each pass. `halt` inside a `while` does NOT just break out — it stops the whole script. Use `break` (below) if you only want to leave the loop.
 
 ```
 while len(enemies()) > 0:
@@ -47,7 +49,9 @@ for f in items_nearby():
 
 # break / continue / pass
 
-`break` stops a loop early. `continue` skips to the next pass. `pass` is a no-op — useful when a block needs at least one statement but you have nothing else to put there.
+- `break` leaves the loop right away.
+- `continue` skips the rest of this pass and jumps back to the top.
+- `pass` does nothing on purpose — handy when a block needs at least one line but you've got nothing to put there yet.
 
 ```
 for f in items_nearby():
@@ -60,7 +64,7 @@ for f in items_nearby():
 
 # Assignment
 
-Bare names in the main body are locals. `=` is assignment, `==` is comparison — don't mix them.
+`=` puts a value into a name so you can reuse it later. Don't confuse it with `==`, which *checks* whether two values are equal.
 
 ```
 e = enemies()[0]
@@ -78,7 +82,7 @@ if me.hp < 10 and not me.has_effect("regen"):
 
 # Strings and numbers
 
-Strings are double-quoted. Numbers are 64-bit floats; most engine APIs expect integers and floor internally.
+Wrap text in double quotes (`"hello"`) — single quotes don't work. Numbers can have decimals, but most game commands round them down to whole numbers when they need to.
 
 ```
 cast("firebolt", enemies()[0])
@@ -87,7 +91,7 @@ x = 3 + 4 * 2
 
 # Function definitions
 
-Define helpers at the top of the script. Recursion works.
+If you find yourself writing the same little chunk of code twice, give it a name with `def`. Put your `def`s near the top of the script. A function can call itself if it needs to.
 
 ```
 def closest_low_hp():
@@ -100,7 +104,7 @@ while len(enemies()) > 0:
 
 # Lambdas
 
-A `lambda` is a tiny one-line function written inside an expression. Hand them to Collection methods (`filter`, `sorted_by`, `min_by`, `max_by`).
+A `lambda` is a tiny throwaway function you write right where you need it — no `def`, no name. They're how you tell list helpers like `filter`, `sorted_by`, `min_by`, and `max_by` *what* to look at.
 
 ```
 hurt = enemies().filter(lambda e: e.hp < 3)
@@ -132,8 +136,8 @@ Handlers continue to fire after `halt` closes the main body — a halted caster 
 
 # Common gotchas
 
-- `queries/commands` with no args still need parentheses: `hp()` not `hp`. The only exceptions are `me` and `halt`.
-- Missing colon after an `if` / `while` / `for` header is a parse error.
-- Indent level must match the block's first line exactly.
-- Strings in double quotes only — single quotes are a parse error.
-- The old standalone `distance(...)`, `adjacent(...)`, `has_effect(...)`, `can_cast(...)` are gone — call them on the actor: `me.distance_to(foe)`, `me.adjacent_to(foe)`, `me.has_effect("burn")`, `me.can_cast("bolt", foe)`.
+- Calls always need parentheses: `enemies()` not `enemies`. The only bare names are `me` and `halt`.
+- Don't forget the colon at the end of `if` / `while` / `for` / `def` lines.
+- All lines inside the same block need the exact same indent.
+- Use double quotes for text — `'foo'` won't work.
+- The old standalone `distance(...)`, `adjacent(...)`, `has_effect(...)`, `can_cast(...)` are gone. Call them on the actor instead: `me.distance_to(foe)`, `me.adjacent_to(foe)`, `me.has_effect("burn")`, `me.can_cast("bolt", foe)`.
