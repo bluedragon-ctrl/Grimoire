@@ -45,6 +45,19 @@ for f in items_nearby():
   pickup(f)
 ```
 
+# break / continue / pass
+
+`break` stops a loop early. `continue` skips to the next pass. `pass` is a no-op — useful when a block needs at least one statement but you have nothing else to put there.
+
+```
+for f in items_nearby():
+  if f.defId == "trap_rune":
+    continue
+  pickup(f)
+  if len(items_here()) == 0:
+    break
+```
+
 # Assignment
 
 Bare names in the main body are locals. `=` is assignment, `==` is comparison — don't mix them.
@@ -84,6 +97,22 @@ def closest_low_hp():
 while len(enemies()) > 0:
   attack(closest_low_hp())
 ```
+
+# Lambdas
+
+A `lambda` is a tiny one-line function written inside an expression. Hand them to Collection methods (`filter`, `sorted_by`, `min_by`, `max_by`).
+
+```
+hurt = enemies().filter(lambda e: e.hp < 3)
+nearest = enemies().min_by(lambda e: me.distance_to(e))
+```
+
+# Builtins
+
+- `len(xs)` — number of items in a list (or characters in a string).
+- `min(xs)` / `max(xs)` — smallest / largest item; pass a `lambda` second arg to compare by a key.
+- `chance(p)` — true `p` percent of the time (uses the world's seedable RNG).
+- `random(n)` — a whole number from 0 up to `n - 1`.
 
 # Event handlers
 
