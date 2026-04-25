@@ -16,13 +16,15 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
     examples: [{
       code:
         "# Clear every enemy, then leave north.\n" +
-        "while enemies().length > 0:\n" +
-        "  approach(enemies()[0])\n" +
-        "  attack(enemies()[0])\n" +
+        "while len(enemies()) > 0:\n" +
+        "  foe = enemies()[0]\n" +
+        "  approach(foe)\n" +
+        "  attack(foe)\n" +
         "\n" +
-        "while not at(doors()[0]):\n" +
-        "  approach(doors()[0])\n" +
-        "exit()\n" +
+        "door = doors()[0]\n" +
+        "while not at(door):\n" +
+        "  approach(door)\n" +
+        "exit(\"N\")\n" +
         "halt",
     }],
     related: ["commands/approach", "commands/attack", "commands/exit"],
@@ -33,11 +35,12 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
     body: "A health-gated version of the melee loop. `use(\"health_potion\")` refunds cleanly if the bag is empty — the retry loop just falls through.",
     examples: [{
       code:
-        "while enemies().length > 0:\n" +
-        "  if hp() < 6:\n" +
+        "while len(enemies()) > 0:\n" +
+        "  foe = enemies()[0]\n" +
+        "  if me.hp < 6:\n" +
         "    use(\"health_potion\")\n" +
-        "  approach(enemies()[0])\n" +
-        "  attack(enemies()[0])\n" +
+        "  approach(foe)\n" +
+        "  attack(foe)\n" +
         "halt",
     }],
     related: ["commands/use", "queries/hp", "items/health_potion"],
@@ -64,13 +67,14 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
     body: "After the fight, walks to each nearby drop and picks it up. `pickup()` with a specific FloorItem requires standing on that tile.",
     examples: [{
       code:
-        "while enemies().length > 0:\n" +
-        "  approach(enemies()[0])\n" +
-        "  attack(enemies()[0])\n" +
+        "while len(enemies()) > 0:\n" +
+        "  foe = enemies()[0]\n" +
+        "  approach(foe)\n" +
+        "  attack(foe)\n" +
         "\n" +
-        "for f in items_nearby():\n" +
-        "  approach(f)\n" +
-        "  pickup(f)\n" +
+        "for drop in items_nearby():\n" +
+        "  approach(drop)\n" +
+        "  pickup(drop)\n" +
         "halt",
     }],
     related: ["commands/pickup", "queries/items_nearby", "data/flooritem"],
@@ -81,13 +85,13 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
     body: "Uses `actor.kind` to branch. Actor-kind strings match the monster template id (\"bat\", \"goblin\", \"slime\", ...).",
     examples: [{
       code:
-        "while enemies().length > 0:\n" +
-        "  e = enemies()[0]\n" +
-        "  if e.kind == \"bat\":\n" +
-        "    flee(e)\n" +
+        "while len(enemies()) > 0:\n" +
+        "  foe = enemies()[0]\n" +
+        "  if foe.kind == \"bat\":\n" +
+        "    flee(foe)\n" +
         "  else:\n" +
-        "    approach(e)\n" +
-        "    attack(e)\n" +
+        "    approach(foe)\n" +
+        "    attack(foe)\n" +
         "halt",
     }],
     related: ["commands/flee", "queries/enemies", "data/actor"],
