@@ -22,7 +22,11 @@ export function spellEntries(): HelpEntry[] {
     const examples: HelpExample[] = s.help?.examples
       ? makeExamples(s.help.examples)
       : autoSpellExample(s.name, s.targetType);
-    const related = s.help?.related ?? ["commands/cast", "data/actor"];
+    const isAoe = Array.isArray(s.body) && s.body.some((step: { op: string }) => step.op === "explode");
+    const defaultRelated = isAoe
+      ? ["commands/cast", "data/actor", "data/aoe"]
+      : ["commands/cast", "data/actor"];
+    const related = s.help?.related ?? defaultRelated;
     out.push({
       id: s.name,
       path: `spells/${s.name}`,
@@ -50,7 +54,7 @@ function autoSpellExample(name: string, tgt: string): HelpExample[] {
   if (tgt === "tile") {
     return [{ caption: "Cast on the enemy's tile.", code: `cast("${name}", enemies()[0])` }];
   }
-  return [{ caption: "Cast on the nearest enemy.", code: `if can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
+  return [{ caption: "Cast on the nearest enemy.", code: `if me.can_cast("${name}", enemies()[0]):\n  cast("${name}", enemies()[0])` }];
 }
 
 function procLine(name: string, proc: ProcSpec): string {

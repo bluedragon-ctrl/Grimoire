@@ -1,19 +1,25 @@
-// The key guarantee: every example snippet in every help entry must parse.
-// If the DSL changes in a way that breaks an authored snippet, this test
-// fires. Parse-only — execution is intentionally out of scope (snippets
-// may reference game state that doesn't exist in a test world).
+// Every code snippet shipped by the help tree must parse cleanly.
+//
+// Two sources are walked here:
+//   1. entry.examples[] — paste-ready snippets attached to each leaf.
+//   2. fenced ``` blocks inside entry.body strings (incl. language.md).
+//
+// Before Phase 13.6 only (1) was checked, so stale examples could rot
+// inside body prose without the test firing. This file is the
+// load-bearing piece — keeping help in sync with the DSL.
+//
+// Execution is intentionally out of scope here; some snippets reference
+// game state (a specific door, a stocked bag) a stub world can't supply.
+// See execute.test.ts for the subset that does run.
 
 import { describe, it, expect } from "vitest";
-import { allEntries } from "../../../src/ui/help/index.js";
 import { parse } from "../../../src/lang/index.js";
+import { collectSnippets } from "./helpers.js";
 
-describe("help examples parse", () => {
-  for (const entry of allEntries()) {
-    for (let i = 0; i < entry.examples.length; i++) {
-      const code = entry.examples[i]!.code;
-      it(`${entry.path}[${i}] parses`, () => {
-        expect(() => parse(code)).not.toThrow();
-      });
-    }
+describe("help snippets parse", () => {
+  for (const s of collectSnippets()) {
+    it(`${s.path} [${s.kind} ${s.index}] parses`, () => {
+      expect(() => parse(s.code)).not.toThrow();
+    });
   }
 });

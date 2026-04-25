@@ -45,7 +45,7 @@ function buildLanguageEntry(): HelpEntry {
     blurb: "Indentation, control flow, assignment, comparisons, strings, handlers.",
     body: languageMd,
     examples: [],
-    related: ["examples/melee", "commands/halt"],
+    related: ["examples/melee", "commands/halt", "events/registry", "data/collection", "data/failure"],
   };
 }
 
