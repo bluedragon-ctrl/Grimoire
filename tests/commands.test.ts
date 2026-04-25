@@ -22,7 +22,7 @@ function mkWorld(actors: Actor[], room: Room = emptyRoom()): World {
   return { room, actors, tick: 0, ended: false, aborted: false } as any;
 }
 
-describe("at() / distance() queries", () => {
+describe("at() query", () => {
   it("at(me) is always true", () => {
     const a = mkActor("a", { x: 3, y: 4 });
     const w = mkWorld([a]);
@@ -52,17 +52,6 @@ describe("at() / distance() queries", () => {
     expect(queries.at(w, a, null)).toBe(false);
     expect(queries.at(w, a, 42)).toBe(false);
     expect(queries.at(w, a, "hi")).toBe(false);
-  });
-
-  it("distance() is Chebyshev", () => {
-    const a = mkActor("a", { x: 0, y: 0 });
-    const w = mkWorld([a]);
-    const p = (x: number, y: number) => ({ pos: { x, y } });
-    expect(queries.distance(w, a, p(0, 0), p(0, 0))).toBe(0);
-    expect(queries.distance(w, a, p(3, 0), p(0, 0))).toBe(3); // straight
-    expect(queries.distance(w, a, p(0, 4), p(0, 0))).toBe(4);
-    expect(queries.distance(w, a, p(3, 3), p(0, 0))).toBe(3); // diagonal
-    expect(queries.distance(w, a, p(-2, 5), p(1, 1))).toBe(4); // mixed
   });
 
   it("integration: while not at(door): approach(door); exit succeeds", () => {

@@ -22,7 +22,7 @@ export function spellEntries(): HelpEntry[] {
     const examples: HelpExample[] = s.help?.examples
       ? makeExamples(s.help.examples)
       : autoSpellExample(s.name, s.targetType);
-    const related = s.help?.related ?? ["commands/cast", "queries/can_cast"];
+    const related = s.help?.related ?? ["commands/cast", "data/actor"];
     out.push({
       id: s.name,
       path: `spells/${s.name}`,

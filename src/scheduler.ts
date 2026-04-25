@@ -19,8 +19,11 @@ import { tickClouds } from "./clouds.js";
 import { rollDeathDrops } from "./items/loot.js";
 
 interface Frame {
-  gen: Generator<PendingAction, void, void>;
+  gen: Generator<PendingAction, void, unknown>;
   pending: PendingAction | null;
+  // Resumed value for the next gen.next(). When a command call appears in
+  // expression position the script receives this as the bool success result.
+  lastResult: unknown;
 }
 
 interface QueuedEvent { event: string; binding: unknown; }
@@ -51,7 +54,7 @@ export interface SchedulerState {
 export function createScheduler(world: World, opts: RunOptions = {}): SchedulerState {
   const runtimes: ActorRuntime[] = world.actors.map(actor => {
     const compiled = compile(actor.script, { world, self: actor });
-    const mainFrame: Frame = { gen: compiled.makeMain(), pending: null };
+    const mainFrame: Frame = { gen: compiled.makeMain(), pending: null, lastResult: undefined };
     return { actor, compiled, stack: [mainFrame], eventQueue: [], halted: false };
   });
   for (const rt of runtimes) ensurePending(rt, world);
@@ -107,6 +110,9 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       if (action.kind === "summon" && summonFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
+      // Phase 13.5: feed bool back to the script. Any ActionFailed event in
+      // this fire's bundle means the command did not succeed.
+      frame.lastResult = !events.some(e => e.type === "ActionFailed");
       dispatch(world, s.runtimes, events);
 
       if (events.some(e => e.type === "HeroExited" || e.type === "HeroDied")) {
@@ -213,7 +219,7 @@ function syncNewActors(world: World, s: SchedulerState): void {
     const rt: ActorRuntime = {
       actor: a,
       compiled,
-      stack: [{ gen: compiled.makeMain(), pending: null }],
+      stack: [{ gen: compiled.makeMain(), pending: null, lastResult: undefined }],
       eventQueue: [],
       halted: false,
     };
@@ -253,7 +259,12 @@ function ensurePending(rt: ActorRuntime, world: World): void {
     if (frame.pending !== null) return;
     let r: IteratorResult<PendingAction, void>;
     try {
-      r = frame.gen.next();
+      // The first .next() call's argument is ignored by the generator
+      // protocol; subsequent calls feed the resumed value back into the
+      // yield expression. Tracking lastResult per-frame lets command calls
+      // in expression position resolve to a bool.
+      r = frame.gen.next(frame.lastResult);
+      frame.lastResult = undefined;
     } catch (e) {
       if (e instanceof DSLRuntimeError) {
         world.log.push({ t: world.tick, event: { type: "ScriptError", actor: rt.actor.id, message: e.message } });
@@ -283,7 +294,7 @@ function tryStartNextHandler(rt: ActorRuntime): boolean {
     const next = rt.eventQueue.shift()!;
     const h = rt.compiled.handlerFor(next.event);
     if (!h) continue;
-    rt.stack.push({ gen: rt.compiled.makeHandler(h, next.binding), pending: null });
+    rt.stack.push({ gen: rt.compiled.makeHandler(h, next.binding), pending: null, lastResult: undefined });
     return true;
   }
   return false;
@@ -329,6 +340,7 @@ function dispatch(world: World, runtimes: ActorRuntime[], events: GameEvent[]): 
       targetRt.stack.push({
         gen: targetRt.compiled.makeHandler(h, routed.binding),
         pending: null,
+        lastResult: undefined,
       });
     }
   }

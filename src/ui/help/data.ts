@@ -13,12 +13,12 @@ export const DATA_PAGES: Record<string, DataPage> = {
   actor: {
     id: "actor", name: "Actor",
     blurb: "The thing at the end of `me`, `enemies()[i]`, and `hit` handler bindings.",
-    body: "Fields a script may read:\n\n- `id` — unique string\n- `pos.x`, `pos.y` — tile coordinates\n- `hp`, `maxHp`, `mp`, `maxMp`\n- `atk`, `def`, `int` — combat stats (all may be undefined)\n- `alive` — boolean\n- `isHero` — true for the player\n\nActors are live references: reading `pos` on the next tick reflects movement.",
+    body: "Fields a script may read:\n\n- `id` — unique string\n- `pos.x`, `pos.y` — tile coordinates\n- `hp`, `maxHp`, `mp`, `maxMp`\n- `atk`, `def`, `int` — combat stats (all may be undefined)\n- `alive` — boolean\n- `is_hero` — true for the player\n- `is_summoned` — true when summoned by another actor\n- `summoner` — the owning Actor (or `null`)\n\nMethods (call with `actor.method(...)`):\n\n- `distance_to(other)` — Chebyshev tiles between this actor and a position/actor/door\n- `adjacent_to(other)` — true when `distance_to(other) == 1`\n- `in_los(other)` — clear line of sight\n- `has_effect(kind)`, `effect_remaining(kind)`, `effect_magnitude(kind)`, `list_effects()`\n- `can_cast(spell, target?)` — preflight a cast (target optional)\n\nActors are live references: reading `pos` on the next tick reflects movement.",
     examples: [
-      { caption: "Distance-gate an attack.", code: "if distance(me, enemies()[0]) == 1:\n  attack(enemies()[0])" },
+      { caption: "Distance-gate an attack.", code: "foe = enemies()[0]\nif me.distance_to(foe) == 1:\n  attack(foe)" },
       { caption: "Access HP through the actor.", code: "e = enemies()[0]\nif e.hp < 2:\n  attack(e)" },
     ],
-    related: ["queries/me", "queries/enemies", "queries/hp", "queries/distance"],
+    related: ["queries/me", "queries/enemies", "queries/hp"],
   },
   door: {
     id: "door", name: "Door",

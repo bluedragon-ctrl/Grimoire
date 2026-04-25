@@ -14,13 +14,13 @@ export const EVENT_PAGES: Record<string, EventPage> = {
     blurb: "Fires when the owner actor is struck. Binding: the attacker Actor.",
     body: "Handler shape:\n\n```\non hit as attacker:\n  # attacker is the Actor who hit me\n  flee(attacker)\n```\n\nHandlers run after the main body, and they keep firing even after the main body halts — a halted cultist still flees whoever jumped it.",
     examples: [{ caption: "Retaliate on every hit.", code: "on hit as attacker:\n  attack(attacker)" }],
-    related: ["events/died", "commands/attack", "data/actor"],
+    related: ["events/see", "commands/attack", "data/actor"],
   },
-  died: {
-    id: "died", name: "on died",
-    blurb: "Fires once when the owner actor dies.",
-    body: "The handler runs after the fatal damage is applied. The actor is no longer `alive` when this body executes, so most commands will fail — use it for event log / bookkeeping intents only.",
-    examples: [{ caption: "Trigger a parting shot (costs energy but runs once).", code: "on died:\n  halt" }],
+  see: {
+    id: "see", name: "on see",
+    blurb: "Fires when the owner actor first sees something. Binding: a description of what was seen.",
+    body: "Handler shape:\n\n```\non see as what:\n  # what describes the sighted entity\n```\n\nLike `on hit`, see-handlers continue firing even after the main body halts.",
+    examples: [{ caption: "Yell when you see the hero.", code: "on see as what:\n  attack(hero())" }],
     related: ["events/hit"],
   },
   script_error: {

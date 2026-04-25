@@ -2,16 +2,20 @@
 //
 // A script compiles into a main generator; handler ASTs compile into
 // handler-generator factories. Both yield PendingAction values at command
-// sites. Expressions evaluate synchronously (queries, math, member access,
-// user-function calls via inline recursion).
+// sites. Expressions are also generators: a command call inside an expression
+// (e.g. `if cast("burn", t):`) yields a PendingAction and is resumed with the
+// boolean success result fed back by the scheduler.
 
 import type {
   Script, Stmt, Expr, PendingAction, Actor, World, EventHandler, FuncDef, Direction,
 } from "./types.js";
 import { COST, queries } from "./commands.js";
 import { DSLRuntimeError } from "./lang/errors.js";
+import { isActorObj, actorMember, UNSET } from "./lang/actor-surface.js";
+import { Collection, asIterableArray, listLength } from "./lang/collection.js";
 
-// Command names that, when used at statement level, yield a PendingAction.
+// Command names that yield a PendingAction. In statement position the result
+// is discarded; in expression position it resolves to the bool success.
 const COMMAND_NAMES = new Set([
   "approach", "flee", "attack", "cast", "wait", "exit", "halt", "use",
   "pickup", "drop", "summon",
@@ -58,16 +62,16 @@ export interface InterpCtx {
 // ──────────────────────────── public API ────────────────────────────
 
 export interface CompiledScript {
-  makeMain(): Generator<PendingAction, void, void>;
+  makeMain(): Generator<PendingAction, void, unknown>;
   handlerFor(event: string): EventHandler | undefined;
-  makeHandler(h: EventHandler, eventValue: unknown): Generator<PendingAction, void, void>;
+  makeHandler(h: EventHandler, eventValue: unknown): Generator<PendingAction, void, unknown>;
 }
 
 export function compile(script: Script, ctx: InterpCtx): CompiledScript {
   const funcs = new Map<string, FuncDef>();
   for (const f of script.funcs) funcs.set(f.name, f);
 
-  const makeMain = (): Generator<PendingAction, void, void> => {
+  const makeMain = (): Generator<PendingAction, void, unknown> => {
     const env = makeEnv(null, funcs);
     return execStmts(script.main, env, ctx);
   };
@@ -85,44 +89,47 @@ export function compile(script: Script, ctx: InterpCtx): CompiledScript {
 
 // ──────────────────────────── statement exec (generator) ────────────────────────────
 
-function* execStmts(stmts: Stmt[], env: Env, ctx: InterpCtx): Generator<PendingAction, void, void> {
+function* execStmts(stmts: Stmt[], env: Env, ctx: InterpCtx): Generator<PendingAction, void, unknown> {
   for (const s of stmts) {
     yield* execStmt(s, env, ctx);
   }
 }
 
-function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, void, void> {
+function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, void, unknown> {
   switch (s.t) {
     case "ExprStmt": {
-      // Special case: command call at statement level → yield PendingAction.
-      if (s.expr.t === "Call" && s.expr.callee.t === "Ident" && COMMAND_NAMES.has(s.expr.callee.name)) {
-        const name = s.expr.callee.name;
-        const args = s.expr.args.map(a => evalExpr(a, env, ctx));
-        const action = buildPendingAction(name, args);
-        if (s.loc) action.loc = s.loc;
-        action.locals = snapshotEnv(env);
-        yield action;
-        return;
+      // User-function call at statement level: inline the body so commands
+      // inside flow through the outer generator (their bool returns are dropped).
+      if (s.expr.t === "Call" && s.expr.callee.t === "Ident") {
+        const fn = env.funcs.get(s.expr.callee.name);
+        if (fn) {
+          const args: unknown[] = [];
+          for (const a of s.expr.args) args.push(yield* evalExpr(a, env, ctx));
+          yield* runUserFuncStmt(fn, args, env, ctx);
+          return;
+        }
       }
-      evalExpr(s.expr, env, ctx);
+      // Drop the resulting value — including command-call bools.
+      yield* evalExpr(s.expr, env, ctx);
       return;
     }
     case "Assign": {
-      const v = evalExpr(s.value, env, ctx);
+      const v = yield* evalExpr(s.value, env, ctx);
       if (s.target.t === "Ident") {
         envSet(env, s.target.name, v);
       } else if (s.target.t === "Index") {
-        const obj = evalExpr(s.target.obj, env, ctx) as any;
-        const key = evalExpr(s.target.key, env, ctx) as any;
-        obj[key] = v;
+        const obj = (yield* evalExpr(s.target.obj, env, ctx)) as any;
+        const key = (yield* evalExpr(s.target.key, env, ctx)) as any;
+        if (obj instanceof Collection) obj.items[key] = v;
+        else obj[key] = v;
       } else {
-        const obj = evalExpr(s.target.obj, env, ctx) as any;
+        const obj = (yield* evalExpr(s.target.obj, env, ctx)) as any;
         obj[s.target.name] = v;
       }
       return;
     }
     case "If": {
-      if (truthy(evalExpr(s.cond, env, ctx))) {
+      if (truthy(yield* evalExpr(s.cond, env, ctx))) {
         yield* execStmts(s.then, makeEnv(env), ctx);
       } else if (s.else) {
         yield* execStmts(s.else, makeEnv(env), ctx);
@@ -130,21 +137,37 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
       return;
     }
     case "While": {
-      while (truthy(evalExpr(s.cond, env, ctx))) {
-        yield* execStmts(s.body, makeEnv(env), ctx);
+      while (truthy(yield* evalExpr(s.cond, env, ctx))) {
+        try {
+          yield* execStmts(s.body, makeEnv(env), ctx);
+        } catch (sig) {
+          if (sig instanceof BreakSignal) return;
+          if (sig instanceof ContinueSignal) continue;
+          throw sig;
+        }
       }
       return;
     }
     case "For": {
-      const iter = evalExpr(s.iter, env, ctx);
-      if (!Array.isArray(iter)) return;
-      for (const item of iter) {
+      const iter = yield* evalExpr(s.iter, env, ctx);
+      const items = asIterableArray(iter);
+      if (!items) return;
+      for (const item of items) {
         const sub = makeEnv(env);
         sub.vars.set(s.name, item);
-        yield* execStmts(s.body, sub, ctx);
+        try {
+          yield* execStmts(s.body, sub, ctx);
+        } catch (sig) {
+          if (sig instanceof BreakSignal) return;
+          if (sig instanceof ContinueSignal) continue;
+          throw sig;
+        }
       }
       return;
     }
+    case "Break": throw new BreakSignal();
+    case "Continue": throw new ContinueSignal();
+    case "Pass": return;
     case "Block": {
       yield* execStmts(s.body, makeEnv(env), ctx);
       return;
@@ -156,7 +179,7 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
     }
     case "Return": {
       // Return value is thrown as a sentinel; user funcs catch it.
-      throw new ReturnSignal(s.value ? evalExpr(s.value, env, ctx) : undefined);
+      throw new ReturnSignal(s.value ? yield* evalExpr(s.value, env, ctx) : undefined);
     }
     case "EventHandler": {
       // Handlers are collected at compile time; no-op here.
@@ -168,10 +191,28 @@ function* execStmt(s: Stmt, env: Env, ctx: InterpCtx): Generator<PendingAction, 
 class ReturnSignal {
   constructor(public value: unknown) {}
 }
+class BreakSignal {}
+class ContinueSignal {}
 
-// ──────────────────────────── expression eval (sync) ────────────────────────────
+function* runUserFuncStmt(
+  fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx,
+): Generator<PendingAction, void, unknown> {
+  const local = makeEnv(env);
+  // Per Python LEGB, names defined inside a function (including nested defs)
+  // shouldn't leak to callers. Give the local frame its own funcs map.
+  local.funcs = new Map(local.funcs);
+  fn.params.forEach((p, i) => local.vars.set(p, args[i]));
+  try {
+    yield* execStmts(fn.body, local, ctx);
+  } catch (e) {
+    if (e instanceof ReturnSignal) return; // statement-level call drops the value
+    throw e;
+  }
+}
 
-function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
+// ──────────────────────────── expression eval (generator) ────────────────────────────
+
+function* evalExpr(e: Expr, env: Env, ctx: InterpCtx): Generator<PendingAction, unknown, unknown> {
   switch (e.t) {
     case "Literal": return e.value;
     case "Ident": {
@@ -181,19 +222,32 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
       if (v !== undefined) return v;
       return undefined;
     }
-    case "ArrayLit": return e.items.map(i => evalExpr(i, env, ctx));
+    case "ArrayLit": {
+      const out: unknown[] = [];
+      for (const i of e.items) out.push(yield* evalExpr(i, env, ctx));
+      return new Collection(out);
+    }
+    case "Lambda": {
+      const captured = env;
+      const lambdaCtx = ctx;
+      return (...args: unknown[]) => {
+        const local = makeEnv(captured);
+        e.params.forEach((p, i) => local.vars.set(p, args[i]));
+        return runExprSync(evalExpr(e.body, local, lambdaCtx), "lambda body");
+      };
+    }
     case "BinOp": {
       // Short-circuit for && / ||
       if (e.op === "&&") {
-        const a = evalExpr(e.a, env, ctx);
-        return truthy(a) ? evalExpr(e.b, env, ctx) : a;
+        const a = yield* evalExpr(e.a, env, ctx);
+        return truthy(a) ? (yield* evalExpr(e.b, env, ctx)) : a;
       }
       if (e.op === "||") {
-        const a = evalExpr(e.a, env, ctx);
-        return truthy(a) ? a : evalExpr(e.b, env, ctx);
+        const a = yield* evalExpr(e.a, env, ctx);
+        return truthy(a) ? a : (yield* evalExpr(e.b, env, ctx));
       }
-      const a = evalExpr(e.a, env, ctx) as any;
-      const b = evalExpr(e.b, env, ctx) as any;
+      const a = (yield* evalExpr(e.a, env, ctx)) as any;
+      const b = (yield* evalExpr(e.b, env, ctx)) as any;
       switch (e.op) {
         case "+": return a + b;
         case "-": return a - b;
@@ -210,50 +264,121 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
       return undefined;
     }
     case "UnaryOp": {
-      const a = evalExpr(e.a, env, ctx) as any;
+      const a = (yield* evalExpr(e.a, env, ctx)) as any;
       if (e.op === "-") return -a;
       if (e.op === "!") return !truthy(a);
       return undefined;
     }
     case "Index": {
-      const obj = evalExpr(e.obj, env, ctx) as any;
-      const key = evalExpr(e.key, env, ctx) as any;
-      return obj == null ? undefined : obj[key];
+      const obj = (yield* evalExpr(e.obj, env, ctx)) as any;
+      const key = (yield* evalExpr(e.key, env, ctx)) as any;
+      if (obj == null) return undefined;
+      if (obj instanceof Collection) return obj.items[key];
+      return obj[key];
     }
     case "Member": {
-      const obj = evalExpr(e.obj, env, ctx) as any;
-      return obj == null ? undefined : obj[e.name];
+      const obj = (yield* evalExpr(e.obj, env, ctx)) as any;
+      if (obj == null) return undefined;
+      if (isActorObj(obj)) {
+        const v = actorMember(obj, e.name, { world: ctx.world });
+        if (v !== UNSET) return v;
+      }
+      return obj[e.name];
     }
     case "Call": {
-      // Query: bare identifier callee matching a query name.
+      // Query / command / builtin / user-function: bare identifier callee.
       if (e.callee.t === "Ident") {
         const name = e.callee.name;
         if (name in queries) {
-          const args = e.args.map(a => evalExpr(a, env, ctx));
-          return (queries as any)[name](ctx.world, ctx.self, ...args);
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          const result = (queries as any)[name](ctx.world, ctx.self, ...args);
+          // Promote raw arrays from query results to Collection for chainable
+          // method dispatch. Scalar query results pass through unchanged.
+          return Array.isArray(result) ? new Collection(result) : result;
         }
         if (COMMAND_NAMES.has(name)) {
-          // Called from expression context — not supported. Return undefined.
-          return undefined;
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          const action = buildPendingAction(name, args);
+          if (e.loc) action.loc = e.loc;
+          action.locals = snapshotEnv(env);
+          // Scheduler resumes us with a bool: true = action completed, false =
+          // ActionFailed. In statement position the bool is simply discarded.
+          const ok = yield action;
+          return ok === undefined ? true : !!ok;
+        }
+        // Pythonic builtins.
+        if (name === "len") {
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          const n = listLength(args[0]);
+          return n ?? 0;
+        }
+        if (name === "min" || name === "max") {
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          return builtinMinMax(name, args);
         }
         const fn = env.funcs.get(name);
-        if (fn) return callUserFunc(fn, e.args.map(a => evalExpr(a, env, ctx)), env, ctx);
+        if (fn) {
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          return callUserFunc(fn, args, env, ctx);
+        }
+      }
+      // Method call: evaluate obj + method separately so JS class methods
+      // (e.g. Collection.filter) retain their `this`.
+      if (e.callee.t === "Member") {
+        const obj = yield* evalExpr(e.callee.obj, env, ctx);
+        if (obj == null) return undefined;
+        let method: unknown;
+        if (isActorObj(obj)) {
+          const v = actorMember(obj, e.callee.name, { world: ctx.world });
+          method = v === UNSET ? (obj as any)[e.callee.name] : v;
+        } else {
+          method = (obj as any)[e.callee.name];
+        }
+        if (typeof method === "function") {
+          const args: unknown[] = [];
+          for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+          return (method as Function).apply(obj, args);
+        }
+        return undefined;
+      }
+      // Any other callable (e.g. a lambda stored in a variable).
+      const callee = yield* evalExpr(e.callee, env, ctx);
+      if (typeof callee === "function") {
+        const args: unknown[] = [];
+        for (const a of e.args) args.push(yield* evalExpr(a, env, ctx));
+        return (callee as (...a: unknown[]) => unknown)(...args);
       }
       return undefined;
     }
   }
 }
 
+// Drive an evalExpr generator synchronously. Used in expression-only contexts
+// (lambda bodies, expression-position user-func calls) where commands aren't
+// supported — yielding a PendingAction signals misuse and throws.
+function runExprSync(gen: Generator<PendingAction, unknown, unknown>, where: string): unknown {
+  const r = gen.next();
+  if (!r.done) {
+    throw new DSLRuntimeError(`commands are not allowed in ${where}`);
+  }
+  return r.value;
+}
+
 function callUserFunc(fn: FuncDef, args: unknown[], env: Env, ctx: InterpCtx): unknown {
   const local = makeEnv(env);
+  local.funcs = new Map(local.funcs);
   fn.params.forEach((p, i) => local.vars.set(p, args[i]));
-  // Synchronous drive: run generator, discard any pending actions (command
-  // calls inside expression-called funcs are not supported).
+  // Synchronous drive: command calls inside expression-position user funcs
+  // are not supported; they throw rather than yielding through.
   try {
     const gen = execStmts(fn.body, local, ctx);
-    // Exhaust: if it ever yields a command, that's a runtime error in MVP.
-    let r = gen.next();
-    while (!r.done) {
+    const r = gen.next();
+    if (!r.done) {
       throw new DSLRuntimeError("function with action cannot be called in expression position");
     }
     return undefined;
@@ -275,8 +400,28 @@ export function snapshotEnv(env: Env): Record<string, unknown> {
   return out;
 }
 
+function builtinMinMax(which: "min" | "max", args: unknown[]): unknown {
+  if (args.length === 0) return null;
+  const first = args[0];
+  const items = first instanceof Collection ? first.items
+              : Array.isArray(first) ? first
+              : null;
+  if (!items || items.length === 0) return null;
+  const keyFn = typeof args[1] === "function" ? args[1] as (it: unknown) => any : (it: unknown) => it;
+  let bestI = 0;
+  let bestK = keyFn(items[0]);
+  for (let i = 1; i < items.length; i++) {
+    const k = keyFn(items[i]);
+    if (which === "min" ? k < bestK : k > bestK) { bestK = k; bestI = i; }
+  }
+  return items[bestI];
+}
+
 function truthy(v: unknown): boolean {
   if (v === null || v === undefined || v === false || v === 0 || v === "") return false;
+  // Pythonic emptiness: empty list/Collection/string is falsy.
+  if (v instanceof Collection) return v.items.length > 0;
+  if (Array.isArray(v)) return v.length > 0;
   return true;
 }
 

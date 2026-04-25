@@ -179,11 +179,15 @@ const explode: Primitive = {
       });
     }
 
-    // Sweep every tile within Chebyshev radius of the target position.
-    // Wall filter: tiles outside room bounds are skipped (structural wall map TBD).
-    // selfCenter: true → caster excluded even when standing on the target tile.
+    // Phase 13.5: AoE inclusion is Euclidean — explosions/clouds are round
+    // (rounded squares at small R) rather than Chebyshev squares. Actor-to-
+    // actor distance stays Chebyshev; the two metrics decouple intentionally.
+    // Inclusion test: dx² + dy² ≤ (R + 0.5)². R=1 → 5 tiles (cross),
+    // R=2 → 21 tiles, R=3 → 37 tiles.
+    const r2 = (radius + 0.5) * (radius + 0.5);
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
         const tx = pos.x + dx;
         const ty = pos.y + dy;
         if (tx < 0 || ty < 0 || tx >= world.room.w || ty >= world.room.h) continue;

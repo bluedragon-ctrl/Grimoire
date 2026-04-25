@@ -49,8 +49,12 @@ export const KNOWN_NAMES = [
   "enemies", "items", "chests", "doors", "hp",
   "cast", "attack", "approach", "flee", "move", "wait", "exit", "halt",
   "heal", "bolt", "length",
-  "at", "distance",
-  "has_effect", "effects", "mp", "atk", "def", "int",
+  "at",
+  "len", "min", "max",
+  "mp", "atk", "def", "int",
+  // Phase 13.5: Pythonic actor surface methods
+  "distance_to", "adjacent_to", "in_los", "is_hero", "is_summoned", "summoner",
+  "has_effect", "effect_remaining", "effect_magnitude", "list_effects", "can_cast",
   // Phase 6
   "clouds", "cloud_at", "max_mp", "known_spells",
   "firebolt", "chill", "bless", "firewall",

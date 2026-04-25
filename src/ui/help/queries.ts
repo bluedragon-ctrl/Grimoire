@@ -16,7 +16,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     blurb: "The hero's own Actor. Zero cost.",
     body: "Shorthand for the acting actor. Useful with `has_effect(me, ...)` or `distance(me, foo)`.",
     examples: [{ caption: "Check a self-effect.", code: "if has_effect(me, \"burning\"):\n  wait()" }],
-    related: ["data/actor", "queries/has_effect"],
+    related: ["data/actor"],
   },
   hp: {
     id: "hp", name: "hp", signature: "hp()",
@@ -28,7 +28,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     id: "mp", name: "mp", signature: "mp()",
     blurb: "Current MP of the hero.",
     examples: [{ caption: "Idle until mana for a bolt.", code: "while mp() < 5:\n  wait()" }],
-    related: ["queries/max_mp", "queries/can_cast"],
+    related: ["queries/max_mp", "data/actor"],
   },
   max_mp: {
     id: "max_mp", name: "max_mp", signature: "max_mp()",
@@ -40,14 +40,14 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     id: "known_spells", name: "known_spells", signature: "known_spells()",
     blurb: "Array of spell-name strings the hero has learned.",
     examples: [{ caption: "Only cast what you know.", code: "if known_spells().length > 0:\n  cast(known_spells()[0], enemies()[0])" }],
-    related: ["commands/cast", "queries/can_cast"],
+    related: ["commands/cast", "data/actor"],
   },
   enemies: {
     id: "enemies", name: "enemies", signature: "enemies()",
     blurb: "Living actors of an opposing faction, sorted nearest-first.",
     body: "Returns actors whose faction differs from the caller's (player vs enemy). Dead actors and actors of the same faction are excluded. Two neutrals ignore each other. Ties break by id (lexicographic).",
     examples: [{ caption: "Nearest enemy first.", code: "while enemies().length > 0:\n  approach(enemies()[0])" }],
-    related: ["queries/allies", "data/actor", "queries/distance", "queries/adjacent"],
+    related: ["queries/allies", "data/actor"],
   },
   allies: {
     id: "allies", name: "allies", signature: "allies()",
@@ -103,38 +103,7 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     id: "at", name: "at", signature: "at(target)",
     blurb: "True when the hero's tile equals the target position.",
     examples: [{ caption: "Stop walking once on the door.", code: "while not at(doors()[0]):\n  approach(doors()[0])" }],
-    related: ["queries/distance", "queries/adjacent"],
-  },
-  adjacent: {
-    id: "adjacent", name: "adjacent", signature: "adjacent(a, b)",
-    blurb: "True when two positions are 1 tile apart (Chebyshev).",
-    examples: [{ caption: "Swing as soon as adjacent.", code: "if adjacent(me, enemies()[0]):\n  attack(enemies()[0])" }],
-    related: ["queries/distance", "queries/at"],
-  },
-  distance: {
-    id: "distance", name: "distance", signature: "distance(a, b)",
-    blurb: "Chebyshev distance between two positions (integer tiles).",
-    examples: [{ caption: "Cast from just outside melee.", code: "if distance(me, enemies()[0]) == 2:\n  cast(\"bolt\", enemies()[0])" }],
-    related: ["queries/adjacent", "queries/at"],
-  },
-  can_cast: {
-    id: "can_cast", name: "can_cast", signature: "can_cast(spellName, target?)",
-    blurb: "Preflight a cast: true iff spell is known, MP sufficient, target valid & in range.",
-    body: "Pass the same args you'd pass to `cast()`. If `target` is omitted, only target-independent checks run (learned + enough MP + in registry).",
-    examples: [{ caption: "Gate a ranged opener.", code: "if can_cast(\"firebolt\", enemies()[0]):\n  cast(\"firebolt\", enemies()[0])" }],
-    related: ["commands/cast", "queries/known_spells", "queries/mp"],
-  },
-  has_effect: {
-    id: "has_effect", name: "has_effect", signature: "has_effect(target, kind)",
-    blurb: "True if target carries a status of the given kind (string).",
-    examples: [{ caption: "Let burning do the work.", code: "if has_effect(enemies()[0], \"burning\"):\n  wait()" }],
-    related: ["queries/effects", "spells/firebolt"],
-  },
-  effects: {
-    id: "effects", name: "effects", signature: "effects(target)",
-    blurb: "Array of active effect-kind strings on target.",
-    examples: [{ caption: "Skip targets already chilled.", code: "if effects(enemies()[0]).length == 0:\n  cast(\"frost_lance\", enemies()[0])" }],
-    related: ["queries/has_effect", "spells/frost_lance"],
+    related: ["data/actor"],
   },
   // Phase 13.2: RNG builtins.
   chance: {

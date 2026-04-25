@@ -18,6 +18,9 @@ export type Stmt =
   | For
   | FuncDef
   | Return
+  | Break
+  | Continue
+  | Pass
   | Block
   | EventHandler;
 
@@ -29,7 +32,8 @@ export type Expr =
   | Member
   | BinOp
   | UnaryOp
-  | ArrayLit;
+  | ArrayLit
+  | Lambda;
 
 export interface ExprStmt { t: "ExprStmt"; expr: Expr; loc?: SourceLoc; }
 export interface Assign { t: "Assign"; target: Ident | Index | Member; value: Expr; loc?: SourceLoc; }
@@ -38,6 +42,9 @@ export interface While { t: "While"; cond: Expr; body: Stmt[]; loc?: SourceLoc; 
 export interface For { t: "For"; name: string; iter: Expr; body: Stmt[]; loc?: SourceLoc; }
 export interface FuncDef { t: "FuncDef"; name: string; params: string[]; body: Stmt[]; loc?: SourceLoc; }
 export interface Return { t: "Return"; value?: Expr; loc?: SourceLoc; }
+export interface Break { t: "Break"; loc?: SourceLoc; }
+export interface Continue { t: "Continue"; loc?: SourceLoc; }
+export interface Pass { t: "Pass"; loc?: SourceLoc; }
 export interface Block { t: "Block"; body: Stmt[]; loc?: SourceLoc; }
 export interface EventHandler { t: "EventHandler"; event: string; binding?: string; body: Stmt[]; loc?: SourceLoc; }
 
@@ -49,6 +56,7 @@ export interface Member { t: "Member"; obj: Expr; name: string; loc?: SourceLoc;
 export interface BinOp { t: "BinOp"; op: BinOpKind; a: Expr; b: Expr; loc?: SourceLoc; }
 export interface UnaryOp { t: "UnaryOp"; op: UnaryOpKind; a: Expr; loc?: SourceLoc; }
 export interface ArrayLit { t: "ArrayLit"; items: Expr[]; loc?: SourceLoc; }
+export interface Lambda { t: "Lambda"; params: string[]; body: Expr; loc?: SourceLoc; }
 
 export type BinOpKind =
   | "+" | "-" | "*" | "/" | "%"

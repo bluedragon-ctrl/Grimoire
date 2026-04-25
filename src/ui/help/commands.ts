@@ -23,7 +23,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
       { caption: "Close the gap on the nearest foe.", code: "approach(enemies()[0])" },
       { caption: "Walk to a specific door.",          code: "approach(doors()[0])" },
     ],
-    related: ["commands/flee", "commands/attack", "queries/at", "queries/distance", "data/actor"],
+    related: ["commands/flee", "commands/attack", "queries/at", "data/actor"],
   },
 
   flee: {
@@ -49,7 +49,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Walk-and-whack loop.", code: "while enemies().length > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])" },
     ],
-    related: ["commands/approach", "queries/adjacent", "queries/enemies", "events/hit"],
+    related: ["commands/approach", "queries/enemies", "events/hit", "data/actor"],
   },
 
   cast: {
@@ -63,7 +63,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
       { caption: "Bolt the closest enemy when you can afford it.", code: "if can_cast(\"bolt\", enemies()[0]):\n  cast(\"bolt\", enemies()[0])" },
       { caption: "Heal yourself.", code: "cast(\"heal\")" },
     ],
-    related: ["queries/can_cast", "queries/known_spells", "queries/mp", "spells/bolt", "spells/heal"],
+    related: ["queries/known_spells", "queries/mp", "data/actor", "spells/bolt", "spells/heal"],
   },
 
   use: {
@@ -128,7 +128,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Stall while burning ticks down on a foe.", code: "while has_effect(enemies()[0], \"burning\"):\n  wait()" },
     ],
-    related: ["queries/has_effect", "queries/effects"],
+    related: ["data/actor"],
   },
 
   halt: {
@@ -141,7 +141,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Clean end after clearing.", code: "while enemies().length > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
     ],
-    related: ["events/hit", "events/died"],
+    related: ["events/hit", "events/see"],
   },
 
   summon: {

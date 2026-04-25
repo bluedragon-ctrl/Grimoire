@@ -39,6 +39,13 @@ export function manhattan(a: Pos, b: Pos): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+// Phase 13.5: single source of truth for actor-to-actor distance. Matches
+// approach()'s 8-directional one-tile-per-tick movement so adjacency,
+// melee range, and pathing all agree.
+export function chebyshev(a: Pos, b: Pos): number {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
 export function inBounds(world: World, p: Pos): boolean {
   return p.x >= 0 && p.y >= 0 && p.x < world.room.w && p.y < world.room.h;
 }
@@ -50,9 +57,13 @@ export function actorAt(world: World, p: Pos): Actor | null {
   return null;
 }
 
-export function orthogonallyAdjacent(a: Pos, b: Pos): boolean {
-  return manhattan(a, b) === 1;
+// Phase 13.5: chebyshev-based adjacency. Diagonals count as adjacent for
+// melee, matching how approach() steps. The old name is kept as an alias
+// pointing at the new metric so existing imports don't break.
+export function adjacent(a: Pos, b: Pos): boolean {
+  return chebyshev(a, b) === 1;
 }
+export const orthogonallyAdjacent = adjacent;
 
 function sign(n: number): number {
   return n > 0 ? 1 : n < 0 ? -1 : 0;
@@ -76,8 +87,8 @@ function sortByDistance<T extends { pos: Pos } | Pos>(
 ): T[] {
   const getPos = (t: T): Pos => ("pos" in (t as any) ? (t as any).pos : (t as Pos));
   return [...list].sort((a, b) => {
-    const da = manhattan(getPos(a), self.pos);
-    const db = manhattan(getPos(b), self.pos);
+    const da = chebyshev(getPos(a), self.pos);
+    const db = chebyshev(getPos(b), self.pos);
     if (da !== db) return da - db;
     return tieKey(a).localeCompare(tieKey(b));
   });
@@ -161,38 +172,10 @@ export const queries = {
     if (!p) return false;
     return self.pos.x === p.x && self.pos.y === p.y;
   },
-  // Chebyshev distance — matches approach()'s 8-directional, one-tile-per-tick movement.
-  distance: (_world: World, _self: Actor, a: unknown, b: unknown): number => {
-    const pa = resolvePos(_world, a);
-    const pb = resolvePos(_world, b);
-    if (!pa || !pb) return 0;
-    return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
-  },
-  adjacent: (world: World, _self: Actor, a: unknown, b: unknown): boolean => {
-    const pa = resolvePos(world, a);
-    const pb = resolvePos(world, b);
-    if (!pa || !pb) return false;
-    const d = Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
-    return d === 1;
-  },
-  can_cast: (world: World, self: Actor, name: unknown, target?: unknown): boolean => {
-    if (typeof name !== "string") return false;
-    const v = validateCast(world, self, name, target, {
-      skipTarget: target === undefined || target === null,
-    });
-    return v.ok;
-  },
-  has_effect: (world: World, _self: Actor, target: unknown, kind: unknown): boolean => {
-    const a = resolveActor(world, target);
-    if (!a) return false;
-    if (typeof kind !== "string") return false;
-    return hasEffect(a, kind);
-  },
-  effects: (world: World, _self: Actor, target: unknown): string[] => {
-    const a = resolveActor(world, target);
-    if (!a) return [];
-    return listEffects(a);
-  },
+  // distance(a, b), adjacent(a, b), can_cast(...), has_effect(...) and the
+  // effects(...) standalone were dropped in Phase 13.5 — use the actor surface
+  // methods instead: a.distance_to(b), a.adjacent_to(b), me.can_cast(...),
+  // a.has_effect(...), a.list_effects().
   clouds: (world: World, _self: Actor): { id: string; pos: Pos; kind: string; remaining: number }[] => {
     const cs = world.room.clouds ?? [];
     return cs.map(c => ({ id: c.id, pos: { ...c.pos }, kind: c.kind, remaining: c.remaining }));
@@ -223,7 +206,7 @@ export const queries = {
   items_nearby: (world: World, self: Actor, r?: unknown): FloorItem[] => {
     const radius = typeof r === "number" && r >= 0 ? Math.floor(r) : 4;
     const floor = world.room.floorItems ?? [];
-    const within = floor.filter(f => manhattan(f.pos, self.pos) <= radius);
+    const within = floor.filter(f => chebyshev(f.pos, self.pos) <= radius);
     return sortByDistance(self, within).map(f => ({ ...f, pos: { ...f.pos } }));
   },
   // Phase 13.2: RNG builtins — backed by the world's seedable mulberry32 RNG.
@@ -286,7 +269,7 @@ function stepToward(
 export function doAttack(world: World, self: Actor, targetRef: unknown): GameEvent[] {
   const target = resolveActor(world, targetRef);
   if (!target) return [fail(self, "attack", "no target")];
-  if (!orthogonallyAdjacent(self.pos, target.pos)) {
+  if (!adjacent(self.pos, target.pos)) {
     return [fail(self, "attack", "not adjacent")];
   }
 
@@ -346,10 +329,6 @@ function sameFaction(a: Actor, b: Actor): boolean {
   const fb = b.faction ?? (b.isHero ? "player" : "enemy");
   if (fa === "neutral" && fb === "neutral") return false;
   return fa === fb;
-}
-
-function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
 type UseValidation =

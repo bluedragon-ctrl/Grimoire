@@ -5,10 +5,11 @@
 import type {
   Script, Stmt, Expr, Ident, Call, Index, Member, BinOp, UnaryOp, ArrayLit,
   Literal, If, While, For, ExprStmt, Assign, EventHandler, FuncDef, BinOpKind,
-  SourceLoc, SourcePos,
+  Break, Continue, Pass, SourceLoc, SourcePos,
 } from "../types.js";
 import { tokenize, type Token } from "./tokenizer.js";
 import { ParseError, didYouMean, KNOWN_NAMES } from "./errors.js";
+import { EVENT_NAMES, isValidEventName } from "./event-registry.js";
 
 export function parse(source: string): Script {
   const tokens = tokenize(source);
@@ -96,8 +97,12 @@ class Parser {
         case "for":    return this.forStmt();
         case "on":     return this.onHandler();
         case "return": return this.returnStmt();
-        // `halt`, `me`, `true`, `false` are valid at atom level — fall through
-        // to simpleStatement so they parse as expressions.
+        case "def":    return this.defStmt();
+        case "break":    return this.simpleKeyword("Break");
+        case "continue": return this.simpleKeyword("Continue");
+        case "pass":     return this.simpleKeyword("Pass");
+        // `halt`, `me`, `true`, `false`, `lambda` are valid at atom level —
+        // fall through to simpleStatement so they parse as expressions.
       }
     }
 
@@ -201,7 +206,14 @@ class Parser {
       const t = this.peek();
       throw new ParseError(t.line, t.col, "I expected an event name after `on` (like `on hit:`).");
     }
-    const event = this.advance().value;
+    const eventTok = this.advance();
+    const event = eventTok.value;
+    if (!isValidEventName(event)) {
+      const suggestion = didYouMean(event, EVENT_NAMES as readonly string[]);
+      const valid = EVENT_NAMES.join(", ");
+      const tail = suggestion ? ` Did you mean \`${suggestion}\`?` : ` Valid events: ${valid}.`;
+      throw new ParseError(eventTok.line, eventTok.col, `\`on ${event}\` isn't a known event.${tail}`);
+    }
     let binding: string | undefined;
     if (this.match("KEYWORD", "as")) {
       const b = this.expect("NAME", undefined, "I expected a binding name after `as`.");
@@ -213,6 +225,40 @@ class Parser {
     return binding
       ? { t: "EventHandler", event, binding, body, loc }
       : { t: "EventHandler", event, body, loc };
+  }
+
+  private defStmt(): FuncDef {
+    const start = this.posHere();
+    this.advance(); // 'def'
+    const nameTok = this.expect("NAME", undefined, "I expected a function name after `def`.");
+    if (!this.match("OP", "(")) {
+      const t = this.peek();
+      throw new ParseError(t.line, t.col, "I expected `(` after the function name.");
+    }
+    const params: string[] = [];
+    if (!this.check("OP", ")")) {
+      const first = this.expect("NAME", undefined, "I expected a parameter name.");
+      params.push(first.value);
+      while (this.match("OP", ",")) {
+        const next = this.expect("NAME", undefined, "I expected another parameter name after `,`.");
+        params.push(next.value);
+      }
+    }
+    if (!this.match("OP", ")")) {
+      const t = this.peek();
+      throw new ParseError(t.line, t.col, "I expected `)` to close the parameter list.");
+    }
+    this.expectColon("def");
+    const body = this.block();
+    return { t: "FuncDef", name: nameTok.value, params, body, loc: this.span(start) };
+  }
+
+  private simpleKeyword(t: "Break" | "Continue" | "Pass"): Break | Continue | Pass {
+    const start = this.posHere();
+    this.advance();
+    this.consumeNewline();
+    const loc = this.span(start);
+    return { t, loc } as Break | Continue | Pass;
   }
 
   private returnStmt(): Stmt {
@@ -386,6 +432,21 @@ class Parser {
         // apply the call. Otherwise, produce halt() directly.
         if (this.check("OP", "(")) return { t: "Ident", name: "halt", loc };
         return { t: "Call", callee: { t: "Ident", name: "halt", loc }, args: [], loc };
+      }
+      if (t.value === "lambda") {
+        this.advance();
+        const params: string[] = [];
+        if (!this.check("OP", ":")) {
+          const first = this.expect("NAME", undefined, "I expected a parameter name after `lambda`.");
+          params.push(first.value);
+          while (this.match("OP", ",")) {
+            const p = this.expect("NAME", undefined, "I expected another parameter name after `,`.");
+            params.push(p.value);
+          }
+        }
+        this.expectColon("lambda");
+        const body = this.expression();
+        return { t: "Lambda", params, body, loc: this.span(start) };
       }
       // Typo of a keyword? Offer suggestion.
       const suggestion = didYouMean(t.value, KNOWN_NAMES);
