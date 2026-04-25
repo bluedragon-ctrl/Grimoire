@@ -49,7 +49,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Walk-and-whack loop.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])" },
     ],
-    related: ["commands/approach", "queries/enemies", "events/hit", "data/actor"],
+    related: ["commands/approach", "queries/enemies", "events/hit", "data/actor", "data/failure"],
   },
 
   cast: {
@@ -63,7 +63,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
       { caption: "Bolt the closest enemy when you can afford it.", code: "if me.can_cast(\"bolt\", enemies()[0]):\n  cast(\"bolt\", enemies()[0])" },
       { caption: "Heal yourself.", code: "cast(\"heal\")" },
     ],
-    related: ["queries/known_spells", "queries/mp", "data/actor", "spells/bolt", "spells/heal"],
+    related: ["queries/known_spells", "queries/mp", "data/actor", "data/failure", "spells/bolt", "spells/heal"],
   },
 
   use: {
@@ -76,7 +76,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Pop a health potion when low.", code: "if me.hp < 8:\n  use(\"health_potion\")" },
     ],
-    related: ["items/health_potion", "items/mana_crystal", "data/item"],
+    related: ["items/health_potion", "items/mana_crystal", "data/item", "data/failure"],
   },
 
   pickup: {
@@ -90,7 +90,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
       { caption: "Grab whatever's under you.", code: "pickup()" },
       { caption: "Scoop drops after clearing the room.", code: "for loot in items_here():\n  pickup(loot)" },
     ],
-    related: ["commands/drop", "queries/items_here", "queries/items_nearby", "data/flooritem"],
+    related: ["commands/drop", "queries/items_here", "queries/items_nearby", "data/flooritem", "data/failure"],
   },
 
   drop: {
@@ -141,7 +141,7 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     examples: [
       { caption: "Clean end after clearing.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nhalt" },
     ],
-    related: ["events/hit", "events/see"],
+    related: ["events/registry", "events/hit", "events/see"],
   },
 
   summon: {
