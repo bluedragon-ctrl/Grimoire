@@ -13,6 +13,7 @@
 // Effects are purely visual. They never read or mutate game state.
 
 import { C, wire, lighten, darken } from "./context.js";
+import { visualConfig } from "../config/visuals.js";
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -33,12 +34,15 @@ export const EFFECT_KIND = {
   explosion:     "area",
   blobExplosion: "area",
   deathBurst:    "area",
+  glitch_pulse:  "area",
   cloudWavy:     "tileCloud",
   burning:       "overlay",
   sparkling:     "overlay",
   dripping:      "overlay",
   healing:       "overlay",
   barrier:       "overlay",
+  materialize:   "overlay",
+  dematerialize: "overlay",
 } as const;
 
 export type EffectKind = keyof typeof EFFECT_KIND;
@@ -54,12 +58,15 @@ export const EFFECT_DURATION: Record<EffectKind, number> = {
   explosion: 0.55,
   blobExplosion: 0.7,
   deathBurst: 0.4,
+  glitch_pulse: 0.1,
   cloudWavy: 0,
   burning: 0,
   sparkling: 0,
   dripping: 0,
   healing: 0,
   barrier: 0,
+  materialize: 0.5,
+  dematerialize: 0.5,
 };
 
 /** Dispatch draw by name — noop if unknown. */
@@ -80,6 +87,28 @@ export function drawEffect(
 function hash01(n: number): number {
   const x = Math.sin(n * 12.9898) * 43758.5453;
   return x - Math.floor(x);
+}
+
+/** Draw N fading dot-trail positions behind the head at `t` along the line (x1,y1)→(x2,y2). */
+function drawTrail(
+  ctx: Ctx,
+  { x1, y1, x2, y2 }: ProjectileParams,
+  t: number,
+  color: string,
+  step = 0.05,
+  n = 3,
+  baseR = 3,
+): void {
+  if (!visualConfig.projectileTrails.enabled) return;
+  for (let i = 1; i <= n; i++) {
+    const tp = Math.max(0, t - i * step);
+    const tx = x1 + (x2 - x1) * tp;
+    const ty = y1 + (y2 - y1) * tp;
+    ctx.globalAlpha = (1 - i / (n + 1)) * 0.35;
+    wire(ctx, darken(color, i * 0.1), 5);
+    ctx.beginPath(); ctx.arc(tx, ty, Math.max(0.5, baseR - i * 0.6), 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -107,7 +136,7 @@ export function bolt(ctx: Ctx, { x1, y1, x2, y2 }: ProjectileParams, t: number, 
   const p = Math.min(1, t);
   const bx = x1 + (x2 - x1) * p;
   const by = y1 + (y2 - y1) * p;
-  const trailN = 4;
+  const trailN = visualConfig.projectileTrails.enabled ? 6 : 4;
 
   for (let i = 1; i <= trailN; i++) {
     const tp = Math.max(0, p - i * 0.06);
@@ -126,6 +155,7 @@ export function bolt(ctx: Ctx, { x1, y1, x2, y2 }: ProjectileParams, t: number, 
 }
 
 export function arrow(ctx: Ctx, { x1, y1, x2, y2 }: ProjectileParams, t: number, { color = C.skeleton }: EffectColors = {}): void {
+  drawTrail(ctx, { x1, y1, x2, y2 }, Math.min(1, t), color, 0.06, 3, 3);
   const p = Math.min(1, t);
   const bx = x1 + (x2 - x1) * p;
   const by = y1 + (y2 - y1) * p;
@@ -233,7 +263,8 @@ export function thrown(ctx: Ctx, { x1, y1, x2, y2 }: ProjectileParams, t: number
   const archHeight = Math.max(20, dist * 0.35);
   const by = y1 + (y2 - y1) * p - 4 * p * (1 - p) * archHeight;
 
-  for (let i = 1; i <= 3; i++) {
+  const trailCount = visualConfig.projectileTrails.enabled ? 4 : 3;
+  for (let i = 1; i <= trailCount; i++) {
     const tp = Math.max(0, p - i * 0.08);
     const tx = x1 + (x2 - x1) * tp;
     const ty = y1 + (y2 - y1) * tp - 4 * tp * (1 - tp) * archHeight;
@@ -618,9 +649,83 @@ export function barrier(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { color 
   ctx.lineWidth = 1.5;
 }
 
+// ═══════════════════════════════════════════════════════════
+// NAMED PRESETS — glitch_pulse / materialize / dematerialize
+// ═══════════════════════════════════════════════════════════
+
+const ARCANE_CHARS = ["#", "$", "λ", "&", "→", "▓", "*", "?", "@", "!", "%", "§"];
+const AMBER = "#ffb040";
+
+/** Dungeon effect: viewport brightness flash + scanline jitter (~6 frames, 0.1s). */
+export function glitch_pulse(ctx: Ctx, { cx, cy }: AreaParams, t: number, _colors: EffectColors = {}): void {
+  const flash = Math.max(0, 1 - t * 5);
+  if (flash > 0) {
+    ctx.save();
+    ctx.globalAlpha = flash * 0.18;
+    ctx.fillStyle = "#fff8e0";
+    const half = TILE_PX * 8;
+    ctx.fillRect(cx - half, cy - half, half * 2, half * 2);
+    ctx.restore();
+  }
+  if (t < 0.5) {
+    const jitterY = Math.floor(hash01(t * 100) * TILE_PX * 4);
+    const jitterAmt = (4 + hash01(t * 200) * 6) * (1 - t * 2);
+    ctx.save();
+    ctx.globalAlpha = 0.4 * (1 - t * 2);
+    ctx.drawImage(ctx.canvas, 0, jitterY, ctx.canvas.width, 2, jitterAmt, jitterY, ctx.canvas.width, 2);
+    ctx.restore();
+  }
+}
+
+/** Actor effect: glyph swarm converging inward as sprite alpha 0→1 (~0.5s). */
+export function materialize(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { color = AMBER }: EffectColors = {}): void {
+  const glyphCount = 12;
+  const scatter = TILE_PX * 1.2 * (1 - t);
+  for (let i = 0; i < glyphCount; i++) {
+    const angle = (i / glyphCount) * Math.PI * 2 + hash01(i * 3.7) * 0.8;
+    const dist = scatter * (0.5 + hash01(i * 7.1) * 0.5);
+    const gx = cx + Math.cos(angle) * dist;
+    const gy = cy + Math.sin(angle) * dist;
+    const alpha = (1 - t) * (0.6 + hash01(i * 2.3) * 0.4);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.font = "12px 'Share Tech Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ARCANE_CHARS[i % ARCANE_CHARS.length]!, gx, gy);
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+/** Reverse stub: glyph swarm dispersing outward. Reserved for blink-out etc. */
+export function dematerialize(ctx: Ctx, { cx, cy }: OverlayParams, t: number, { color = AMBER }: EffectColors = {}): void {
+  const glyphCount = 12;
+  const scatter = TILE_PX * 1.2 * t;
+  for (let i = 0; i < glyphCount; i++) {
+    const angle = (i / glyphCount) * Math.PI * 2 + hash01(i * 3.7) * 0.8;
+    const dist = scatter * (0.5 + hash01(i * 7.1) * 0.5);
+    const gx = cx + Math.cos(angle) * dist;
+    const gy = cy + Math.sin(angle) * dist;
+    const alpha = t * (0.6 + hash01(i * 2.3) * 0.4);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.font = "12px 'Share Tech Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ARCANE_CHARS[i % ARCANE_CHARS.length]!, gx, gy);
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
 export const EFFECT_RENDERERS = {
   beam, bolt, arrow, zigzag, orbs, thrown,
-  explosion, blobExplosion, deathBurst,
+  explosion, blobExplosion, deathBurst, glitch_pulse,
   cloudWavy,
-  burning, sparkling, dripping, healing, barrier,
+  burning, sparkling, dripping, healing, barrier, materialize, dematerialize,
 } as const;

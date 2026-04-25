@@ -69,7 +69,7 @@ describe("RunController", () => {
     let s = c.getState();
     expect(s.phase).toBe("recap");
     expect(s.snapshot).toBeNull();
-    expect(s.recap).toEqual({ level: 1, attempts: 2, turns: 42 });
+    expect(s.recap).toEqual({ level: 1, attempts: 2, turns: 42, outcome: "success" });
 
     c.continueAfterRecap();
     s = c.getState();

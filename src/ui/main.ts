@@ -17,6 +17,7 @@ import {
 } from "./run-state.js";
 import { generateRoom } from "../content/rooms.js";
 import { mountHelpPane } from "./help/help-pane.js";
+import { visualConfig } from "../config/visuals.js";
 
 const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
 const btnPause    = document.getElementById("btn-pause")    as HTMLButtonElement;
@@ -61,7 +62,7 @@ const DEFAULT_SCRIPT = [
   "while not at(doors()[0]):",
   "  approach(doors()[0])",
   "",
-  "exit(\"N\")",
+  "exit()",
   "halt",
   "",
 ].join("\n");
@@ -92,6 +93,52 @@ function appendLine(text: string, cls?: string): void {
   logEl.scrollTop = logEl.scrollHeight;
 }
 function clearLog(): void { logEl.innerHTML = ""; }
+
+// ── Notification overlay ───────────────────────────────────────────────────
+const notifyOverlay = document.getElementById("notify-overlay")!;
+
+interface NotifyOpts {
+  style?: "info" | "warning" | "error" | "success";
+  duration?: number;   // seconds; 0 = persistent until replaced
+  position?: "top" | "center" | "bottom";
+}
+
+export function pushNotification(text: string, opts: NotifyOpts = {}): void {
+  const { style = "info", duration = 2 } = opts;
+  const el = document.createElement("div");
+  el.className = "notify-item" + (style !== "info" ? ` ${style}` : "");
+  el.textContent = text;
+  notifyOverlay.prepend(el);
+
+  if (duration > 0) {
+    const fadeMs = duration * 1000;
+    setTimeout(() => {
+      el.classList.add("fading");
+      setTimeout(() => el.remove(), 320);
+    }, fadeMs);
+  }
+}
+
+// ── Boot banner ────────────────────────────────────────────────────────────
+let bootBannerShown = false;
+
+function showBootBanner(): void {
+  const cfg = visualConfig.bootBanner;
+  if (!cfg.enabled) return;
+  if (cfg.firstRunOnlyPerSession && bootBannerShown) return;
+  bootBannerShown = true;
+
+  const version = "0.13";
+  const lines = [
+    `> GRIMOIRE v${version}`,
+    `> COMPILING SCRIPT...`,
+    cfg.middleLines[Math.floor(Math.random() * cfg.middleLines.length)] ?? "LOADING...",
+    `> RUN`,
+  ];
+  lines.forEach((line, i) => {
+    setTimeout(() => pushNotification(line, { duration: 1.5 + i * 0.2 }), i * 380);
+  });
+}
 
 function clearPlayTimer() {
   if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
@@ -133,20 +180,39 @@ function drainLogToAdapter(): void {
   while (applyCursor < log.length) {
     const entry = log[applyCursor++]!;
     currentAdapter.apply(entry.event);
+    if (entry.event.type === "Notified") {
+      pushNotification(entry.event.text, {
+        style: entry.event.style,
+        duration: entry.event.duration,
+        position: entry.event.position,
+      });
+    }
     appendLine(formatLogEntry(entry), entry.event.type === "ActionFailed" ? "fail" : undefined);
   }
 }
 
 // Scan the event log for terminal events so we can distinguish success
 // (HeroExited) from failure (HeroDied, aborted, or mere exhaustion).
-function terminalOutcome(): "success" | "failure" {
+function terminalOutcome(): "success" | "death" | "failure" {
   if (!currentHandle) return "failure";
   for (let i = currentHandle.log.length - 1; i >= 0; i--) {
     const t = currentHandle.log[i]!.event.type;
     if (t === "HeroExited") return "success";
-    if (t === "HeroDied")   return "failure";
+    if (t === "HeroDied")   return "death";
   }
   return "failure";
+}
+
+/** Extract a human-readable cause string from a HeroDied event in the log. */
+function deathCause(): string {
+  if (!currentHandle) return "Unknown cause.";
+  for (let i = currentHandle.log.length - 1; i >= 0; i--) {
+    const { event } = currentHandle.log[i]!;
+    if (event.type === "Attacked") {
+      return `Killed by ${event.attacker} in room ${runCtl.getState().level}.`;
+    }
+  }
+  return `Fell in room ${runCtl.getState().level}.`;
 }
 
 function refreshDebugView(): void {
@@ -179,6 +245,9 @@ function onRunEnded(): void {
   if (outcome === "success") {
     appendLine(`— cleared (tick=${turns}) —`);
     runCtl.succeed(turns);
+  } else if (outcome === "death") {
+    appendLine(`— hero died (tick=${turns}) —`, "fail");
+    runCtl.die(turns, deathCause());
   } else {
     appendLine(`— failed (tick=${turns}) —`, "fail");
     runCtl.fail();
@@ -202,6 +271,9 @@ function startFromSource(): boolean {
   }
 
   appendLine("— run —");
+  // COMPILING flash — confirms the script was accepted before the first tick.
+  pushNotification("> COMPILING SCRIPT...", { duration: 1 });
+
   // Stamp the current editor script onto the prep-phase hero.
   const setup: RoomSetup = runCtl.getState().current;
   setup.actors[0]!.script = heroScript;
@@ -219,12 +291,15 @@ function startFromSource(): boolean {
   return true;
 }
 
+const SPAWN_HOLD_MS = WireRendererAdapter.SPAWN_HOLD_MS;
+
 // ── Button wiring ───────────────────────────────────────────────────────────
 
 btnRun.addEventListener("click", () => {
   if (runCtl.getState().phase !== "prep") return;
   if (!startFromSource()) return;
-  playTimer = setTimeout(playTick, tickDelayMs());
+  // Hold for spawn animation (glitch_pulse + materialize) before first tick.
+  playTimer = setTimeout(playTick, Math.max(tickDelayMs(), SPAWN_HOLD_MS));
 });
 
 btnPause.addEventListener("click", () => {
@@ -371,11 +446,26 @@ function renderPhase(): void {
   panelHelp.hidden = auxOpen !== "help";
   auxTitleEl.textContent = auxOpen === "help" ? "Help" : "Inspector";
 
-  // Recap modal.
+  // Recap modal — three outcomes: success / death / recall.
   if (phase === "recap" && s.recap) {
-    recapTitle.textContent = `LEVEL ${s.recap.level} CLEARED`;
+    const { outcome, cause } = s.recap;
+    if (outcome === "success") {
+      recapTitle.textContent = `LEVEL ${s.recap.level} CLEARED`;
+      recapTitle.className = "recap-title-success";
+    } else {
+      recapTitle.textContent = outcome === "death" ? "HERO FELL" : "RUN ENDED";
+      recapTitle.className = "recap-title-fail";
+    }
     recapAttempts.textContent = String(s.recap.attempts);
     recapTurns.textContent = String(s.recap.turns);
+    const causeEl = document.getElementById("recap-cause");
+    if (causeEl) causeEl.textContent = cause ?? "";
+    const ctaEl = document.getElementById("recap-cta");
+    if (ctaEl) {
+      ctaEl.textContent = outcome === "success"
+        ? "Proceed to the next room."
+        : "Edit your script in the inventory panel before pressing Run again.";
+    }
     recapModal.hidden = false;
   } else {
     recapModal.hidden = true;
@@ -473,3 +563,4 @@ const helpPane = mountHelpPane(helpEl, {
 });
 speedOut.textContent = `${tickDelayMs()}ms`;
 renderPhase();
+showBootBanner();

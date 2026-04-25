@@ -31,6 +31,9 @@ function goblin(id: string, pos: { x: number; y: number }): Actor {
 function mount(adapter: WireRendererAdapter, actors: Actor[]) {
   const el = document.createElement("div");
   adapter.mount(el, room, actors);
+  // Spawn animations (glitch_pulse + materialize) are tested in presets.test.ts.
+  // Clear them so these event-focused tests start with an empty effects list.
+  adapter.getState()!.activeEffects.splice(0);
   return el;
 }
 

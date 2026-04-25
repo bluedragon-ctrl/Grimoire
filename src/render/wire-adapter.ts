@@ -267,8 +267,25 @@ export class WireRendererAdapter implements RendererAdapter {
       this.resizeObs.observe(el);
     }
 
+    // Hero spawn: glitch_pulse (dungeon) + materialize (actor).
+    const spawnPlayer = this.state.player;
+    if (spawnPlayer) {
+      const D_MATERIALIZE = 0.5;
+      this.pushEffect({
+        kind: "area", name: "glitch_pulse", duration: 0.1, elapsed: 0, delay: 0,
+        at: { x: Math.floor(room.w / 2), y: Math.floor(room.h / 2) }, radius: 1,
+      });
+      this.pushEffect({
+        kind: "overlay", name: "materialize", duration: D_MATERIALIZE, elapsed: 0, delay: 0,
+        attachTo: spawnPlayer.id,
+      });
+    }
+
     if (this.deps.runFrameLoop) this.startFrameLoop();
   }
+
+  /** Duration (ms) to hold the scheduler before the first tick, letting spawn animations settle. */
+  static readonly SPAWN_HOLD_MS = 500;
 
   apply(event: GameEvent): void {
     const s = this.state;
@@ -443,6 +460,12 @@ export class WireRendererAdapter implements RendererAdapter {
       case "Idled":
       case "ActionFailed":
       case "See":
+      case "Notified":
+      case "Summoned":
+      case "Despawned":
+      case "SpellLearned":
+      case "ScrollDiscarded":
+      case "ManaChanged":
         break;
     }
     s.tick++;

@@ -54,8 +54,8 @@ body::before {
     to bottom,
     rgba(0, 0, 0, 0) 0,
     rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.18) 2px,
-    rgba(0, 0, 0, 0.18) 3px
+    rgba(0, 0, 0, 0.05) 2px,
+    rgba(0, 0, 0, 0.05) 3px
   );
   mix-blend-mode: multiply;
 }
@@ -624,6 +624,45 @@ body::before {
 }
 .help-related-link:hover { color: var(--fg-hi); text-decoration: underline; }
 
+/* ─────── Notify overlay ─────── */
+#notify-overlay {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.notify-item {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  padding: 4px 14px;
+  border: 1px solid var(--border-hi);
+  background: rgba(5, 2, 0, 0.88);
+  color: var(--fg);
+  text-shadow: var(--glow);
+  animation: notify-in 0.12s ease-out;
+  white-space: nowrap;
+}
+.notify-item::before { content: "> "; color: var(--muted); }
+.notify-item.warning { color: #ffc040; border-color: #ffc040; }
+.notify-item.error   { color: var(--fail); border-color: var(--fail); }
+.notify-item.success { color: var(--good); border-color: var(--good); }
+@keyframes notify-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes notify-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.notify-item.fading { animation: notify-out 0.3s ease-in forwards; }
+
 /* ─────── Recap modal ─────── */
 .modal {
   position: fixed;
@@ -660,6 +699,21 @@ body::before {
   color: var(--fg-hi);
   text-transform: uppercase;
   text-shadow: var(--glow-strong);
+}
+.recap-title-fail { color: var(--fail) !important; text-shadow: 0 0 6px rgba(255,68,34,0.8) !important; }
+.recap-cause {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  min-height: 1em;
+}
+.recap-cta {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 1px;
+  max-width: 260px;
 }
 .recap-stats {
   margin: 0 auto 16px;

@@ -31,6 +31,7 @@ export const COST = {
   pickup: 10,
   drop: 5,
   summon: 15,
+  notify: 0,
 } as const;
 
 // ──────────────────────────── small helpers ────────────────────────────
@@ -511,6 +512,24 @@ function processScrolls(hero: Actor): GameEvent[] {
 
 export function doHalt(world: World, self: Actor): GameEvent[] {
   return [{ type: "Halted", actor: self.id }];
+}
+
+export function doNotify(
+  world: World, self: Actor,
+  text: string,
+  style?: string,
+  duration?: number,
+  position?: string,
+): GameEvent[] {
+  const ev: GameEvent = {
+    type: "Notified",
+    actor: self.id,
+    text,
+    ...(style    ? { style:    style    as "info" | "warning" | "error" | "success" } : {}),
+    ...(duration !== undefined ? { duration } : {}),
+    ...(position ? { position: position as "top" | "center" | "bottom" } : {}),
+  };
+  return [ev];
 }
 
 // Phase 13.2: direct-script summon(templateId, targetPos).

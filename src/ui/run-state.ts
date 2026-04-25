@@ -26,6 +26,9 @@ export interface RecapInfo {
   level: number;
   attempts: number;
   turns: number;
+  outcome: "success" | "death" | "recall";
+  /** Free-text cause shown under the title (death/recall only). */
+  cause?: string;
 }
 
 export interface RunState {
@@ -112,18 +115,40 @@ export class RunController {
       level: this.state.level,
       attempts: this.state.attempts,
       turns,
+      outcome: "success",
     };
     this.state.snapshot = null;
     this.state.phase = "recap";
     this.emit();
   }
 
-  /** recap → prep. level++, attempts=1, new room. */
+  /** running|paused → recap (death). Restore snapshot for retry but show death screen first. */
+  die(turns: number, cause?: string): void {
+    if (this.state.phase !== "running" && this.state.phase !== "paused") return;
+    this.state.recap = {
+      level: this.state.level,
+      attempts: this.state.attempts,
+      turns,
+      outcome: "death",
+      cause,
+    };
+    this.state.snapshot = null;
+    this.state.phase = "recap";
+    this.emit();
+  }
+
+  /** recap → prep. On success: level++, attempts=1, new room. On death: attempts++, same room. */
   continueAfterRecap(): void {
     if (this.state.phase !== "recap") return;
-    this.state.level += 1;
-    this.state.attempts = 1;
-    this.state.current = this.opts.generate(this.state.level);
+    const wasSuccess = this.state.recap?.outcome === "success";
+    if (wasSuccess) {
+      this.state.level += 1;
+      this.state.attempts = 1;
+      this.state.current = this.opts.generate(this.state.level);
+    } else {
+      this.state.attempts += 1;
+      this.state.current = this.opts.generate(this.state.level);
+    }
     this.state.recap = null;
     this.state.phase = "prep";
     this.emit();

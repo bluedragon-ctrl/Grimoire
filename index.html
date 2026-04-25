@@ -78,14 +78,17 @@
         </section>
       </main>
     </div>
+    <div id="notify-overlay" aria-live="polite" aria-atomic="false"></div>
     <div id="recap-modal" class="modal" hidden>
       <div class="modal-backdrop"></div>
       <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="recap-title">
         <h2 id="recap-title">LEVEL 1 CLEARED</h2>
+        <p id="recap-cause" class="recap-cause"></p>
         <table class="recap-stats">
           <tr><td class="k">attempts</td><td class="v" id="recap-attempts">1</td></tr>
           <tr><td class="k">turns</td><td class="v" id="recap-turns">0</td></tr>
         </table>
+        <p id="recap-cta" class="recap-cta"></p>
         <div class="modal-actions">
           <button id="btn-continue">Continue</button>
         </div>
