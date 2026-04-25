@@ -1,28 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, Room, World } from "../../src/types.js";
+import type { Actor } from "../../src/types.js";
 import { PRIMITIVES } from "../../src/spells/primitives.js";
 import { castSpell } from "../../src/spells/cast.js";
 import { hasEffect } from "../../src/effects.js";
 import { scaleRadius } from "../../src/content/scaling.js";
-import { script, cHalt } from "../../src/ast-helpers.js";
-
-function mkWorld(actors: Actor[], room?: Partial<Room>): World {
-  return {
-    tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [], ...room },
-    actors, log: [], aborted: false, ended: false,
-  };
-}
-
-function mkActor(over: Partial<Actor> & Pick<Actor, "id" | "kind" | "pos">): Actor {
-  return {
-    hp: 20, maxHp: 20, speed: 10, energy: 0,
-    alive: true, script: script(cHalt()),
-    mp: 30, maxMp: 30, atk: 1, def: 0, int: 0, effects: [],
-    knownSpells: [],
-    ...over,
-  };
-}
+import { mkWorld, mkActor } from "../helpers.js";
 
 // ── scaleRadius unit tests ────────────────────────────────────────────────────
 
@@ -58,9 +40,7 @@ describe("explode primitive", () => {
 
   it("radius 1 hits tiles within Chebyshev 1 (3×3 square)", () => {
     const caster = mkActor({ id: "c", kind: "hero", pos: { x: 0, y: 0 }, int: 0 });
-    // Adjacent diagonally — Chebyshev 1 from (3,3)
     const diag = mkActor({ id: "d", kind: "goblin", pos: { x: 4, y: 4 }, hp: 20, maxHp: 20 });
-    // Two tiles away — Chebyshev 2
     const far  = mkActor({ id: "f", kind: "goblin", pos: { x: 5, y: 3 }, hp: 20, maxHp: 20 });
     const w = mkWorld([caster, diag, far]);
 
@@ -72,14 +52,11 @@ describe("explode primitive", () => {
 
   it("radius scales correctly with int — victim 2 tiles away is hit", () => {
     const caster = mkActor({ id: "c", kind: "hero", pos: { x: 0, y: 0 }, int: 8 });
-    // scaleRadius(1, 8) = 1 + floor(8/8) = 2; victim at Chebyshev 2 from target
     const victim = mkActor({ id: "v", kind: "goblin", pos: { x: 5, y: 3 }, hp: 20, maxHp: 20 });
     const w = mkWorld([caster, victim]);
 
     PRIMITIVES.explode.execute(w, caster, { x: 3, y: 3 }, { radius: 1, damage: 5 });
 
-    // Damage also scales: scale(5, 8) = floor(5*1.8) = 9; 20-9 = 11.
-    // Key assertion: victim was reached (radius 2 covers Chebyshev 2).
     expect(victim.hp).toBeLessThan(20);
   });
 
@@ -122,10 +99,8 @@ describe("explode primitive", () => {
   });
 
   it("does not hit actors at out-of-bounds tiles (wall filter)", () => {
-    // Room 5×5; explosion at (3,3) radius 2 nominally reaches (5,3) = out of bounds.
     const caster  = mkActor({ id: "c", kind: "hero",   pos: { x: 1, y: 1 }, int: 0 });
     const inBound = mkActor({ id: "i", kind: "goblin", pos: { x: 4, y: 3 }, hp: 20, maxHp: 20 });
-    // (5,3) is x >= w=5, so out of bounds
     const outOfBound = mkActor({ id: "o", kind: "goblin", pos: { x: 5, y: 3 }, hp: 20, maxHp: 20 });
     const w = mkWorld([caster, inBound, outOfBound], { w: 5, h: 5 });
 
@@ -162,9 +137,6 @@ describe("explode primitive", () => {
 // ── fireball placement risk ───────────────────────────────────────────────────
 
 describe("fireball placement risk", () => {
-  // If the caster aims fireball 4 tiles away but has high INT (radius scales up),
-  // the expanded radius can reach back to the caster's position.
-  // This is intentional design: powerful AoE requires careful placement.
   it("caster takes damage when high-INT fireball radius reaches their tile", () => {
     const caster = mkActor({
       id: "c", kind: "hero", isHero: true,
@@ -175,12 +147,11 @@ describe("fireball placement risk", () => {
     });
     const w = mkWorld([caster], { w: 10, h: 10 });
 
-    // Target at (4,0): Chebyshev from (0,0) = 4; radius 5 ≥ 4 → caster in blast.
     const events = castSpell(w, caster, "fireball", { x: 4, y: 0 });
 
     const hit = events.filter(e => e.type === "Hit") as any[];
     const casterHit = hit.find(h => h.actor === "c");
-    expect(casterHit).toBeDefined(); // design: placement risk is real
+    expect(casterHit).toBeDefined();
     expect(caster.hp).toBeLessThan(30);
   });
 });
@@ -207,8 +178,8 @@ describe("frost_nova and thunderclap self-exclusion", () => {
 
     castSpell(w, h, "frost_nova", h);
 
-    expect(h.hp).toBe(20);  // caster untouched
-    expect(e.hp).toBeLessThan(20); // enemy hit
+    expect(h.hp).toBe(20);
+    expect(e.hp).toBeLessThan(20);
   });
 
   it("thunderclap does not damage the caster", () => {

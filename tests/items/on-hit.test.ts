@@ -1,30 +1,7 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, World } from "../../src/types.js";
 import { doAttack } from "../../src/commands.js";
 import { equipItem, mintInstance, ensureInventory } from "../../src/items/execute.js";
-import { emptyEquipped } from "../../src/content/items.js";
-import { script, cHalt } from "../../src/ast-helpers.js";
-
-function mkWorld(actors: Actor[]): World {
-  return { tick: 0, room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false };
-}
-function mkHero(over: Partial<Actor> = {}): Actor {
-  return {
-    id: "h", kind: "hero", hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
-    pos: { x: 0, y: 0 }, mp: 10, maxMp: 20, atk: 3, def: 0, int: 0,
-    effects: [], knownSpells: [],
-    inventory: { consumables: [], equipped: emptyEquipped() },
-    script: script(cHalt()), ...over,
-  };
-}
-function mkGoblin(over: Partial<Actor> = {}): Actor {
-  return {
-    id: "g", kind: "goblin", hp: 10, maxHp: 10, speed: 10, energy: 0, alive: true,
-    pos: { x: 1, y: 0 }, mp: 0, maxMp: 0, atk: 1, def: 0, int: 0,
-    effects: [], knownSpells: [],
-    script: script(cHalt()), ...over,
-  };
-}
+import { mkWorld, mkHero, mkGoblin } from "../helpers.js";
 
 describe("onHitHook", () => {
   it("venom_dagger on_hit inflicts poison after attack", () => {

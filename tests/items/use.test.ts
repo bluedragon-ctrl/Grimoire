@@ -1,21 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, World } from "../../src/types.js";
+import type { Actor } from "../../src/types.js";
 import { useItem, mintInstance, ensureInventory } from "../../src/items/execute.js";
 import { emptyEquipped } from "../../src/content/items.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
-
-function mkWorld(actors: Actor[]): World {
-  return { tick: 0, room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false };
-}
-function mkHero(over: Partial<Actor> = {}): Actor {
-  return {
-    id: "h", kind: "hero", hp: 10, maxHp: 20, speed: 12, energy: 0, alive: true,
-    pos: { x: 0, y: 0 }, mp: 5, maxMp: 20, atk: 3, def: 0, int: 0,
-    effects: [], knownSpells: ["bolt", "heal"],
-    inventory: { consumables: [], equipped: emptyEquipped() },
-    script: script(cHalt()), ...over,
-  };
-}
+import { mkWorld, mkHero } from "../helpers.js";
 
 describe("useItem", () => {
   it("restores mp, removes from bag, emits ItemUsed", () => {
