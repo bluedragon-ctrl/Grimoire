@@ -35,7 +35,7 @@ function iconColors(defId: string): { col1?: string; col2?: string; color?: stri
   const def = ITEMS[defId];
   const shape = def?.slot
     ? (def.slot as ItemShape)
-    : (def?.category === "consumable" ? ("potion" as ItemShape) : ("scroll" as ItemShape));
+    : (def?.kind === "consumable" ? ("potion" as ItemShape) : ("scroll" as ItemShape));
   return FALLBACK_PRESETS[shape].colors;
 }
 
@@ -291,7 +291,7 @@ export function mountInventoryPanel(
     cell.title = def ? `${def.name} (${slot})` : `Empty ${slot}`;
     cell.addEventListener("click", () => {
       if (!editable) return;
-      const defs = Object.values(ITEMS).filter(d => d.category === "wearable" && d.slot === slot);
+      const defs = Object.values(ITEMS).filter(d => d.kind === "equipment" && d.slot === slot);
       const options = [
         { label: "— Empty —", defId: null },
         ...defs.map(d => ({ label: d.name, defId: d.id })),
@@ -313,7 +313,7 @@ export function mountInventoryPanel(
     cell.title = def ? def.name : `Empty slot ${idx + 1}`;
     cell.addEventListener("click", () => {
       if (!editable) return;
-      const defs = Object.values(ITEMS).filter(d => d.category === "consumable");
+      const defs = Object.values(ITEMS).filter(d => d.kind === "consumable");
       const options = [
         { label: "— Empty —", defId: null },
         ...defs.map((d: ItemDef) => ({ label: d.name, defId: d.id })),

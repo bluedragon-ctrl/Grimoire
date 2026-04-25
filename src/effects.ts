@@ -17,6 +17,8 @@ import type { Actor, Effect, EffectKind, EffectSource, GameEvent, World } from "
 
 export interface EffectSpec {
   kind: EffectKind;
+  /** Phase 13.3: buff (helpful) or debuff (harmful). Used by cleanse primitive. */
+  polarity: "buff" | "debuff";
   defaultDuration: number;
   defaultMagnitude?: number;
   tickEvery: number;
@@ -33,7 +35,7 @@ export interface EffectSpec {
 // ──────────────────────────── specs ────────────────────────────
 
 const burning: EffectSpec = {
-  kind: "burning",
+  kind: "burning", polarity: "debuff",
   defaultDuration: 50,
   defaultMagnitude: 1,
   tickEvery: 10,
@@ -57,7 +59,7 @@ const burning: EffectSpec = {
 };
 
 const regen: EffectSpec = {
-  kind: "regen",
+  kind: "regen", polarity: "buff",
   defaultDuration: 50,
   defaultMagnitude: 2,
   tickEvery: 10,
@@ -80,13 +82,13 @@ const regen: EffectSpec = {
 // doesn't stack). This is fine because the multiplier is baked into the
 // spec, not the effect instance.
 const haste: EffectSpec = {
-  kind: "haste",
+  kind: "haste", polarity: "buff",
   defaultDuration: 50,
   tickEvery: 1,
 };
 
 const slow: EffectSpec = {
-  kind: "slow",
+  kind: "slow", polarity: "debuff",
   defaultDuration: 50,
   tickEvery: 1,
 };
@@ -95,7 +97,7 @@ const slow: EffectSpec = {
 // it independently and so the venom_dagger on_hit proc doesn't overwrite a
 // target's unrelated burning.
 const poison: EffectSpec = {
-  kind: "poison",
+  kind: "poison", polarity: "debuff",
   defaultDuration: 30,
   defaultMagnitude: 1,
   tickEvery: 15,
@@ -124,7 +126,7 @@ const poison: EffectSpec = {
 // magnitude = N means N% reduction; default 20. effectiveStats folds both
 // through a (1 - pct) multiplier so chill composes with haste/slow cleanly.
 const chill: EffectSpec = {
-  kind: "chill",
+  kind: "chill", polarity: "debuff",
   defaultDuration: 30,
   defaultMagnitude: 20,
   tickEvery: 1,
@@ -132,7 +134,7 @@ const chill: EffectSpec = {
 
 // shock: passive — reduces def by magnitude flat. Clamped to 0 in effectiveStats.
 const shock: EffectSpec = {
-  kind: "shock",
+  kind: "shock", polarity: "debuff",
   defaultDuration: 30,
   defaultMagnitude: 5,
   tickEvery: 1,
@@ -142,7 +144,7 @@ const shock: EffectSpec = {
 // Resolved at damage-apply time in commands.ts doAttack, not in effectiveStats.
 // Spell inflict path does not yet honour expose (out of scope for Phase 13.0).
 const expose: EffectSpec = {
-  kind: "expose",
+  kind: "expose", polarity: "debuff",
   defaultDuration: 20,
   defaultMagnitude: 25,
   tickEvery: 1,
@@ -150,7 +152,7 @@ const expose: EffectSpec = {
 
 // might: passive — flat atk bonus folded into effectiveStats.
 const might: EffectSpec = {
-  kind: "might",
+  kind: "might", polarity: "buff",
   defaultDuration: 30,
   defaultMagnitude: 3,
   tickEvery: 1,
@@ -158,7 +160,7 @@ const might: EffectSpec = {
 
 // iron_skin: passive — flat def bonus folded into effectiveStats.
 const iron_skin: EffectSpec = {
-  kind: "iron_skin",
+  kind: "iron_skin", polarity: "buff",
   defaultDuration: 30,
   defaultMagnitude: 3,
   tickEvery: 1,
@@ -167,7 +169,7 @@ const iron_skin: EffectSpec = {
 // mana_regen: restores mp per tick. Skips tick when already at maxMp (same
 // design choice as regen-at-full-hp: no noise when nothing changed).
 const mana_regen: EffectSpec = {
-  kind: "mana_regen",
+  kind: "mana_regen", polarity: "buff",
   defaultDuration: 50,
   defaultMagnitude: 2,
   tickEvery: 10,
@@ -187,7 +189,7 @@ const mana_regen: EffectSpec = {
 
 // mana_burn: drains mp per tick. Skips tick when mp is already 0.
 const mana_burn: EffectSpec = {
-  kind: "mana_burn",
+  kind: "mana_burn", polarity: "debuff",
   defaultDuration: 30,
   defaultMagnitude: 1,
   tickEvery: 10,
@@ -205,7 +207,7 @@ const mana_burn: EffectSpec = {
 
 // power: passive — flat int bonus folded into effectiveStats.
 const power: EffectSpec = {
-  kind: "power",
+  kind: "power", polarity: "buff",
   defaultDuration: 30,
   defaultMagnitude: 3,
   tickEvery: 1,
@@ -220,7 +222,7 @@ const power: EffectSpec = {
 // existing.magnitude is updated; smaller incoming leaves the pool unchanged.
 // Duration still refreshes to max(existing, new) per standard stacking.
 const shield: EffectSpec = {
-  kind: "shield",
+  kind: "shield", polarity: "buff",
   defaultDuration: 50,
   defaultMagnitude: 10,
   tickEvery: 1,
@@ -242,22 +244,32 @@ const shield: EffectSpec = {
   },
 };
 
+// blinded: debuff that limits ranged actions to adjacent tiles.
+// Applied when an actor walks out of a smoke cloud (1-turn duration).
+// Gate: if caster has blinded and target Chebyshev > 1, cast/use fails.
+const blinded: EffectSpec = {
+  kind: "blinded", polarity: "debuff",
+  defaultDuration: 1,
+  tickEvery: 1,
+};
+
 export const REGISTRY: Record<EffectKind, EffectSpec> = {
   burning, regen, haste, slow, poison,
   chill, shock, expose, might, iron_skin, mana_regen, mana_burn, power, shield,
+  blinded,
 };
 
-// Load-time validation: every EffectKind must have a REGISTRY entry.
-// TypeScript's Record<EffectKind, EffectSpec> enforces this statically;
-// this runtime check catches drift from untyped paths (generated content, etc).
+// Load-time validation: every EffectKind must have a REGISTRY entry with polarity.
 ((): void => {
   const kinds: EffectKind[] = [
     "burning", "regen", "haste", "slow", "poison",
     "chill", "shock", "expose", "might", "iron_skin",
-    "mana_regen", "mana_burn", "power", "shield",
+    "mana_regen", "mana_burn", "power", "shield", "blinded",
   ];
   for (const k of kinds) {
-    if (!REGISTRY[k]) throw new Error(`[effects] REGISTRY missing spec for EffectKind '${k}'`);
+    const spec = REGISTRY[k];
+    if (!spec) throw new Error(`[effects] REGISTRY missing spec for EffectKind '${k}'`);
+    if (!spec.polarity) throw new Error(`[effects] REGISTRY['${k}'] missing polarity`);
   }
 })();
 
@@ -469,4 +481,13 @@ export function hasEffect(actor: Actor, kind: string): boolean {
 export function listEffects(actor: Actor): string[] {
   const effects = actor.effects ?? [];
   return effects.map(e => e.kind);
+}
+
+export function removeEffect(actor: Actor, kind: EffectKind): boolean {
+  const effects = actor.effects;
+  if (!effects) return false;
+  const idx = effects.findIndex(e => e.kind === kind);
+  if (idx < 0) return false;
+  effects.splice(idx, 1);
+  return true;
 }

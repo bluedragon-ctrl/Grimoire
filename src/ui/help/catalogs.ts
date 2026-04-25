@@ -5,7 +5,7 @@
 // fields stay required — this reader is purely additive.
 
 import type { HelpEntry, HelpExample } from "./types.js";
-import type { WearableDef, ProcSpec } from "../../types.js";
+import type { ProcSpec } from "../../types.js";
 import { SPELLS } from "../../content/spells.js";
 import { ITEMS, SLOTS } from "../../content/items.js";
 import { MONSTER_TEMPLATES } from "../../content/monsters.js";
@@ -74,29 +74,26 @@ export function itemEntries(): HelpEntry[] {
     const examples: HelpExample[] =
       d.help?.examples
         ? makeExamples(d.help.examples)
-        : d.category === "consumable"
+        : d.kind === "consumable"
           ? [{ code: `use("${d.id}")` }]
           : [];
-    const related = d.help?.related ?? (d.category === "consumable" ? ["commands/use"] : ["data/item"]);
-    const meta: Array<[string, string]> = [["category", d.category]];
+    const related = d.help?.related ?? (d.kind === "consumable" ? ["commands/use"] : ["data/item"]);
+    const meta: Array<[string, string]> = [["kind", d.kind]];
 
-    if (d.category === "wearable") {
-      const w = d as WearableDef;
-      meta.push(["slot", w.slot]);
-      meta.push(["level", String(w.level)]);
-      if (w.bonuses) {
-        const bonusList = Object.entries(w.bonuses).map(([k, v]) => `${k}:+${v}`).join(", ");
+    if (d.kind === "equipment") {
+      if (d.slot) meta.push(["slot", d.slot]);
+      meta.push(["level", String(d.level)]);
+      if (d.bonuses) {
+        const bonusList = Object.entries(d.bonuses).map(([k, v]) => `${k}:+${v}`).join(", ");
         meta.push(["bonuses", bonusList]);
       }
-      if (w.aura) meta.push(["aura", `${w.aura.kind}${w.aura.magnitude !== undefined ? ` ×${w.aura.magnitude}` : ""}`]);
-      if (w.on_hit)    meta.push(["on_hit",    procLine("on_hit",    w.on_hit)]);
-      if (w.on_damage) meta.push(["on_damage", procLine("on_damage", w.on_damage)]);
-      if (w.on_kill)   meta.push(["on_kill",   procLine("on_kill",   w.on_kill)]);
-      if (w.on_cast)   meta.push(["on_cast",   procLine("on_cast",   w.on_cast)]);
-    } else {
-      meta.push(["script", d.script]);
+      if (d.aura) meta.push(["aura", `${d.aura.kind}${d.aura.magnitude !== undefined ? ` ×${d.aura.magnitude}` : ""}`]);
+      if (d.on_hit)    meta.push(["on_hit",    procLine("on_hit",    d.on_hit)]);
+      if (d.on_damage) meta.push(["on_damage", procLine("on_damage", d.on_damage)]);
+      if (d.on_kill)   meta.push(["on_kill",   procLine("on_kill",   d.on_kill)]);
+      if (d.on_cast)   meta.push(["on_cast",   procLine("on_cast",   d.on_cast)]);
+      if (d.script)    meta.push(["script", d.script]);
     }
-
     out.push({
       id: d.id,
       path: `items/${d.id}`,

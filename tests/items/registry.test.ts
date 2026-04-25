@@ -1,45 +1,64 @@
 import { describe, it, expect } from "vitest";
-import type { WearableDef } from "../../src/types.js";
 import { ITEMS, BAG_SIZE, SLOTS } from "../../src/content/items.js";
 import { parseAllItems, getItemOps, validateAllWearables } from "../../src/items/execute.js";
 import { ITEM_VISUAL_PRESETS } from "../../src/content/item-visuals.js";
 
 describe("items registry", () => {
-  it("parseAllItems: all consumables parse without throwing", () => {
+  it("parseAllItems: parses without throwing", () => {
     expect(() => parseAllItems()).not.toThrow();
-  });
-
-  it("every consumable has a non-empty ItemOp[] after parse", () => {
-    for (const [id, def] of Object.entries(ITEMS)) {
-      if (def.category !== "consumable") continue;
-      const ops = getItemOps(id);
-      expect(ops.length, `${id} has no ops`).toBeGreaterThan(0);
-    }
-  });
-
-  it("getItemOps throws for wearables (they use structured data)", () => {
-    expect(() => getItemOps("cloth_cap")).toThrow();
   });
 
   it("validateAllWearables: all 31 wearables pass load-time validation", () => {
     expect(() => validateAllWearables()).not.toThrow();
   });
 
-  it("wearables have a valid slot", () => {
+  it("equipment items with DSL script parse to non-empty ItemOp[]", () => {
     for (const [id, def] of Object.entries(ITEMS)) {
-      if (def.category === "wearable") {
-        const w = def as WearableDef;
-        expect(SLOTS.includes(w.slot), `${id} missing/bad slot`).toBe(true);
+      if (def.kind === "equipment" && def.script) {
+        const ops = getItemOps(id);
+        expect(ops.length, `${id} ops empty`).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it("equipment items have a valid slot", () => {
+    for (const [id, def] of Object.entries(ITEMS)) {
+      if (def.kind === "equipment") {
+        expect(SLOTS.includes(def.slot!), `${id} missing/bad slot`).toBe(true);
+      }
+    }
+  });
+
+  it("consumables have useTarget, range, and body", () => {
+    for (const [id, def] of Object.entries(ITEMS)) {
+      if (def.kind === "consumable") {
+        expect(def.useTarget, `${id} missing useTarget`).toBeDefined();
+        expect(def.range, `${id} missing range`).toBeDefined();
+        expect(def.body, `${id} missing body`).toBeDefined();
+        expect(def.body!.length, `${id} empty body`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("scrolls have a spell field", () => {
+    for (const [id, def] of Object.entries(ITEMS)) {
+      if (def.kind === "scroll") {
+        expect(def.spell, `${id} missing spell`).toBeTruthy();
+      }
+    }
+  });
+
+  it("all items have level", () => {
+    for (const [id, def] of Object.entries(ITEMS)) {
+      expect(typeof def.level === "number", `${id} missing level`).toBe(true);
     }
   });
 
   it("every slot has at least 5 wearables", () => {
     const counts: Record<string, number> = {};
     for (const def of Object.values(ITEMS)) {
-      if (def.category === "wearable") {
-        const slot = (def as WearableDef).slot;
-        counts[slot] = (counts[slot] ?? 0) + 1;
+      if (def.kind === "equipment" && def.slot) {
+        counts[def.slot] = (counts[def.slot] ?? 0) + 1;
       }
     }
     for (const slot of SLOTS) {
@@ -47,9 +66,9 @@ describe("items registry", () => {
     }
   });
 
-  it("total wearable count is 31", () => {
-    const wearables = Object.values(ITEMS).filter(d => d.category === "wearable");
-    expect(wearables.length).toBe(31);
+  it("total equipment count is 31", () => {
+    const equipment = Object.values(ITEMS).filter(d => d.kind === "equipment");
+    expect(equipment.length).toBe(31);
   });
 
   it("every item has a visual preset", () => {

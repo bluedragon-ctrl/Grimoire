@@ -300,7 +300,7 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "wait":     return doWait(world, self);
     case "exit":     return doExit(world, self, action.door);
     case "halt":     return doHalt(world, self);
-    case "use":      return doUse(world, self, action.item);
+    case "use":      return doUse(world, self, action.item, action.target);
     case "pickup":   return doPickup(world, self, action.target);
     case "drop":     return doDrop(world, self, action.target);
     case "summon":   return doSummon(world, self, action.template, action.target);

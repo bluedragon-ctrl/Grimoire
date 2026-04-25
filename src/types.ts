@@ -125,7 +125,7 @@ export interface Actor {
   summoned?: boolean;
 }
 
-// ──────────────────────────── Items (Phase 7) ────────────────────────────
+// ──────────────────────────── Items (Phase 7 / 13.3) ────────────────────────────
 
 export type Slot = "hat" | "robe" | "staff" | "dagger" | "focus";
 
@@ -139,8 +139,21 @@ export interface Inventory {
   equipped: Record<Slot, ItemInstance | null>;
 }
 
-export type ItemCategory = "consumable" | "wearable";
+// Phase 13.3: unified item kind. "equipment" = wearable.
+export type ItemKind = "consumable" | "equipment" | "scroll";
 export type StatKey = "atk" | "def" | "int" | "speed" | "maxHp" | "maxMp";
+
+// Primitive op shape — moved here from content/spells.ts so ItemDef can reference
+// it without a circular import (spells.ts imports types.ts, not vice-versa).
+export type PrimitiveName =
+  | "project" | "inflict" | "heal" | "spawn_cloud"
+  | "explode" | "summon" | "teleport" | "push"
+  | "cleanse" | "permanent_boost";
+
+export interface SpellOp {
+  op: PrimitiveName;
+  args: Record<string, unknown>;
+}
 
 export interface ProcSpec {
   target: "attacker" | "self" | "victim";
@@ -154,36 +167,38 @@ export interface AuraSpec {
   magnitude?: number;
 }
 
-/** Consumable item — uses a script body executed by useItem(). */
-export interface ConsumableDef {
+export interface ItemDef {
   id: string;
   name: string;
   description: string;
-  category: "consumable";
-  script: string;
-  visualPreset?: string;
-  help?: import("./ui/help/types.js").HelpMeta;
-}
-
-/** Wearable item — structured data; no DSL script. */
-export interface WearableDef {
-  id: string;
-  name: string;
-  description: string;
-  category: "wearable";
-  slot: Slot;
+  /** Phase 13.3: unified kind. "equipment" = wearable. */
+  kind: ItemKind;
   level: number;
-  bonuses?: Partial<Record<StatKey, number>>;
-  on_hit?:    ProcSpec;   // wearer's melee lands
-  on_damage?: ProcSpec;   // wearer takes damage
-  on_kill?:   ProcSpec;   // wearer lands killing blow
-  on_cast?:   ProcSpec;   // wearer casts any spell
-  aura?: AuraSpec;        // continuous effect while equipped
+  // Equipment-only (kind === "equipment")
+  slot?: Slot;
+  script?: string;        // DSL merge/on_hit_inflict ops; parsed at registry load
+  bonuses?: Partial<Record<StatKey, number>>;   // Phase 13.4: additive stat bonuses
+  on_hit?:    ProcSpec;
+  on_damage?: ProcSpec;
+  on_kill?:   ProcSpec;
+  on_cast?:   ProcSpec;
+  aura?: AuraSpec;
+  // Consumable-only (kind === "consumable")
+  useTarget?: "self" | "ally" | "enemy" | "tile";
+  range?: number;
+  body?: SpellOp[];
+  polarity?: "buff" | "debuff";
+  // Scroll-only (kind === "scroll")
+  spell?: string;
+  // Shared optional
   visualPreset?: string;
   help?: import("./ui/help/types.js").HelpMeta;
 }
 
-export type ItemDef = ConsumableDef | WearableDef;
+/** @deprecated Use ItemDef with kind checks instead. */
+export type ConsumableDef = ItemDef;
+/** @deprecated Use ItemDef with kind checks instead. */
+export type WearableDef = ItemDef;
 
 // ──────────────────────────── Clouds (Phase 6) ────────────────────────────
 
@@ -201,7 +216,8 @@ export interface Cloud {
 export type EffectKind =
   | "burning" | "regen" | "haste" | "slow" | "poison"
   | "chill" | "shock" | "expose" | "might" | "iron_skin"
-  | "mana_regen" | "mana_burn" | "power" | "shield";
+  | "mana_regen" | "mana_burn" | "power" | "shield"
+  | "blinded";
 
 export type EffectSource =
   | { type: "actor"; id: string }
@@ -295,7 +311,9 @@ export type GameEvent =
   | { type: "ItemPickedUp"; actor: string; item: string; defId: string; pos: Pos }
   | { type: "ScriptError"; actor: string; message: string }
   | { type: "Summoned"; actor: string; summoner: string; template: string; pos: Pos }
-  | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" };
+  | { type: "Despawned"; actor: string; reason: "room_exit" | "summoner_died" }
+  | { type: "SpellLearned"; actor: string; spell: string }
+  | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -308,7 +326,7 @@ export type PendingAction =
   | { kind: "attack"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "cast"; cost: number; spell: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "wait"; cost: number; loc?: SourceLoc; locals?: Record<string, unknown> }
-  | { kind: "use"; cost: number; item: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "use"; cost: number; item: unknown; target?: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "pickup"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }

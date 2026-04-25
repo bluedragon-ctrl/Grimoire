@@ -7,16 +7,16 @@
 // for explode, a VisualBurst so visual adapters can still hook the effect
 // site.
 
-import type { Actor, Cloud, GameEvent, Pos, World, EffectKind } from "../types.js";
+import type { Actor, Cloud, GameEvent, Pos, World, EffectKind, PrimitiveName } from "../types.js";
 import { scale, scaleRadius } from "../content/scaling.js";
-import { applyEffect } from "../effects.js";
+import { applyEffect, REGISTRY as EFFECT_REGISTRY } from "../effects.js";
 import { createActor, MONSTER_TEMPLATES } from "../content/monsters.js";
 import { DSLRuntimeError } from "../lang/errors.js";
 
+// Re-export for downstream importers.
+export type { PrimitiveName } from "../types.js";
+
 export type PrimitiveTargetType = "actor" | "tile" | "self";
-export type PrimitiveName =
-  | "project" | "inflict" | "heal" | "spawn_cloud"
-  | "explode" | "summon" | "teleport" | "push";
 
 export type TargetRef = Actor | Pos;
 
@@ -276,6 +276,57 @@ const push: Primitive = {
   execute(_world, caster) { return [stubActionFailed(caster, "push")]; },
 };
 
+// ──────────────────────────── Phase 13.3 ────────────────────────────
+
+// cleanse: removes all debuff effects from the target actor.
+// Uses polarity field on EffectSpec (added Phase 13.3 commit 2).
+const cleanse: Primitive = {
+  name: "cleanse",
+  targetType: "actor",
+  execute(_world, _caster, target) {
+    const t = asActor(target);
+    if (!t) return [];
+    const effs = t.effects ?? [];
+    const keep: typeof effs = [];
+    const events: GameEvent[] = [];
+    for (const e of effs) {
+      const spec = EFFECT_REGISTRY[e.kind] as any;
+      if (spec && spec.polarity === "debuff") {
+        events.push({ type: "EffectExpired", actor: t.id, kind: e.kind });
+      } else {
+        keep.push(e);
+      }
+    }
+    t.effects = keep;
+    return events;
+  },
+};
+
+// permanent_boost: permanently increases a base stat on the target.
+// args: { stat: "hp"|"mp"|"atk"|"def"|"speed"|"int", amount: number }
+const permanent_boost: Primitive = {
+  name: "permanent_boost",
+  targetType: "actor",
+  execute(_world, _caster, target, args) {
+    const t = asActor(target);
+    if (!t) return [];
+    const stat = String(args.stat ?? "");
+    const amount = Number(args.amount ?? 0);
+    if (amount === 0) return [];
+    switch (stat) {
+      case "hp":    t.hp = Math.min(t.maxHp + amount, t.hp + amount); t.maxHp += amount; break;
+      case "mp":    t.mp = Math.min((t.maxMp ?? 0) + amount, (t.mp ?? 0) + amount); t.maxMp = (t.maxMp ?? 0) + amount; break;
+      case "atk":   t.atk = (t.atk ?? 0) + amount; break;
+      case "def":   t.def = (t.def ?? 0) + amount; break;
+      case "speed": t.speed += amount; break;
+      case "int":   t.int = (t.int ?? 0) + amount; break;
+      default: return [];
+    }
+    return [{ type: "See", actor: t.id, what: `stat:${stat}+${amount}` }];
+  },
+};
+
 export const PRIMITIVES: Record<PrimitiveName, Primitive> = {
   project, inflict, heal, spawn_cloud, explode, summon, teleport, push,
+  cleanse, permanent_boost,
 };

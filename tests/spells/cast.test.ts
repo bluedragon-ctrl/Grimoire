@@ -1,36 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, World, Room, GameEvent } from "../../src/types.js";
+import type { Actor } from "../../src/types.js";
 import { castSpell } from "../../src/spells/cast.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
-
-function mkWorld(actors: Actor[], room?: Partial<Room>): World {
-  return {
-    tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [], ...room },
-    actors, log: [], aborted: false, ended: false,
-  };
-}
-
-function mkHero(over: Partial<Actor> & { id: string; pos: { x: number; y: number } }): Actor {
-  return {
-    kind: "hero", isHero: true,
-    hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
-    script: script(cHalt()),
-    mp: 20, maxMp: 20, atk: 3, def: 0, int: 0,
-    effects: [], knownSpells: ["bolt", "heal"],
-    ...over,
-  };
-}
-function mkGoblin(over: Partial<Actor> & { id: string; pos: { x: number; y: number } }): Actor {
-  return {
-    kind: "goblin",
-    hp: 10, maxHp: 10, speed: 10, energy: 0, alive: true,
-    script: script(cHalt()),
-    mp: 0, maxMp: 0, atk: 1, def: 0, int: 0,
-    effects: [], knownSpells: [],
-    ...over,
-  };
-}
+import { mkWorld, mkHero, mkGoblin } from "../helpers.js";
 
 describe("castSpell validation", () => {
   it("unknown spell → ActionFailed with did-you-mean; no mana deducted", () => {
@@ -110,14 +82,11 @@ describe("castSpell validation", () => {
   it("failed cast does not cost energy (runs through engine)", async () => {
     const { runRoom } = await import("../../src/engine.js");
     const { call, lit, ident, exprStmt, while_ } = await import("../../src/ast-helpers.js");
-    // Hero attempts to cast unknown spell — should ActionFailed repeatedly,
-    // with energy refunded so cast fires each tick, and eventually halt.
     const hero: Actor = {
       id: "h", kind: "hero", isHero: true, hp: 20, maxHp: 20, speed: 12, energy: 0, alive: true,
       pos: { x: 0, y: 0 }, mp: 100, maxMp: 100, int: 0,
       knownSpells: ["bolt", "heal"],
       script: script(
-        // try unknown spell 3 times, then halt
         exprStmt(call("cast", lit("nope"), ident("me"))),
         exprStmt(call("cast", lit("nope"), ident("me"))),
         exprStmt(call("cast", lit("nope"), ident("me"))),
@@ -135,10 +104,87 @@ describe("castSpell validation", () => {
     }, { maxTicks: 200 });
     const fails = log.filter(l => l.event.type === "ActionFailed" && (l.event as any).action === "cast");
     expect(fails.length).toBe(3);
-    // With energy refund the casts fire on consecutive non-empty energy slots,
-    // all within a small tick span. Without refund the hero would stall.
     const firstFailTick = fails[0]!.t;
     const lastFailTick = fails[fails.length - 1]!.t;
     expect(lastFailTick - firstFailTick).toBeLessThan(5);
+  });
+});
+
+// ─── blinded gate ──────────────────────────────────────────────────────────────
+
+function withBlinded(a: Actor): Actor {
+  a.effects = [...(a.effects ?? []), {
+    id: "blinded-test", kind: "blinded", target: a.id,
+    duration: 1, remaining: 1, tickEvery: 1,
+  }];
+  return a;
+}
+
+describe("blinded gate in castSpell", () => {
+  it("blinded caster can still cast at adjacent target (Chebyshev 1)", () => {
+    const h = withBlinded(mkHero({ id: "h", pos: { x: 0, y: 0 } }));
+    const g = mkGoblin({ id: "g", pos: { x: 1, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("blinded caster cannot cast at target Chebyshev > 1", () => {
+    const h = withBlinded(mkHero({ id: "h", pos: { x: 0, y: 0 } }));
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events[0]).toMatchObject({ type: "ActionFailed" });
+    expect((events[0] as any).reason).toContain("blinded");
+    expect(h.mp).toBe(20); // no mana spent
+  });
+
+  it("non-blinded caster can cast at range", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const w = mkWorld([h, g]);
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+});
+
+// ─── smoke LOS gate ────────────────────────────────────────────────────────────
+
+describe("smoke LOS gate in castSpell", () => {
+  it("smoke between caster and target blocks spell", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect((events[0] as any).type).toBe("ActionFailed");
+    expect((events[0] as any).reason).toContain("line of sight");
+    expect(h.mp).toBe(20);
+  });
+
+  it("adjacent target is never blocked by smoke", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 1, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("smoke on caster's own tile does not block ranged cast", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 } });
+    const g = mkGoblin({ id: "g", pos: { x: 3, y: 0 } });
+    const smoke = { id: "c1", pos: { x: 0, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h, g], { clouds: [smoke] });
+    const events = castSpell(w, h, "bolt", g);
+    expect(events.some(e => e.type === "Hit")).toBe(true);
+  });
+
+  it("self-targeted spell ignores smoke", () => {
+    const h = mkHero({ id: "h", pos: { x: 0, y: 0 }, hp: 5, knownSpells: ["heal"] });
+    const smoke = { id: "c1", pos: { x: 1, y: 0 }, kind: "smoke" as const, duration: 20, remaining: 20 };
+    const w = mkWorld([h], { clouds: [smoke] });
+    const events = castSpell(w, h, "heal", h);
+    expect(events.some(e => e.type === "Healed")).toBe(true);
   });
 });

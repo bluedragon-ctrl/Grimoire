@@ -1,26 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, Room, World, GameEvent } from "../../src/types.js";
+import type { GameEvent } from "../../src/types.js";
 import { PRIMITIVES } from "../../src/spells/primitives.js";
 import { hasEffect } from "../../src/effects.js";
-import { script, cHalt } from "../../src/ast-helpers.js";
-
-function mkWorld(actors: Actor[], room?: Partial<Room>): World {
-  return {
-    tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [], ...room },
-    actors, log: [], aborted: false, ended: false,
-  };
-}
-
-function mkActor(over: Partial<Actor> & Pick<Actor, "id" | "kind" | "pos">): Actor {
-  return {
-    hp: over.hp ?? 20, maxHp: over.maxHp ?? 20, speed: 10, energy: 0,
-    alive: true, script: script(cHalt()),
-    mp: 20, maxMp: 20, atk: 1, def: 0, int: 0, effects: [],
-    knownSpells: [],
-    ...over,
-  };
-}
+import { mkWorld, mkActor } from "../helpers.js";
 
 describe("primitives", () => {
   it("project scales damage with caster int", () => {
@@ -90,7 +72,6 @@ describe("primitives", () => {
   });
 
   it("compound sequencing: project + inflict runs in order", () => {
-    // Simulate firebolt's body manually.
     const caster = mkActor({ id: "c", kind: "hero", pos: { x: 0, y: 0 }, int: 0 });
     const tgt = mkActor({ id: "t", kind: "goblin", pos: { x: 1, y: 0 }, hp: 10, maxHp: 10 });
     const w = mkWorld([caster, tgt]);
@@ -98,7 +79,6 @@ describe("primitives", () => {
     const e2 = PRIMITIVES.inflict.execute(w, caster, tgt, { kind: "burning", duration: 30 });
     expect(tgt.hp).toBe(7);
     expect(hasEffect(tgt, "burning")).toBe(true);
-    // Hit before EffectApplied.
     const all: GameEvent[] = [...e1, ...e2];
     const iHit = all.findIndex(e => e.type === "Hit");
     const iApp = all.findIndex(e => e.type === "EffectApplied");

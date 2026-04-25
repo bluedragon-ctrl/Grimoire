@@ -1,19 +1,17 @@
 // Item execution: useItem / equipItem / unequipItem + proc hooks.
 //
-// Design:
-// - Consumables run their parsed ItemOp[] and consume the bag slot.
-// - Wearables use structured data (WearableDef.bonuses / procs / aura);
-//   no DSL script. getEquipmentBonuses is additive across all equipped slots.
-// - Aura effects (WearableDef.aura) are applied on equip with Infinity duration
-//   and removed on unequip. Source is { type:"item", id:defId }; they are immune
-//   to cleanse (checked in useItem).
+// - Consumables dispatch SpellOp[] body through PRIMITIVES at use-time.
+// - Equipment (wearables): structured data (bonuses, procs, aura). Aura effects
+//   are applied on equip with Infinity duration and removed on unequip; they are
+//   immune to cleanse (source.type === "item").
 // - Four proc hooks (on_hit, on_damage, on_kill, on_cast) share fireProcSpec:
 //   chance gate → target resolution → effect + damage application.
 // - Loop guard: proc damage is tagged fromProc:true. onDamageHook returns []
 //   when fromProc is true, preventing retaliation chains.
+// - Bonus aggregation: additive across all equipped slots.
 
 import type {
-  Actor, ItemInstance, ProcSpec, WearableDef, Slot, World, GameEvent,
+  Actor, ItemInstance, ItemDef, ProcSpec, Slot, World, GameEvent, Pos,
 } from "../types.js";
 import { ITEMS, BAG_SIZE, SLOTS, emptyEquipped } from "../content/items.js";
 import { parseItemScript, type ItemOp, type MergeStat } from "./script.js";
@@ -21,10 +19,11 @@ import {
   applyEffect, wireEquipmentBonuses, wireOnKillHook,
   callOnKillHook, REGISTRY as EFFECT_REGISTRY,
 } from "../effects.js";
+import { PRIMITIVES, type TargetRef } from "../spells/primitives.js";
 import { spawnOverflowDrop } from "./loot.js";
 import { worldRandom } from "../rng.js";
 
-// ──────────────────────────── parse cache (consumables only) ────────────────────────────
+// ──────────────────────────── parse cache (equipment with DSL script) ────────────────────────────
 
 const OP_CACHE = new Map<string, ItemOp[]>();
 
@@ -33,23 +32,20 @@ export function getItemOps(defId: string): ItemOp[] {
   if (cached) return cached;
   const def = ITEMS[defId];
   if (!def) throw new Error(`unknown item '${defId}'`);
-  if (def.category !== "consumable") {
-    throw new Error(`getItemOps called on wearable '${defId}' — wearables use structured data`);
-  }
+  if (!def.script) { const empty: ItemOp[] = []; OP_CACHE.set(defId, empty); return empty; }
   cached = parseItemScript(defId, def.script);
   OP_CACHE.set(defId, cached);
   return cached;
 }
 
-// Parse every consumable — used at load-time to fail fast on bad content.
+// Parse every equipment item with a DSL script — used at load-time to fail fast on bad content.
 export function parseAllItems(): void {
   for (const [id, def] of Object.entries(ITEMS)) {
-    if (def.category === "consumable") getItemOps(id);
+    if (def.kind === "equipment" && def.script) getItemOps(id);
   }
 }
 
-// Validate all wearables at load time: effect kinds, stat keys, target arity,
-// chance range.
+// Validate all wearables at load time: effect kinds, stat keys, target arity, chance range.
 export function validateAllWearables(): void {
   const validEffectKinds = new Set(Object.keys(EFFECT_REGISTRY));
   const validStatKeys = new Set<string>(["atk", "def", "int", "speed", "maxHp", "maxMp"]);
@@ -78,27 +74,26 @@ export function validateAllWearables(): void {
   }
 
   for (const [id, def] of Object.entries(ITEMS)) {
-    if (def.category !== "wearable") continue;
-    const w = def as WearableDef;
+    if (def.kind !== "equipment") continue;
 
-    if (w.bonuses) {
-      for (const k of Object.keys(w.bonuses)) {
+    if (def.bonuses) {
+      for (const k of Object.keys(def.bonuses)) {
         if (!validStatKeys.has(k)) throw new Error(`[${id}] invalid stat key '${k}'`);
       }
     }
-    if (w.aura && !validEffectKinds.has(w.aura.kind)) {
-      throw new Error(`[${id}] aura.kind '${w.aura.kind}' unknown`);
+    if (def.aura && !validEffectKinds.has(def.aura.kind)) {
+      throw new Error(`[${id}] aura.kind '${def.aura.kind}' unknown`);
     }
-    checkProc(id, "on_hit",    w.on_hit,    ["victim"]);
-    checkProc(id, "on_damage", w.on_damage, ["attacker", "self"]);
-    checkProc(id, "on_kill",   w.on_kill,   ["victim", "self"]);
-    checkProc(id, "on_cast",   w.on_cast,   ["self"]);
+    checkProc(id, "on_hit",    def.on_hit,    ["victim"]);
+    checkProc(id, "on_damage", def.on_damage, ["attacker", "self"]);
+    checkProc(id, "on_kill",   def.on_kill,   ["victim", "self"]);
+    checkProc(id, "on_cast",   def.on_cast,   ["self"]);
   }
 
   // Verify every slot has at least one wearable.
   const covered = new Set<Slot>();
   for (const def of Object.values(ITEMS)) {
-    if (def.category === "wearable") covered.add((def as WearableDef).slot);
+    if (def.kind === "equipment" && def.slot) covered.add(def.slot);
   }
   for (const slot of SLOTS) {
     if (!covered.has(slot)) throw new Error(`no wearable registered for slot '${slot}'`);
@@ -128,62 +123,34 @@ function fail(actor: Actor, reason: string): GameEvent {
   return { type: "ActionFailed", actor: actor.id, action: "use", reason };
 }
 
-export function useItem(world: World, actor: Actor, instance: ItemInstance): GameEvent[] {
+// Execute a consumable item, dispatching its SpellOp[] body through PRIMITIVES.
+// targetActor / targetPos are pre-resolved and pre-validated by doUse (commands.ts).
+export function useItem(
+  world: World,
+  actor: Actor,
+  instance: ItemInstance,
+  targetActor?: Actor | null,
+  targetPos?: Pos | null,
+): GameEvent[] {
   const def = ITEMS[instance.defId];
   if (!def) return [fail(actor, `Unknown item '${instance.defId}'.`)];
-  if (def.category !== "consumable") return [fail(actor, `${def.name} is not a consumable.`)];
+  if (def.kind !== "consumable") return [fail(actor, `${def.name} is not a consumable.`)];
 
   const idx = findInBag(actor, instance);
   if (idx < 0) return [fail(actor, `${def.name} is not in your bag.`)];
 
-  const ops = getItemOps(def.id);
-  const events: GameEvent[] = [];
+  const resolvedActor: Actor = targetActor ?? actor;
+  const resolvedPos: Pos = targetPos ?? actor.pos;
 
-  for (const op of ops) {
-    switch (op.op) {
-      case "apply": {
-        events.push(...applyEffect(world, actor.id, op.effectId, op.duration, {
-          source: { type: "item", id: def.id },
-        }));
-        break;
-      }
-      case "restore": {
-        if (op.pool === "hp") {
-          const healed = Math.min(op.amount, actor.maxHp - actor.hp);
-          if (healed > 0) {
-            actor.hp += healed;
-            events.push({ type: "Healed", actor: actor.id, amount: healed });
-          }
-        } else {
-          const maxMp = actor.maxMp ?? 0;
-          const cur = actor.mp ?? 0;
-          const restored = Math.min(op.amount, maxMp - cur);
-          if (restored > 0) actor.mp = cur + restored;
-        }
-        break;
-      }
-      case "cleanse": {
-        const effs = actor.effects ?? [];
-        const keep: typeof effs = [];
-        for (const e of effs) {
-          // Item-sourced effects (auras) are immune to cleanse.
-          if (e.kind === op.effectId && e.source?.type !== "item") {
-            events.push({ type: "EffectExpired", actor: actor.id, kind: e.kind });
-          } else {
-            keep.push(e);
-          }
-        }
-        actor.effects = keep;
-        break;
-      }
-      case "modify": {
-        bumpBaseStat(actor, op.stat, op.amount);
-        break;
-      }
-      case "merge":
-      case "on_hit_inflict":
-        break;
+  const events: GameEvent[] = [];
+  for (const op of (def.body ?? [])) {
+    const prim = PRIMITIVES[op.op];
+    if (!prim) {
+      events.push(fail(actor, `Unknown primitive '${op.op}'.`));
+      continue;
     }
+    const ref: TargetRef = prim.targetType === "tile" ? resolvedPos : resolvedActor;
+    events.push(...prim.execute(world, actor, ref, op.args));
   }
 
   ensureInventory(actor).consumables.splice(idx, 1);
@@ -191,21 +158,9 @@ export function useItem(world: World, actor: Actor, instance: ItemInstance): Gam
   return events;
 }
 
-function bumpBaseStat(actor: Actor, stat: MergeStat, amount: number): void {
-  switch (stat) {
-    case "atk":   actor.atk   = (actor.atk   ?? 0) + amount; break;
-    case "def":   actor.def   = (actor.def   ?? 0) + amount; break;
-    case "int":   actor.int   = (actor.int   ?? 0) + amount; break;
-    case "speed": actor.speed = actor.speed + amount; break;
-    case "maxHp": actor.maxHp = actor.maxHp + amount; break;
-    case "maxMp": actor.maxMp = (actor.maxMp ?? 0) + amount; break;
-  }
-}
-
 // ──────────────────────────── aura helpers ────────────────────────────
 
-// Remove all effects whose source is { type:"item", id: itemDefId }.
-// Fires onExpire hooks so shield pools etc. clean up correctly.
+// Remove all effects sourced from a specific equipped item (auras).
 function removeItemEffects(world: World, actor: Actor, itemDefId: string): GameEvent[] {
   if (!actor.effects) return [];
   const events: GameEvent[] = [];
@@ -223,11 +178,11 @@ function removeItemEffects(world: World, actor: Actor, itemDefId: string): GameE
   return events;
 }
 
-function applyAura(world: World, actor: Actor, w: WearableDef): GameEvent[] {
-  if (!w.aura) return [];
-  return applyEffect(world, actor.id, w.aura.kind, Infinity, {
-    source: { type: "item", id: w.id },
-    magnitude: w.aura.magnitude,
+function applyAura(world: World, actor: Actor, def: ItemDef): GameEvent[] {
+  if (!def.aura) return [];
+  return applyEffect(world, actor.id, def.aura.kind, Infinity, {
+    source: { type: "item", id: def.id },
+    magnitude: def.aura.magnitude,
   });
 }
 
@@ -236,22 +191,19 @@ function applyAura(world: World, actor: Actor, w: WearableDef): GameEvent[] {
 export function equipItem(world: World, actor: Actor, instance: ItemInstance): GameEvent[] {
   const def = ITEMS[instance.defId];
   if (!def) return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `Unknown item '${instance.defId}'.` }];
-  if (def.category !== "wearable") {
+  if (def.kind !== "equipment" || !def.slot) {
     return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `${def.name} cannot be equipped.` }];
   }
-  const w = def as WearableDef;
   const inv = ensureInventory(actor);
   const idx = inv.consumables.findIndex(i => i.id === instance.id);
   if (idx < 0) return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `${def.name} is not in your bag.` }];
 
-  const slot = w.slot;
+  const slot = def.slot;
   const events: GameEvent[] = [];
   const prev = inv.equipped[slot];
 
-  // Pull the incoming instance out of the bag first.
   inv.consumables.splice(idx, 1);
 
-  // If the slot was occupied: remove its aura, return it to bag, emit Unequipped.
   if (prev) {
     events.push(...removeItemEffects(world, actor, prev.defId));
     events.push({ type: "ItemUnequipped", actor: actor.id, item: prev.id, defId: prev.defId, slot });
@@ -259,9 +211,7 @@ export function equipItem(world: World, actor: Actor, instance: ItemInstance): G
   }
 
   inv.equipped[slot] = instance;
-
-  // Apply new item's aura (if any). Swap order: A remove above, B apply here → no gap/double.
-  events.push(...applyAura(world, actor, w));
+  events.push(...applyAura(world, actor, def));
   events.push({ type: "ItemEquipped", actor: actor.id, item: instance.id, defId: def.id, slot });
   return events;
 }
@@ -273,11 +223,8 @@ export function unequipItem(world: World, actor: Actor, slot: Slot): GameEvent[]
   inv.equipped[slot] = null;
   const def = ITEMS[inst.defId]!;
   const events: GameEvent[] = [];
-
-  // Remove item-sourced effects (aura) before unequip event.
   events.push(...removeItemEffects(world, actor, inst.defId));
   events.push({ type: "ItemUnequipped", actor: actor.id, item: inst.id, defId: def.id, slot });
-
   if (inv.consumables.length < BAG_SIZE) {
     inv.consumables.push(inst);
   } else {
@@ -288,8 +235,7 @@ export function unequipItem(world: World, actor: Actor, slot: Slot): GameEvent[]
 
 // ──────────────────────────── bonus aggregation (additive) ────────────────────────────
 
-// Fold all equipped WearableDef.bonuses additively. Each item contributes its
-// bonuses independently; two items with +2 int give +4 int total.
+// Sum bonuses across all equipped slots. Two items each with +2 int yield +4 total.
 export function getEquipmentBonuses(actor: Actor): Partial<Record<MergeStat, number>> {
   const inv = actor.inventory;
   if (!inv) return {};
@@ -298,11 +244,19 @@ export function getEquipmentBonuses(actor: Actor): Partial<Record<MergeStat, num
     const inst = inv.equipped[slotKey];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
-    if (!def || def.category !== "wearable") continue;
-    const w = def as WearableDef;
-    if (!w.bonuses) continue;
-    for (const [stat, amount] of Object.entries(w.bonuses) as [MergeStat, number][]) {
-      out[stat] = (out[stat] ?? 0) + amount;
+    if (!def || def.kind !== "equipment") continue;
+    if (def.bonuses) {
+      for (const [stat, amount] of Object.entries(def.bonuses) as [MergeStat, number][]) {
+        out[stat] = (out[stat] ?? 0) + amount;
+      }
+    }
+    // Legacy DSL-script equipment still contributes via merge ops.
+    if (def.script) {
+      for (const op of getItemOps(inst.defId)) {
+        if (op.op !== "merge") continue;
+        const cur = out[op.stat] ?? 0;
+        if (op.amount > cur) out[op.stat] = op.amount;
+      }
     }
   }
   return out;
@@ -310,9 +264,7 @@ export function getEquipmentBonuses(actor: Actor): Partial<Record<MergeStat, num
 
 // ──────────────────────────── proc engine ────────────────────────────
 
-// Core proc application: chance gate, target liveness check, effect + damage.
-// target is pre-resolved by the caller; null = silently skip.
-// itemDefId is the wearable that owns this proc (used as effect source).
+// Shared proc execution: chance gate → target liveness → effect + damage/heal.
 function fireProcSpec(
   world: World,
   wearer: Actor,
@@ -320,7 +272,6 @@ function fireProcSpec(
   target: Actor | null,
   itemDefId: string,
 ): GameEvent[] {
-  // Chance gate — uses seeded world RNG for determinism.
   if (proc.chance !== undefined && proc.chance < 100) {
     if (worldRandom(world) * 100 >= proc.chance) return [];
   }
@@ -328,7 +279,6 @@ function fireProcSpec(
 
   const events: GameEvent[] = [];
 
-  // Apply status effect.
   if (proc.effect) {
     events.push(...applyEffect(world, target.id, proc.effect.kind, proc.effect.duration, {
       source: { type: "item", id: itemDefId },
@@ -336,7 +286,6 @@ function fireProcSpec(
     }));
   }
 
-  // Apply damage or heal. negative damage = heal target by |damage|.
   if (proc.damage !== undefined) {
     if (proc.damage < 0) {
       const healAmt = Math.min(-proc.damage, target.maxHp - target.hp);
@@ -345,14 +294,12 @@ function fireProcSpec(
         events.push({ type: "Healed", actor: target.id, amount: healAmt });
       }
     } else if (proc.damage > 0) {
-      // Proc damage: tagged fromProc:true so onDamageHook ignores it (loop guard).
       target.hp -= proc.damage;
       events.push({ type: "Hit", actor: target.id, attacker: wearer.id, damage: proc.damage, fromProc: true });
       if (target.hp <= 0 && target.alive) {
         target.alive = false;
         events.push({ type: "Died", actor: target.id });
         if (target.isHero) events.push({ type: "HeroDied", actor: target.id });
-        // No recursive on_kill for proc damage (one-step retaliation guard).
       }
     }
   }
@@ -362,8 +309,6 @@ function fireProcSpec(
 
 // ──────────────────────────── on_hit hook ────────────────────────────
 
-// Fires after a successful melee connect. Checks ALL equipped slots (staves
-// and daggers both carry on_hit procs). Skipped if defender is already dead.
 export function onHitHook(world: World, attacker: Actor, defender: Actor): GameEvent[] {
   if (!defender.alive) return [];
   const inv = attacker.inventory;
@@ -373,21 +318,16 @@ export function onHitHook(world: World, attacker: Actor, defender: Actor): GameE
     const inst = inv.equipped[slot];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
-    if (!def || def.category !== "wearable") continue;
-    const w = def as WearableDef;
-    if (!w.on_hit) continue;
+    if (!def || def.kind !== "equipment" || !def.on_hit) continue;
     events.push({ type: "OnHitTriggered", attacker: attacker.id, defender: defender.id, item: inst.id, defId: def.id });
-    events.push(...fireProcSpec(world, attacker, w.on_hit, defender, def.id));
+    events.push(...fireProcSpec(world, attacker, def.on_hit, defender, def.id));
   }
   return events;
 }
 
 // ──────────────────────────── on_damage hook ────────────────────────────
 
-// Fires after the wearer's hp updates from a hit. fromProc=true → skip entirely
-// (loop guard: proc retaliation damage must not re-trigger on_damage).
-// attacker=null for sourceless damage (cloud ticks, environment); procs with
-// target:"attacker" silently skip in that case.
+// fromProc=true → skip (loop guard: proc retaliation must not re-trigger on_damage).
 export function onDamageHook(
   world: World,
   wearer: Actor,
@@ -402,32 +342,25 @@ export function onDamageHook(
     const inst = inv.equipped[slot];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
-    if (!def || def.category !== "wearable") continue;
-    const w = def as WearableDef;
-    if (!w.on_damage) continue;
+    if (!def || def.kind !== "equipment" || !def.on_damage) continue;
     let target: Actor | null;
-    if (w.on_damage.target === "self") {
+    if (def.on_damage.target === "self") {
       target = wearer;
     } else {
-      // target: "attacker"
-      if (!attacker) continue; // sourceless damage — skip silently
+      if (!attacker) continue;
       target = attacker;
     }
-    events.push(...fireProcSpec(world, wearer, w.on_damage, target, def.id));
+    events.push(...fireProcSpec(world, wearer, def.on_damage, target, def.id));
   }
   return events;
 }
 
 // ──────────────────────────── on_kill hook ────────────────────────────
 
-// Fires when the killer lands a killing blow. target:"self" heals/buffs the
-// killer; target:"victim" applies to the slain actor (position-based effects).
 export function onKillHook(world: World, killer: Actor, victim: Actor): GameEvent[] {
   return callOnKillHook(world, killer, victim);
 }
 
-// Internal implementation — called by the wire injected into effects.ts so
-// DoT/effect kills also fire this hook.
 function _onKillImpl(world: World, killer: Actor, victim: Actor): GameEvent[] {
   const inv = killer.inventory;
   if (!inv) return [];
@@ -436,18 +369,15 @@ function _onKillImpl(world: World, killer: Actor, victim: Actor): GameEvent[] {
     const inst = inv.equipped[slot];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
-    if (!def || def.category !== "wearable") continue;
-    const w = def as WearableDef;
-    if (!w.on_kill) continue;
-    const target = w.on_kill.target === "self" ? killer : victim;
-    events.push(...fireProcSpec(world, killer, w.on_kill, target, def.id));
+    if (!def || def.kind !== "equipment" || !def.on_kill) continue;
+    const target = def.on_kill.target === "self" ? killer : victim;
+    events.push(...fireProcSpec(world, killer, def.on_kill, target, def.id));
   }
   return events;
 }
 
 // ──────────────────────────── on_cast hook ────────────────────────────
 
-// Fires after any successful spell cast. target is always "self".
 export function onCastHook(world: World, caster: Actor): GameEvent[] {
   const inv = caster.inventory;
   if (!inv) return [];
@@ -456,11 +386,8 @@ export function onCastHook(world: World, caster: Actor): GameEvent[] {
     const inst = inv.equipped[slot];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
-    if (!def || def.category !== "wearable") continue;
-    const w = def as WearableDef;
-    if (!w.on_cast) continue;
-    // target: "self" only
-    events.push(...fireProcSpec(world, caster, w.on_cast, caster, def.id));
+    if (!def || def.kind !== "equipment" || !def.on_cast) continue;
+    events.push(...fireProcSpec(world, caster, def.on_cast, caster, def.id));
   }
   return events;
 }
@@ -478,11 +405,7 @@ export function addToBag(actor: Actor, instance: ItemInstance): boolean {
   return true;
 }
 
-// Expose the effect registry so callers outside this module can validate
-// effect kinds without re-importing effects.ts (keeps the public surface small).
 export const _EFFECTS = EFFECT_REGISTRY;
 
-// Wire the bonus calculator and on_kill hook into their respective modules.
-// One-shot at module load.
 wireEquipmentBonuses(getEquipmentBonuses);
 wireOnKillHook(_onKillImpl);
