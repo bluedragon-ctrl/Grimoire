@@ -40,14 +40,14 @@ describe("goblin AI", () => {
 });
 
 describe("cultist AI", () => {
-  it("casts bolt when the hero is in range and MP is available", () => {
+  it("casts firebolt when the hero is in range and MP is available", () => {
     const hero = passiveHero({ x: 0, y: 0 }, { hp: 50, maxHp: 50 });
     const cult = createActor("cultist", { x: 3, y: 0 }, "c1");
     const { log } = runRoom({ room: emptyRoom(), actors: [hero, cult] }, { maxTicks: 30 });
 
     const casts = log.filter(l => l.event.type === "Cast" && (l.event as any).actor === "c1");
     expect(casts.length).toBeGreaterThanOrEqual(1);
-    expect((casts[0]!.event as any).spell).toBe("bolt");
+    expect((casts[0]!.event as any).spell).toBe("firebolt");
   });
 
   it("approaches when out of range", () => {

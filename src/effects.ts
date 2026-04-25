@@ -299,6 +299,11 @@ export function applyEffect(
   const spec = REGISTRY[kind];
   if (!spec) return [];
 
+  // Phase 14: respect template-declared immunities. The Hit/damage event
+  // emitted by project/explode still lands; only the effect attachment is
+  // suppressed (silently — no event).
+  if (actor.immunities && actor.immunities.includes(kind)) return [];
+
   const effects = actor.effects ?? (actor.effects = []);
   const existing = effects.find(e => e.kind === kind);
   if (existing) {

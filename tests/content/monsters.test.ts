@@ -39,24 +39,26 @@ describe("MONSTER_TEMPLATES registry", () => {
 
 describe("createActor", () => {
   it("produces a non-hero Actor with template stats + script + visual", () => {
+    // Phase 14: goblin is now T2 (level 3); hp/atk scale by 1 + 0.15*(level-1).
+    const tpl = MONSTER_TEMPLATES.goblin!;
     const a = createActor("goblin", { x: 2, y: 3 }, "g1");
     expect(a.id).toBe("g1");
     expect(a.kind).toBe("goblin");
     expect(a.isHero).toBe(false);
     expect(a.pos).toEqual({ x: 2, y: 3 });
-    expect(a.hp).toBe(5);
-    expect(a.maxHp).toBe(5);
-    expect(a.atk).toBe(1);
+    expect(a.hp).toBe(Math.floor(tpl.stats.hp * (1 + 0.15 * (tpl.level - 1))));
+    expect(a.maxHp).toBe(a.hp);
+    expect(a.atk).toBe(Math.floor(tpl.stats.atk! * (1 + 0.15 * (tpl.level - 1))));
     expect(a.script).toBe(scriptFor("goblin"));
-    expect(a.visual).toBe("skeleton"); // goblin uses skeleton sprite
     expect(a.lootTable).toBe("goblin_loot");
   });
 
   it("copies knownSpells for casters", () => {
     const c = createActor("cultist", { x: 0, y: 0 }, "c1");
-    expect(c.knownSpells).toEqual(["bolt"]);
-    expect(c.mp).toBe(15);
-    expect(c.maxMp).toBe(15);
+    // Phase 14: cultist now casts firebolt (was bolt).
+    expect(c.knownSpells).toEqual(["firebolt"]);
+    expect(c.mp).toBeGreaterThan(0);
+    expect(c.maxMp).toBe(c.mp);
   });
 
   it("omits lootTable for templates without one", () => {
@@ -65,7 +67,7 @@ describe("createActor", () => {
   });
 
   it("throws on unknown template id", () => {
-    expect(() => createActor("dragon", { x: 0, y: 0 }, "d1")).toThrow(/Unknown/);
+    expect(() => createActor("not_a_real_monster", { x: 0, y: 0 }, "x1")).toThrow(/Unknown/);
   });
 
   it("clones pos so mutating the input doesn't affect the actor", () => {

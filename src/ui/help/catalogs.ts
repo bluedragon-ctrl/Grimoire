@@ -141,7 +141,7 @@ export function monsterEntries(): HelpEntry[] {
       category: "monsters",
       name: t.name,
       blurb,
-      body: `AI script (same DSL your hero uses):\n\n\`\`\`\n${t.ai.trim()}\n\`\`\``,
+      body: `AI script (same DSL your hero uses):\n\n\`\`\`\n${(t.ai ?? "").trim()}\n\`\`\``,
       examples,
       related,
       meta,

@@ -151,6 +151,7 @@ export const MONSTER_VISUALS: Record<string, VisualSpec> = Object.freeze({
   air_elemental:     { renderer: "air_elemental",     category: "monster", defaultColors: { wind: "#aaccee", mist: "#ddeeff", core: "#ffffff" } },
   earth_elemental:   { renderer: "earth_elemental",   category: "monster", defaultColors: { stone: "#887755", crack: "#553322", lava: "#ff8833" } },
   giant_snail:       { renderer: "giant_snail",       category: "monster", defaultColors: { shell: "#aa7733", body: "#88aa44", eyes: "#ffee44" } },
+  mage:              { renderer: "mage",              category: "monster", defaultColors: { robe: "#3344aa", hat: "#222288", staff: "#aa6633" } },
 });
 
 // ── Tile visuals ─────────────────────────────────────────────────────────────

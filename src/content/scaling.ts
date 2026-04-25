@@ -10,3 +10,10 @@ export function scale(base: number, int: number): number {
 export function scaleRadius(base: number, int: number): number {
   return base + Math.floor(int / 8);
 }
+
+// Phase 14: monster level scaling. Applied to hp/maxHp/mp/maxMp/atk/def/int
+// at spawn time. Speed and immunities/family do NOT scale.
+// Templates store the stats at level 1 baseline.
+export function scaleByLevel(base: number, level: number): number {
+  return Math.floor(base * (1 + 0.15 * (level - 1)));
+}
