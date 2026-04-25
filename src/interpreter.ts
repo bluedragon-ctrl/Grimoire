@@ -10,6 +10,7 @@ import type {
 } from "./types.js";
 import { COST, queries } from "./commands.js";
 import { DSLRuntimeError } from "./lang/errors.js";
+import { isActorObj, actorMember, UNSET } from "./lang/actor-surface.js";
 
 // Command names that, when used at statement level, yield a PendingAction.
 const COMMAND_NAMES = new Set([
@@ -222,7 +223,12 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
     }
     case "Member": {
       const obj = evalExpr(e.obj, env, ctx) as any;
-      return obj == null ? undefined : obj[e.name];
+      if (obj == null) return undefined;
+      if (isActorObj(obj)) {
+        const v = actorMember(obj, e.name, { world: ctx.world });
+        if (v !== UNSET) return v;
+      }
+      return obj[e.name];
     }
     case "Call": {
       // Query: bare identifier callee matching a query name.
@@ -238,6 +244,13 @@ function evalExpr(e: Expr, env: Env, ctx: InterpCtx): unknown {
         }
         const fn = env.funcs.get(name);
         if (fn) return callUserFunc(fn, e.args.map(a => evalExpr(a, env, ctx)), env, ctx);
+      }
+      // Method call (Member-resolved callable) or any callable returned by
+      // an arbitrary expression (e.g. a lambda stored in a variable).
+      const callee = evalExpr(e.callee, env, ctx);
+      if (typeof callee === "function") {
+        const args = e.args.map(a => evalExpr(a, env, ctx));
+        return (callee as (...a: unknown[]) => unknown)(...args);
       }
       return undefined;
     }
