@@ -11,6 +11,7 @@ import { ITEMS } from "../content/items.js";
 import { lootTableFor } from "../content/loot.js";
 import { worldRandom, worldRandInt } from "../rng.js";
 import { ensureInventory } from "./execute.js";
+import { actionFailed } from "../lang/errors.js";
 
 // ──────────────────────────── floor-item bookkeeping ────────────────────────────
 
@@ -73,9 +74,7 @@ export function rollDeathDrops(world: World, actor: Actor): GameEvent[] {
 
 // ──────────────────────────── pickup / drop commands ────────────────────────────
 
-function fail(self: Actor, action: string, reason: string): GameEvent {
-  return { type: "ActionFailed", actor: self.id, action, reason };
-}
+const fail = actionFailed;
 
 export function floorItemsAt(world: World, pos: Pos): FloorItem[] {
   const floor = world.room.floorItems ?? [];

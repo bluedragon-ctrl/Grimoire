@@ -7,7 +7,7 @@
 import { startRoom, type DebugHandle } from "../engine.js";
 import { formatLogEntry } from "../scheduler.js";
 import type { RoomSetup } from "../engine.js";
-import type { Actor, PersistentRun } from "../types.js";
+import type { Actor } from "../types.js";
 import { parse, ParseError, formatError } from "../lang/index.js";
 import { WireRendererAdapter } from "../render/wire-adapter.js";
 import { mountInventoryPanel, type InventoryController } from "./inventory.js";
@@ -19,8 +19,12 @@ import {
 import { generateRoom } from "../dungeon/generator.js";
 import { mountHelpPane } from "./help/help-pane.js";
 import { depotConsumableInstances } from "../persistence.js";
-import { ITEMS } from "../content/items.js";
-import { visualConfig } from "../config/visuals.js";
+import { showBootBanner, showIdlePrompt, typeLinesInCanvas } from "./boot-banner.js";
+import {
+  ensureQuitButton, showQuitConfirm, hideQuitConfirm,
+  showFinalReview, hideFinalReview,
+} from "./recap-modals.js";
+import { renderInspector, renderInspectorEmpty } from "./inspector.js";
 
 const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
 const btnPause    = document.getElementById("btn-pause")    as HTMLButtonElement;
@@ -124,90 +128,7 @@ export function pushNotification(text: string, opts: NotifyOpts = {}): void {
   }
 }
 
-// ── Canvas-slot typewriter (boot banner + idle prompt) ───────────────────
-// Renders terminal-style lines char-by-char inside the empty #game-view,
-// where "> AWAITING RUN SIGNAL <" lives during loadout/recap. Returns a
-// Promise that resolves after the final hold completes.
-function typeLinesInCanvas(
-  host: HTMLElement,
-  lines: string[],
-  opts: { charMs?: number; lineGapMs?: number; holdMs?: number; clearOnDone?: boolean } = {},
-): Promise<void> {
-  const { charMs = 35, lineGapMs = 220, holdMs = 600, clearOnDone = true } = opts;
-  return new Promise(resolve => {
-    let screen = host.querySelector<HTMLDivElement>(".boot-screen");
-    if (!screen) {
-      screen = document.createElement("div");
-      screen.className = "boot-screen";
-      host.appendChild(screen);
-    }
-    let cursorTime = 0;
-    for (const line of lines) {
-      const lineStartAt = cursorTime;
-      setTimeout(() => {
-        if (!screen!.isConnected) return;
-        const li = document.createElement("div");
-        li.className = "boot-line typing";
-        const txt = document.createElement("span");
-        txt.className = "boot-text";
-        const cur = document.createElement("span");
-        cur.className = "boot-cursor";
-        cur.textContent = "_";
-        li.appendChild(txt);
-        li.appendChild(cur);
-        const prev = screen!.querySelector(".boot-line.typing");
-        if (prev) prev.classList.remove("typing");
-        screen!.appendChild(li);
-        let i = 0;
-        const tick = () => {
-          if (!li.isConnected) return;
-          i++;
-          txt.textContent = line.slice(0, i);
-          if (i < line.length) setTimeout(tick, charMs);
-        };
-        tick();
-      }, lineStartAt);
-      cursorTime += line.length * charMs + lineGapMs;
-    }
-    setTimeout(() => {
-      if (clearOnDone && screen!.isConnected) screen!.remove();
-      resolve();
-    }, cursorTime + holdMs);
-  });
-}
-
-// ── Boot banner (first load) ──────────────────────────────────────────────
-let bootBannerShown = false;
 let bootDone = false;
-function showBootBanner(): Promise<void> {
-  const cfg = visualConfig.bootBanner;
-  if (!cfg.enabled) return Promise.resolve();
-  if (cfg.firstRunOnlyPerSession && bootBannerShown) return Promise.resolve();
-  bootBannerShown = true;
-  if (!gameEl || gameEl.children.length > 0) return Promise.resolve();
-
-  const version = "0.15";
-  const middle = cfg.middleLines[Math.floor(Math.random() * cfg.middleLines.length)] ?? "LOADING...";
-  return typeLinesInCanvas(gameEl, [
-    `> GRIMOIRE v${version}`,
-    `> COMPILING SCRIPT...`,
-    `> ${middle}`,
-    `> RUN`,
-  ], { holdMs: 300, clearOnDone: false });
-}
-
-// ── Idle prompt ───────────────────────────────────────────────────────────
-const IDLE_LINE = "> AWAITING RUN SIGNAL";
-function showIdlePrompt(): void {
-  if (!gameEl) return;
-  if (!bootDone) return;
-  const onlyChild = gameEl.children[0];
-  if (onlyChild && !onlyChild.classList.contains("boot-screen")) return;
-  const existing = Array.from(gameEl.querySelectorAll(".boot-line .boot-text"))
-    .some(el => el.textContent === IDLE_LINE);
-  if (existing) return;
-  void typeLinesInCanvas(gameEl, [IDLE_LINE], { holdMs: 0, clearOnDone: false });
-}
 
 function clearPlayTimer() {
   if (playTimer !== null) { clearTimeout(playTimer); playTimer = null; }
@@ -236,7 +157,7 @@ function teardownCurrent() {
   currentHandle = null;
   applyCursor = 0;
   setActiveGutterLine(null);
-  renderInspectorEmpty();
+  renderInspectorEmpty(inspectorEl);
 }
 
 function drainLogToAdapter(): void {
@@ -275,7 +196,7 @@ function refreshDebugView(): void {
   const loc = currentHandle.currentLoc;
   setActiveGutterLine(loc?.start.line ?? null);
   const snap = currentHandle.inspect("hero");
-  if (snap) renderInspector(snap);
+  if (snap) renderInspector(inspectorEl, snap);
 }
 
 function playTick(): void {
@@ -550,7 +471,7 @@ function renderPhase(): void {
     currentHandle = null;
     applyCursor = 0;
     // Re-type "> AWAITING RUN SIGNAL" once the canvas is idle. Idempotent.
-    showIdlePrompt();
+    showIdlePrompt(gameEl, bootDone);
   }
 
   // Inventory pane visible ONLY in loadout (Phase 13.7-style editor + 4-slot
@@ -592,13 +513,13 @@ function renderPhase(): void {
     const ctaEl = document.getElementById("recap-cta");
     if (ctaEl) ctaEl.textContent = "Edit script and try again, or end the run.";
     btnContinue.textContent = "TRY AGAIN";
-    ensureQuitButton();
+    ensureQuitButton(recapModal, () => runCtl.requestQuit());
     recapModal.hidden = false;
   } else if (phase === "quit_confirm") {
-    showQuitConfirm();
+    showQuitConfirm(() => runCtl.confirmQuit(), () => runCtl.cancelQuit());
     recapModal.hidden = true;
   } else if (phase === "final_review") {
-    showFinalReview(s.finalSnapshot ?? s.run);
+    showFinalReview(s.finalSnapshot ?? s.run, () => runCtl.acknowledgeFinal());
     recapModal.hidden = true;
   } else {
     recapModal.hidden = true;
@@ -608,6 +529,7 @@ function renderPhase(): void {
 
   if (phase !== "paused") {
     renderInspectorEmpty(
+      inspectorEl,
       phase === "loadout"  ? "Pre-attempt." :
       phase === "death_recap"  ? "Run ended." :
       /* running */        "Running…"
@@ -619,95 +541,6 @@ function renderPhase(): void {
     void maybeAutoStart();
   }
   prevPhase = phase;
-}
-
-// ── Quit confirm modal (built dynamically) ─────────────────────────────────
-
-let quitModal: HTMLDivElement | null = null;
-function ensureQuitButton(): void {
-  const actions = recapModal.querySelector(".modal-actions");
-  if (!actions) return;
-  if (actions.querySelector("#btn-quit")) return;
-  const btn = document.createElement("button");
-  btn.id = "btn-quit";
-  btn.type = "button";
-  btn.textContent = "QUIT";
-  btn.addEventListener("click", () => runCtl.requestQuit());
-  actions.appendChild(btn);
-}
-function showQuitConfirm(): void {
-  if (quitModal) { quitModal.hidden = false; return; }
-  quitModal = document.createElement("div");
-  quitModal.className = "modal";
-  quitModal.innerHTML = `
-    <div class="modal-backdrop"></div>
-    <div class="modal-box" role="dialog" aria-modal="true">
-      <h2>END THE RUN?</h2>
-      <p>End the run permanently? Depot will be wiped. Y/N</p>
-      <div class="modal-actions">
-        <button id="btn-quit-yes" type="button">Yes</button>
-        <button id="btn-quit-no"  type="button">No</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(quitModal);
-  quitModal.querySelector("#btn-quit-yes")!.addEventListener("click", () => runCtl.confirmQuit());
-  quitModal.querySelector("#btn-quit-no")!.addEventListener("click", () => runCtl.cancelQuit());
-}
-function hideQuitConfirm(): void {
-  if (quitModal) quitModal.hidden = true;
-}
-
-// ── Final review modal ─────────────────────────────────────────────────────
-
-let finalModal: HTMLDivElement | null = null;
-function showFinalReview(snap: PersistentRun): void {
-  if (!finalModal) {
-    finalModal = document.createElement("div");
-    finalModal.className = "modal";
-    finalModal.innerHTML = `
-      <div class="modal-backdrop"></div>
-      <div class="modal-box" role="dialog" aria-modal="true">
-        <h2>RUN COMPLETE</h2>
-        <table class="recap-stats">
-          <tr><td class="k">Attempts</td><td class="v" id="final-attempts">0</td></tr>
-          <tr><td class="k">Deepest Depth</td><td class="v" id="final-depth">0</td></tr>
-          <tr><td class="k">Monsters Slain</td><td class="v" id="final-kills">0</td></tr>
-          <tr><td class="k">Items Collected</td><td class="v" id="final-items">0</td></tr>
-        </table>
-        <h3>Final Depot</h3>
-        <ul id="final-depot" class="final-depot"></ul>
-        <div class="modal-actions">
-          <button id="btn-final-ok" type="button">OK</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(finalModal);
-    finalModal.querySelector("#btn-final-ok")!.addEventListener("click", () => runCtl.acknowledgeFinal());
-  }
-  finalModal.hidden = false;
-  (finalModal.querySelector("#final-attempts") as HTMLElement).textContent = String(snap.stats.attempts);
-  (finalModal.querySelector("#final-depth") as HTMLElement).textContent = String(snap.stats.deepestDepth);
-  (finalModal.querySelector("#final-kills") as HTMLElement).textContent = String(snap.stats.totalKills);
-  (finalModal.querySelector("#final-items") as HTMLElement).textContent = String(snap.stats.totalItemsCollected);
-  const list = finalModal.querySelector("#final-depot") as HTMLUListElement;
-  list.innerHTML = "";
-  if (snap.depot.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "(empty)";
-    list.appendChild(li);
-  } else {
-    const counts = new Map<string, number>();
-    for (const inst of snap.depot) counts.set(inst.defId, (counts.get(inst.defId) ?? 0) + 1);
-    for (const [defId, n] of counts) {
-      const li = document.createElement("li");
-      li.textContent = `${ITEMS[defId]?.name ?? defId} × ${n}`;
-      list.appendChild(li);
-    }
-  }
-}
-function hideFinalReview(): void {
-  if (finalModal) finalModal.hidden = true;
 }
 
 // ──────────────────────────── gutter ────────────────────────────
@@ -725,7 +558,7 @@ function renderGutter(): void {
   gutterEl.scrollTop = editorEl.scrollTop;
 }
 
-export function setActiveGutterLine(line: number | null): void {
+function setActiveGutterLine(line: number | null): void {
   activeGutterLine = line;
   renderGutter();
 }
@@ -733,47 +566,6 @@ export function setActiveGutterLine(line: number | null): void {
 editorEl.addEventListener("input", renderGutter);
 editorEl.addEventListener("scroll", () => { gutterEl.scrollTop = editorEl.scrollTop; });
 renderGutter();
-
-// ──────────────────────────── inspector rendering ────────────────────────────
-
-export function renderInspectorEmpty(msg = "Not paused."): void {
-  inspectorEl.innerHTML = `<div class="inspector-empty">${msg}</div>`;
-}
-
-export function renderInspector(snap: {
-  locals: Record<string, unknown>;
-  visible: { enemies: unknown[]; items: unknown[]; hp: number; maxHp: number; pos: { x: number; y: number } };
-}): void {
-  const rows: string[] = [];
-  rows.push("<h3>Hero</h3><table>");
-  rows.push(kv("hp", `${snap.visible.hp} / ${snap.visible.maxHp}`));
-  rows.push(kv("pos", `(${snap.visible.pos.x}, ${snap.visible.pos.y})`));
-  rows.push(kv("enemies", String(snap.visible.enemies.length)));
-  rows.push(kv("items", String(snap.visible.items.length)));
-  rows.push("</table>");
-  const localKeys = Object.keys(snap.locals);
-  if (localKeys.length > 0) {
-    rows.push("<h3>Locals</h3><table>");
-    for (const k of localKeys) rows.push(kv(k, fmt(snap.locals[k])));
-    rows.push("</table>");
-  } else {
-    rows.push("<h3>Locals</h3><div class=\"inspector-empty\">(none)</div>");
-  }
-  inspectorEl.innerHTML = rows.join("");
-}
-
-function kv(k: string, v: string): string {
-  return `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${escapeHtml(v)}</td></tr>`;
-}
-function fmt(v: unknown): string {
-  if (v === null || v === undefined) return String(v);
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, c =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-}
 
 // Initial state.
 inventoryCtl = mountInventoryPanel(
@@ -808,6 +600,6 @@ speedOut.textContent = `${tickDelayMs()}ms`;
 // #game-view. renderPhase's showIdlePrompt is suppressed while boot is in
 // progress; once boot finishes, we flip the gate and append the AWAITING
 // line below the boot transcript.
-const bootPromise = showBootBanner();
+const bootPromise = showBootBanner(gameEl);
 renderPhase();
-bootPromise.then(() => { bootDone = true; showIdlePrompt(); });
+bootPromise.then(() => { bootDone = true; showIdlePrompt(gameEl, bootDone); });

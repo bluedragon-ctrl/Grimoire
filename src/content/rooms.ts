@@ -14,6 +14,7 @@ import {
 } from "../ast-helpers.js";
 import { emptyEquipped } from "./items.js";
 import { MONSTER_TEMPLATES, createActor } from "./monsters.js";
+import { chebyshev } from "../geometry.js";
 
 export type Rng = () => number;
 
@@ -59,10 +60,6 @@ const ROOM_H = 10;
 const HERO_SPAWN: Pos = { x: 1, y: 5 };
 const MIN_DIST_FROM_HERO = 3;   // Manhattan — monsters can't crowd the hero.
 const MONSTER_COUNT = 2;
-
-function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
 
 // Uniform integer in [lo, hi] via the injected rng stream.
 function randInt(rng: Rng, lo: number, hi: number): number {

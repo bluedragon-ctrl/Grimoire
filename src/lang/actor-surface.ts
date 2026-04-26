@@ -13,6 +13,7 @@ import { hasEffect, listEffects } from "../effects.js";
 import { hasLineOfSight } from "../los.js";
 import { validateCast } from "../spells/cast.js";
 import { Collection } from "./collection.js";
+import { chebyshev } from "../geometry.js";
 
 export const UNSET: unique symbol = Symbol("UNSET");
 export type ActorSurfaceCtx = { world: World };
@@ -24,10 +25,6 @@ export function isActorObj(v: unknown): v is Actor {
       && typeof a.hp === "number"
       && typeof a.alive === "boolean"
       && !!a.pos;
-}
-
-function chebyshev(ax: number, ay: number, bx: number, by: number): number {
-  return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
 function asPosLike(v: unknown): { x: number; y: number } | null {
@@ -58,12 +55,12 @@ export function actorMember(actor: Actor, name: string, ctx: ActorSurfaceCtx): u
     case "distance_to": return (other: unknown) => {
       const p = asPosLike(other);
       if (!p) return 0;
-      return chebyshev(actor.pos.x, actor.pos.y, p.x, p.y);
+      return chebyshev(actor.pos, p);
     };
     case "adjacent_to": return (other: unknown) => {
       const p = asPosLike(other);
       if (!p) return false;
-      return chebyshev(actor.pos.x, actor.pos.y, p.x, p.y) === 1;
+      return chebyshev(actor.pos, p) === 1;
     };
     case "has_effect": return (kind: unknown) => {
       if (typeof kind !== "string") return false;

@@ -12,6 +12,7 @@
 // Rolls use the engine's mulberry32 RNG (src/rng.ts). No Math.random.
 
 import type { ActorKind } from "../types.js";
+import { floorTier } from "./scaling.js";
 
 export interface LootEntry {
   defId: string;
@@ -111,6 +112,5 @@ for (const [key, entries] of Object.entries(CHEST_LOOT_TABLES)) {
 }
 
 export function chestLootTableFor(depth: number): string {
-  const tier = Math.min(5, Math.max(1, Math.ceil(depth / 3)));
-  return `chest_t${tier}`;
+  return `chest_t${floorTier(depth)}`;
 }

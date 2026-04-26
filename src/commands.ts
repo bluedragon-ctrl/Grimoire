@@ -4,7 +4,7 @@
 import type {
   Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef, RoomObject,
 } from "./types.js";
-import { hasEffect, listEffects, effectiveStats } from "./effects.js";
+import { hasEffect, listEffects, effectiveStats, getEffect } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
 import { useItem, onHitHook, onDamageHook, onKillHook, onCastHook } from "./items/execute.js";
 import { doPickup, doDrop } from "./items/loot.js";
@@ -13,8 +13,13 @@ import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
 import { worldRandom } from "./rng.js";
 import { hasLineOfSight } from "./los.js";
 import { doInteractCore, objectsWithin, tileBlocked } from "./dungeon/objects.js";
+import { chebyshev, manhattan, inBounds, adjacent } from "./geometry.js";
+import { resolveActor, resolvePos, sameFaction } from "./resolve.js";
+import { actionFailed } from "./lang/errors.js";
 
 export { hasLineOfSight };
+export { chebyshev, manhattan, inBounds, adjacent };
+export { resolveActor, resolvePos };
 
 export { doPickup, doDrop };
 
@@ -36,22 +41,10 @@ export const COST = {
   interact: 10,
 } as const;
 
+// Local alias kept short for the many call sites in this file.
+const fail = actionFailed;
+
 // ──────────────────────────── small helpers ────────────────────────────
-
-export function manhattan(a: Pos, b: Pos): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-}
-
-// Phase 13.5: single source of truth for actor-to-actor distance. Matches
-// approach()'s 8-directional one-tile-per-tick movement so adjacency,
-// melee range, and pathing all agree.
-export function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
-
-export function inBounds(world: World, p: Pos): boolean {
-  return p.x >= 0 && p.y >= 0 && p.x < world.room.w && p.y < world.room.h;
-}
 
 export function actorAt(world: World, p: Pos): Actor | null {
   for (const a of world.actors) {
@@ -60,12 +53,7 @@ export function actorAt(world: World, p: Pos): Actor | null {
   return null;
 }
 
-// Phase 13.5: chebyshev-based adjacency. Diagonals count as adjacent for
-// melee, matching how approach() steps. The old name is kept as an alias
-// pointing at the new metric so existing imports don't break.
-export function adjacent(a: Pos, b: Pos): boolean {
-  return chebyshev(a, b) === 1;
-}
+// Pre-13.5 alias kept so existing imports don't break.
 export const orthogonallyAdjacent = adjacent;
 
 function sign(n: number): number {
@@ -100,33 +88,6 @@ function sortByDistance<T extends { pos: Pos } | Pos>(
 // ──────────────────────────── target resolution seam ────────────────────────────
 
 export const FAILURE_MODE: ResolveFailureMode = "silent";
-
-// MVP: validates `ref` is a living actor currently in the room. Returns it
-// or null. Swap this function (or return sentinel for "cancel", throw for
-// "throw") to change the whole engine's failure policy.
-export function resolveActor(world: World, ref: unknown): Actor | null {
-  if (!ref || typeof ref !== "object") return null;
-  const r = ref as Actor;
-  if (typeof r.id !== "string") return null;
-  const found = world.actors.find(a => a.id === r.id);
-  if (!found || !found.alive) return null;
-  return found;
-}
-
-// Lenient position resolver: accepts actors, doors, items, chests, or bare
-// Pos-like objects. Used by approach/flee, which can legitimately target
-// any positioned thing.
-export function resolvePos(_world: World, ref: unknown): Pos | null {
-  if (!ref || typeof ref !== "object") return null;
-  const r = ref as any;
-  if (r.pos && typeof r.pos.x === "number" && typeof r.pos.y === "number") {
-    return r.pos as Pos;
-  }
-  if (typeof r.x === "number" && typeof r.y === "number") {
-    return { x: r.x, y: r.y };
-  }
-  return null;
-}
 
 export function resolveDoor(world: World, ref: unknown): Door | null {
   if (typeof ref === "string") {
@@ -171,7 +132,7 @@ export const queries = {
   chests: (world: World, self: Actor): Chest[] => sortByDistance(self, world.room.chests),
   doors: (world: World, self: Actor): Door[] => sortByDistance(self, world.room.doors),
   at: (_world: World, self: Actor, target: unknown): boolean => {
-    const p = resolvePos(_world, target);
+    const p = resolvePos(target);
     if (!p) return false;
     return self.pos.x === p.x && self.pos.y === p.y;
   },
@@ -184,7 +145,7 @@ export const queries = {
     return cs.map(c => ({ id: c.id, pos: { ...c.pos }, kind: c.kind, remaining: c.remaining }));
   },
   cloud_at: (world: World, _self: Actor, target: unknown): string | null => {
-    const p = resolvePos(world, target);
+    const p = resolvePos(target);
     if (!p) return null;
     const cs = world.room.clouds ?? [];
     // Topmost = most recently spawned (last in array).
@@ -234,13 +195,13 @@ export const queries = {
 // cost separately; a failed action still costs (see design doc).
 
 export function doApproach(world: World, self: Actor, targetRef: unknown): GameEvent[] {
-  const pos = resolvePos(world, targetRef);
+  const pos = resolvePos(targetRef);
   if (!pos) return [fail(self, "approach", "no target")];
   return stepToward(world, self, pos, "approach", +1);
 }
 
 export function doFlee(world: World, self: Actor, targetRef: unknown): GameEvent[] {
-  const pos = resolvePos(world, targetRef);
+  const pos = resolvePos(targetRef);
   if (!pos) return [fail(self, "flee", "no target")];
   return stepToward(world, self, pos, "flee", -1);
 }
@@ -289,7 +250,7 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
 
   // Phase 13: expose — target's incoming physical damage is multiplied by
   // (1 + magnitude%). Applied before shield absorption.
-  const exposeEff = (target.effects ?? []).find(e => e.kind === "expose");
+  const exposeEff = getEffect(target, "expose");
   if (exposeEff) rawDmg = Math.floor(rawDmg * (1 + (exposeEff.magnitude ?? 25) / 100));
 
   // Phase 13: shield — drain shieldHp first; only overflow reaches hp.
@@ -327,17 +288,7 @@ export function doAttack(world: World, self: Actor, targetRef: unknown): GameEve
   return events;
 }
 
-// ──────────────────────────── LOS helper ────────────────────────────
-
 // ──────────────────────────── use() generalization ────────────────────────────
-
-// Faction helper — mirrors sameFaction in spells/cast.ts.
-function sameFaction(a: Actor, b: Actor): boolean {
-  const fa = a.faction ?? (a.isHero ? "player" : "enemy");
-  const fb = b.faction ?? (b.isHero ? "player" : "enemy");
-  if (fa === "neutral" && fb === "neutral") return false;
-  return fa === fb;
-}
 
 type UseValidation =
   | { ok: true; targetActor: Actor | null; targetPos: Pos | null }
@@ -358,7 +309,7 @@ function validateUseGates(
     targetPos = { ...self.pos };
   } else if (useTarget === "tile") {
     // Accept a bare Pos or an actor position.
-    const pos = resolvePos(world, targetRef);
+    const pos = resolvePos(targetRef);
     if (!pos) return { ok: false, reason: `${def.name} needs a tile target.` };
     targetPos = pos;
   } else {
@@ -404,19 +355,19 @@ export function doUse(world: World, self: Actor, itemRef: unknown, targetRef?: u
     const bag = self.inventory?.consumables ?? [];
     const hit = bag.find(i => i.defId === itemRef);
     if (hit) instance = hit;
-    else return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `No '${itemRef}' in bag.` }];
+    else return [fail(self, "use", `No '${itemRef}' in bag.`)];
   }
-  if (!instance) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: "no item" }];
+  if (!instance) return [fail(self, "use", "no item")];
 
   const def = ITEMS[instance.defId];
-  if (!def) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `Unknown item '${instance.defId}'.` }];
+  if (!def) return [fail(self, "use", `Unknown item '${instance.defId}'.`)];
   if (def.kind !== "consumable") {
-    return [{ type: "ActionFailed", actor: self.id, action: "use", reason: `${def.name} is not a consumable.` }];
+    return [fail(self, "use", `${def.name} is not a consumable.`)];
   }
 
   // Pre-spend gate: all validations before item is removed from bag.
   const v = validateUseGates(world, self, def, targetRef ?? self);
-  if (!v.ok) return [{ type: "ActionFailed", actor: self.id, action: "use", reason: v.reason }];
+  if (!v.ok) return [fail(self, "use", v.reason)];
 
   return useItem(world, self, instance, v.targetActor, v.targetPos);
 }
@@ -602,7 +553,7 @@ export function doSummon(
   }
 
   // Tile validation.
-  const pos = resolvePos(world, targetRef);
+  const pos = resolvePos(targetRef);
   if (!pos) return [fail(self, "summon", "summon needs a tile target")];
   if (!inBounds(world, pos)) return [fail(self, "summon", "target tile is out of bounds")];
   if (actorAt(world, pos)) return [fail(self, "summon", "target tile is occupied")];
@@ -631,9 +582,6 @@ export function summonFailedCleanly(events: GameEvent[]): boolean {
   return events.length === 1 && events[0]!.type === "ActionFailed";
 }
 
-function fail(self: Actor, action: string, reason: string): GameEvent {
-  return { type: "ActionFailed", actor: self.id, action, reason };
-}
 
 // Phase 15: interact() — adjacent dungeon objects (chest/fountain/door/exit).
 export function doInteract(world: World, self: Actor, ref: unknown): GameEvent[] {
