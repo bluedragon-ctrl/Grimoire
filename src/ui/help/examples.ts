@@ -72,12 +72,12 @@ export const EXAMPLE_PAGES: Record<string, ExamplePage> = {
         "  approach(foe)\n" +
         "  attack(foe)\n" +
         "\n" +
-        "for drop in items_nearby():\n" +
+        "for drop in items():\n" +
         "  approach(drop)\n" +
         "  pickup(drop)\n" +
         "halt",
     }],
-    related: ["commands/pickup", "queries/items_nearby", "data/flooritem"],
+    related: ["commands/pickup", "queries/items", "data/flooritem"],
   },
   flee_specific: {
     id: "flee_specific", name: "Flee from bats",

@@ -13,7 +13,7 @@ import {
 } from "../../src/ast-helpers.js";
 
 function mkRoom(overrides: Partial<Room> = {}): Room {
-  return { w: 8, h: 8, doors: [], items: [], chests: [], ...overrides };
+  return { w: 8, h: 8, doors: [], chests: [], ...overrides };
 }
 
 function mkHero(): Actor {

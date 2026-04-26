@@ -8,7 +8,7 @@ import {
 
 function emptyRoom(overrides: Partial<Room> = {}): Room {
   return {
-    w: 10, h: 10, doors: [], items: [], chests: [],
+    w: 10, h: 10, doors: [], chests: [],
     ...overrides,
   };
 }

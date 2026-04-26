@@ -5,7 +5,7 @@ import { applyEffect } from "../../src/effects.js";
 import { script, while_, lit, cWait } from "../../src/ast-helpers.js";
 
 function emptyRoom(): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [] };
+  return { w: 10, h: 10, doors: [], chests: [] };
 }
 
 function waiter(over: Partial<Actor> = {}): Actor {

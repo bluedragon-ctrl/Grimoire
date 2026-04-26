@@ -3,7 +3,7 @@ import { script, cHalt } from "../src/ast-helpers.js";
 import { emptyEquipped } from "../src/content/items.js";
 
 export function mkRoom(over: Partial<Room> = {}): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [], ...over };
+  return { w: 10, h: 10, doors: [], chests: [], clouds: [], ...over };
 }
 
 export function mkWorld(actors: Actor[], room?: Partial<Room>): World {

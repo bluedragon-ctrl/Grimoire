@@ -161,15 +161,15 @@ Summoned actors (`actor.summoned === true`) skip `rollDeathDrops` entirely.
 | Call                   | Cost | Behavior                                                              |
 | ---------------------- | ---: | --------------------------------------------------------------------- |
 | `pickup()`             |  10  | Take the topmost floor item on the hero's tile into the bag.          |
-| `pickup(item)`         |  10  | Targeted pickup — accepts a bare `defId` or an `items_here()` ref.    |
+| `pickup(item)`         |  10  | Targeted pickup — accepts a bare `defId` or an `items(0)` ref.        |
 | `drop(slot_or_item)`   |   5  | Pull a consumable out of the bag and leave it on the hero's tile.     |
 
 `pickup` fails with `ActionFailed { reason: "Bag full" }` if the bag is at `BAG_SIZE` — the item stays on the floor. Failed pickups/drops refund energy.
 
 ### Queries (zero cost)
 
-- `items_here()` — `FloorItem[]` on the hero's tile, **topmost first** (LIFO; matches what `pickup()` without args would take).
-- `items_nearby(r?)` — Manhattan-sorted list within radius `r` (default 4).
+- `items(r?)` — `FloorItem[]` in the room, Chebyshev nearest-first. No arg = whole room; `items(0)` = same tile (use this in place of `pickup(items(0)[0])`); `items(r)` = within radius `r`.
+- `pickup()` with no arg takes the topmost item on the hero's tile (LIFO), so a script that just clears the floor doesn't need to query at all.
 
 ### Bag-full overflow
 

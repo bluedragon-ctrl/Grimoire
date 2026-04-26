@@ -17,7 +17,7 @@ function makeAdapter() {
   return { adapter, renders };
 }
 
-const room: Room = { w: 8, h: 6, doors: [{ dir: "E", pos: { x: 7, y: 3 } }], items: [], chests: [] };
+const room: Room = { w: 8, h: 6, doors: [{ dir: "E", pos: { x: 7, y: 3 } }], chests: [] };
 
 function hero(pos = { x: 1, y: 1 }): Actor {
   return { id: "hero", kind: "hero", isHero: true, hp: 10, maxHp: 10, speed: 1, energy: 0, pos,

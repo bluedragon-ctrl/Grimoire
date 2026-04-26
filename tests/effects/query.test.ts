@@ -10,7 +10,7 @@ const heroHasEffect = (kind: string) =>
   call(member(ident("me"), "has_effect"), lit(kind));
 
 function emptyRoom(): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [] };
+  return { w: 10, h: 10, doors: [], chests: [] };
 }
 
 function makeHero(scr: Actor["script"]): Actor {

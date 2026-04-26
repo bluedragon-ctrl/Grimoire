@@ -7,7 +7,7 @@ import {
 } from "../../src/ast-helpers.js";
 
 function emptyRoom(overrides: Partial<Room> = {}): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [], ...overrides };
+  return { w: 10, h: 10, doors: [], chests: [], ...overrides };
 }
 
 function mkActor(id: string, pos: { x: number; y: number }, kind: "hero" | "goblin" = "goblin"): Actor {

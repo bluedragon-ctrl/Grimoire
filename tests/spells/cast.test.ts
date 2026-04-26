@@ -99,7 +99,7 @@ describe("castSpell validation", () => {
       pos: { x: 5, y: 5 }, script: script(cHalt()), knownSpells: [], effects: [],
     };
     const { log } = runRoom({
-      room: { w: 10, h: 10, doors: [], items: [], chests: [] },
+      room: { w: 10, h: 10, doors: [], chests: [] },
       actors: [hero, gob],
     }, { maxTicks: 200 });
     const fails = log.filter(l => l.event.type === "ActionFailed" && (l.event as any).action === "cast");

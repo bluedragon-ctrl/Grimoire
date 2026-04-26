@@ -66,7 +66,7 @@ const DEFAULT_SCRIPT = [
   "  approach(enemies()[0])",
   "  attack(enemies()[0])",
   "",
-  "for obj in objects_nearby():",
+  "for obj in objects(1):",
   "  if obj.kind == \"fountain_health\" and me.hp < me.maxHp:",
   "    interact(obj)",
   "",

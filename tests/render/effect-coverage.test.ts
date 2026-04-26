@@ -19,7 +19,7 @@ function makeAdapter() {
   return new WireRendererAdapter(deps);
 }
 
-const room: Room = { w: 8, h: 6, doors: [], items: [], chests: [] };
+const room: Room = { w: 8, h: 6, doors: [], chests: [] };
 
 function hero(pos = { x: 1, y: 1 }): Actor {
   return {

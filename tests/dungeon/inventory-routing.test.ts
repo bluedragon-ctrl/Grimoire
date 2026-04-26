@@ -12,7 +12,7 @@ import { freshRun, routeInventoryToRun } from "../../src/persistence.js";
 function mkWorld(actors: Actor[], room?: Partial<Room>): World {
   return {
     tick: 0,
-    room: { w: 5, h: 5, doors: [], items: [], chests: [], floorItems: [], ...room },
+    room: { w: 5, h: 5, doors: [], chests: [], floorItems: [], ...room },
     actors, log: [], aborted: false, ended: false,
     rngSeed: 1, floorSeq: 0,
   };

@@ -9,53 +9,65 @@ symmetric with respect to the caller: the `self` passed in is whichever
 actor's script is currently evaluating, so the same query set powers the
 hero and monster AI scripts uniformly.
 
-## Core
+All distance and sort metrics are **Chebyshev** (king's-move) — diagonal
+steps cost 1, matching the way `attack()` reach and `me.distance_to()`
+already work. AoE spell shapes use Euclidean radius (see `data/aoe`).
+
+## Self shortcuts
 
 | Query                        | Returns                | Notes                                                                                   |
 | ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
 | `me`                         | `Actor`                | The evaluating actor.                                                                   |
-| `hp()`                       | `number`               | Current HP.                                                                             |
-| `mp()` / `max_mp()`          | `number`               | Current and max mana.                                                                   |
-| `known_spells()`             | `string[]`             | Copy of the caster's learned-spell list.                                                |
-| `hp(actor)`                  | *(not provided)*       | Use `actor.hp` directly via member access.                                              |
+| `hp()` / `max_hp()`          | `number`               | Shortcut for `me.hp` / `me.maxHp`.                                                      |
+| `mp()` / `max_mp()`          | `number`               | Shortcut for `me.mp` / `me.maxMp`.                                                      |
 
-## Targets and positioning
+For any other self-state, read the field off `me` directly: `me.knownSpells`,
+`me.inventory`, `me.effects`, `me.faction`, etc.
 
-| Query                        | Returns                | Notes                                                                                   |
-| ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `enemies()`                  | `Actor[]`              | Other living actors, sorted by Manhattan distance from `me`.                            |
-| `items()`                    | `Item[]`               | Room items (fixtures), Manhattan-sorted.                                                |
-| `chests()`                   | `Chest[]`              | Room chests, Manhattan-sorted.                                                          |
-| `doors()`                    | `Door[]`               | Room doors, Manhattan-sorted.                                                           |
-| `at(target)`                 | `boolean`              | `me.pos` equals target's resolved position.                                             |
-| `distance(a, b)`             | `number`               | **Chebyshev** distance between any two positioned things. 0 on unresolvable args.       |
-| `adjacent(a, b)`             | `boolean`              | `distance(a, b) == 1`. `adjacent(me, me)` is `false` (same tile is not adjacent).       |
+## Room listings
 
-Both `distance` and `adjacent` accept actors, doors, items, chests, and bare
-`{pos: {x,y}}` / `{x,y}` objects, going through the same `resolvePos` seam.
-
-## Spells
+All sorted nearest-first by Chebyshev distance from the caller. Ties break
+by id (lexicographic).
 
 | Query                        | Returns                | Notes                                                                                   |
 | ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `can_cast(name)`             | `boolean`              | Spell known + enough mp. Skips target/range checks.                                     |
-| `can_cast(name, target)`     | `boolean`              | Full validation — unknown spell, not learned, not enough mp, bad target type, or out of range all return `false`. Mirrors the six-step pipeline in `spells/cast.ts::validateCast`, so a `true` here means a subsequent `cast(name, target)` can only fail on world state that changes between the check and the cast. |
-
-## Effects / clouds
-
-| Query                        | Returns                | Notes                                                                                   |
-| ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `has_effect(target, kind)`   | `boolean`              | Status effect by kind (e.g. `"burning"`, `"haste"`).                                    |
-| `effects(target)`            | `string[]`             | All active effect kinds on target.                                                      |
+| `enemies()`                  | `Actor[]`              | Living actors of an opposing faction.                                                   |
+| `allies()`                   | `Actor[]`              | Living actors of the same faction (excluding self).                                     |
+| `items(r?)`                  | `FloorItem[]`          | Floor pickups. No arg = whole room; `items(0)` = same tile; `items(r)` = within `r`.    |
+| `objects(r?)`                | `RoomObject[]`         | Chests, fountains, doors. `objects(1)` is the set you can `interact()` with.            |
+| `chests()`                   | `Chest[]`              | Unopened room chests (legacy view; `objects()` covers chests too).                      |
+| `doors()`                    | `Door[]`               | Room doors.                                                                             |
 | `clouds()`                   | `{id, pos, kind, remaining}[]` | Snapshot of live cloud tiles.                                                           |
-| `cloud_at(target)`           | `string \| null`       | Topmost cloud kind on a tile, or `null`.                                                |
 
-## Floor items
+## Positioning
 
 | Query                        | Returns                | Notes                                                                                   |
 | ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `items_here()`               | `FloorItem[]`          | Stack on `me.pos`, topmost first (LIFO — matches `pickup()` default).                   |
-| `items_nearby(r?)`           | `FloorItem[]`          | Within radius `r` (default 4), Manhattan-sorted.                                        |
+| `at(target)`                 | `boolean`              | `me.pos` equals target's resolved position.                                             |
+| `distance(a, b)`             | `number`               | Chebyshev distance between any two positioned things. 0 on unresolvable args.           |
+
+`distance` accepts actors, items, objects, doors, chests, and bare
+`{pos: {x,y}}` / `{x,y}` objects, going through the same `resolvePos` seam.
+For "is this thing adjacent to me?" use `me.adjacent_to(other)` on the actor
+surface.
+
+## RNG
+
+| Query                        | Returns                | Notes                                                                                   |
+| ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
+| `chance(p)`                  | `boolean`              | True with probability `p`% (0–100). Deterministic via `worldRandom`.                    |
+| `random(n)`                  | `number`               | Random integer in `[0, n)`. Deterministic.                                              |
+
+## Effects and spells (on the actor surface)
+
+These hang off `me` (or any actor handle) rather than as standalone queries:
+
+- `me.has_effect(kind)` / `me.effect_remaining(kind)` / `me.effect_magnitude(kind)`
+- `me.list_effects()` — `string[]` of active effect kinds
+- `me.can_cast(name)` — known + enough mp; skips target/range
+- `me.can_cast(name, target)` — full pipeline check; mirrors `spells/cast.ts::validateCast`
+- `me.in_los(other)` — smoke-aware Bresenham line-of-sight
+- `me.in_cloud()` / `me.in_cloud(kind)` — true when standing in any cloud, or one of the given kind
 
 ## Events and handlers
 

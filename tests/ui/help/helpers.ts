@@ -62,7 +62,7 @@ export function isExecutable(code: string): boolean {
   if (lines.length > 12) return false;
   // Anything that depends on specific items/doors/inventory state is hard
   // to set up in a stub. Skip them.
-  if (/\b(items_here|items_nearby|doors|chests|use\(|pickup|drop|exit|summon|cast)\b/.test(code)) return false;
+  if (/\b(items|doors|chests|objects|use\(|pickup|drop|exit|summon|cast)\b/.test(code)) return false;
   if (/\bon\s+(hit|see)\b/.test(code)) return false;
   // Indexing into queries that return null when empty (`enemies()[0]`) is
   // fine when we seed at least one enemy in the stub world; the runner does

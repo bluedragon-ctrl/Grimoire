@@ -16,7 +16,7 @@ import { parse } from "../../src/lang/parser.js";
 // ──────────────────────────── test helpers ────────────────────────────
 
 function emptyRoom(over: Partial<Room> = {}): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [], ...over };
+  return { w: 10, h: 10, doors: [], chests: [], ...over };
 }
 
 function mkWorld(actors: Actor[], room?: Partial<Room>): World {

@@ -18,7 +18,7 @@ const S = script(cHalt());
 function mkWorld(actors: Actor[], clouds: import("../../src/types.js").Cloud[] = []): World {
   return {
     tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [...clouds] },
+    room: { w: 10, h: 10, doors: [], chests: [], clouds: [...clouds] },
     actors, log: [], aborted: false, ended: false,
   };
 }

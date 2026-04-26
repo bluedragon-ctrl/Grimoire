@@ -4,7 +4,7 @@ import { applyEffect, tickEffects } from "../../src/effects.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
 
 function emptyRoom(): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [] };
+  return { w: 10, h: 10, doors: [], chests: [] };
 }
 
 function makeHero(over: Partial<Actor> = {}): Actor {

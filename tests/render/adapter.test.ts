@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { FakeRendererAdapter } from "../../src/render/adapter.js";
 import type { Actor, GameEvent, Room } from "../../src/types.js";
 
-const emptyRoom: Room = { w: 5, h: 5, doors: [], items: [], chests: [] };
+const emptyRoom: Room = { w: 5, h: 5, doors: [], chests: [] };
 const hero = (): Actor => ({
   id: "h1", kind: "hero", hp: 10, maxHp: 10, speed: 1, energy: 0,
   pos: { x: 1, y: 1 }, script: { main: [], handlers: [], funcs: [] }, alive: true,

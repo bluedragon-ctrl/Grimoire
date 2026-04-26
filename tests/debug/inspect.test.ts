@@ -4,7 +4,7 @@ import { startRoom } from "../../src/engine.js";
 import { parse } from "../../src/lang/parser.js";
 
 function room(over: Partial<Room> = {}): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [], ...over };
+  return { w: 10, h: 10, doors: [], chests: [], ...over };
 }
 
 describe("debugger inspect()", () => {

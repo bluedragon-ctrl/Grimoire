@@ -6,7 +6,6 @@ export interface InspectorSnapshot {
   locals: Record<string, unknown>;
   visible: {
     enemies: unknown[];
-    items: unknown[];
     hp: number;
     maxHp: number;
     pos: { x: number; y: number };
@@ -23,7 +22,6 @@ export function renderInspector(host: HTMLElement, snap: InspectorSnapshot): voi
   rows.push(kv("hp", `${snap.visible.hp} / ${snap.visible.maxHp}`));
   rows.push(kv("pos", `(${snap.visible.pos.x}, ${snap.visible.pos.y})`));
   rows.push(kv("enemies", String(snap.visible.enemies.length)));
-  rows.push(kv("items", String(snap.visible.items.length)));
   rows.push("</table>");
   const localKeys = Object.keys(snap.locals);
   if (localKeys.length > 0) {

@@ -2,7 +2,7 @@
 // interpreter can intercept indexing, iteration, truthiness, and method
 // dispatch in one place.
 //
-// Returned from query callables (enemies(), allies(), items_here(), ...) and
+// Returned from query callables (enemies(), allies(), items(), ...) and
 // from any `[a, b, c]` literal in DSL source. Raw JS arrays may still appear
 // inside the engine — Index/For/truthy/len treat both interchangeably.
 
