@@ -171,6 +171,11 @@ function buildMap(room: Room): string[][] {
     const row = map[d.pos.y];
     if (row && d.pos.x >= 0 && d.pos.x < row.length) row[d.pos.x] = "floor";
   }
+  // Phase 15: interior walls (vault partitions).
+  for (const w of room.interiorWalls ?? []) {
+    const row = map[w.pos.y];
+    if (row && w.pos.x >= 0 && w.pos.x < row.length) row[w.pos.x] = "wall";
+  }
   return map;
 }
 
@@ -241,6 +246,10 @@ export class WireRendererAdapter implements RendererAdapter {
     const initialFloor: VisualFloorItem[] = (room.floorItems ?? []).map(f => ({
       id: f.id, defId: f.defId, type: f.defId, x: f.pos.x, y: f.pos.y,
     }));
+    const initialObjects = (room.objects ?? []).map(o => ({
+      id: o.id, type: o.kind, x: o.pos.x, y: o.pos.y,
+      state: { locked: !!o.locked },
+    }));
     this.state = {
       player: player ? { id: player.id, x: player.pos.x, y: player.pos.y, hp: player.hp } : null,
       monsters: monsters.map(m => {
@@ -257,7 +266,7 @@ export class WireRendererAdapter implements RendererAdapter {
         if (colors) ent.colors = colors;
         return ent;
       }),
-      floorItems: initialFloor, floorObjects: [], clouds: [], activeEffects: [],
+      floorItems: initialFloor, floorObjects: initialObjects, clouds: [], activeEffects: [],
       width: room.w, height: room.h, tick: 0,
       map: buildMap(room),
     };
@@ -505,7 +514,19 @@ export class WireRendererAdapter implements RendererAdapter {
       case "GearLearned":
       case "GearDiscarded":
       case "ManaChanged":
+      case "ObjectInteracted":
         break;
+      case "ObjectChanged": {
+        const fos = (s.floorObjects as Array<{ id: string; type: string; x: number; y: number; state?: { locked?: boolean } }>);
+        if (event.removed) {
+          s.floorObjects = fos.filter(o => o.id !== event.objectId);
+        } else if (event.locked !== undefined) {
+          for (const o of fos) {
+            if (o.id === event.objectId && o.state) o.state.locked = event.locked;
+          }
+        }
+        break;
+      }
     }
     s.tick++;
   }

@@ -13,6 +13,8 @@ export interface ItemVisualPreset {
 }
 
 export const ITEM_VISUAL_PRESETS: Record<string, ItemVisualPreset> = Object.freeze({
+  // Phase 15: utility consumables
+  key:                { shape: "crystal", colors: { col1: "#ddaa22", col2: "#ffeeaa" } },
   // ── Consumables ──────────────────────────────────────────────────────────
   health_potion:      { shape: "potion",  colors: { col1: "#cc1133", col2: "#ff7788" } },
   mana_crystal:       { shape: "crystal", colors: { col1: "#3355cc", col2: "#99ccff" } },

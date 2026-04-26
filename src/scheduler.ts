@@ -11,8 +11,9 @@ import { compile, type CompiledScript } from "./interpreter.js";
 import { DSLRuntimeError } from "./lang/errors.js";
 import {
   doApproach, doFlee, doAttack, doCast, doWait, doExit, doHalt, doUse,
-  doPickup, doDrop, doSummon, doNotify,
+  doPickup, doDrop, doSummon, doNotify, doInteract,
   castFailedCleanly, useFailedCleanly, pickupFailedCleanly, dropFailedCleanly, summonFailedCleanly,
+  interactFailedCleanly,
 } from "./commands.js";
 import { tickEffects, effectiveStats } from "./effects.js";
 import { tickClouds } from "./clouds.js";
@@ -110,6 +111,10 @@ export function stepOne(world: World, s: SchedulerState): StepResult {
       }
       // Phase 13.2: failed direct summon() refunds energy like cast.
       if (action.kind === "summon" && summonFailedCleanly(events)) {
+        rt.actor.energy += action.cost;
+      }
+      // Phase 15: failed interact() refunds energy.
+      if (action.kind === "interact" && interactFailedCleanly(events)) {
         rt.actor.energy += action.cost;
       }
       // Phase 13.5: feed bool back to the script. Any ActionFailed event in
@@ -379,6 +384,7 @@ function fireAction(world: World, self: Actor, action: PendingAction): GameEvent
     case "drop":     return doDrop(world, self, action.target);
     case "summon":   return doSummon(world, self, action.template, action.target);
     case "notify":   return doNotify(world, self, action.text, action.style, action.duration, action.position);
+    case "interact": return doInteract(world, self, action.target);
   }
 }
 
@@ -467,6 +473,8 @@ export function formatLogEntry(e: { t: number; event: GameEvent }): string {
     case "GearDiscarded": return `[t=${t}] ${event.actor}.gearDiscarded — ${event.defId} (${event.reason})`;
     case "ManaChanged": return `[t=${t}] ${event.actor}.manaChanged — ${event.amount}`;
     case "Notified": return `[t=${t}] ${event.actor}.notify — ${event.text}`;
+    case "ObjectInteracted": return `[t=${t}] ${event.actor}.interacted — ${event.kind} (${event.result})`;
+    case "ObjectChanged": return `[t=${t}] object.${event.objectId}.changed — ${event.kind}${event.removed ? " removed" : ""}${event.locked !== undefined ? ` locked=${event.locked}` : ""}`;
   }
 }
 

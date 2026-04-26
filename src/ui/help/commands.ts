@@ -157,6 +157,22 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     related: ["spells/summon_goblin", "spells/summon_skeleton", "queries/allies"],
   },
 
+  // Phase 15: interact with dungeon objects.
+  interact: {
+    id: "interact",
+    name: "interact",
+    signature: "interact(target?)",
+    blurb: "Use a chest, fountain, or door adjacent to the hero. Costs 10 energy.",
+    body:
+      "Single verb for opening chests, tapping fountains, and unlocking doors. With no argument, picks the most relevant adjacent object (the one on the hero's tile, then the nearest neighbor).\n\nLocked chests and doors consume a `key` consumable from the inventory; if no key is present, the action fails cleanly (refunds energy). Fountains never deplete — they restore HP or MP to full and remain visible. Chests vanish on open and dump their loot into the inventory.\n\nUse `objects_nearby()` to discover what's around. Failed interacts (no target, locked + no key) emit ActionFailed and refund.",
+    examples: [
+      { caption: "Tap a fountain when low on HP.", code: "for obj in objects_nearby():\n  if obj.kind == \"fountain_health\" and me.hp < me.maxHp:\n    interact(obj)" },
+      { caption: "Kill the keymaster, then unlock the chest.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nfor obj in objects_nearby():\n  if obj.kind == \"chest\":\n    interact(obj)" },
+      { caption: "Open the locked exit door.", code: "for obj in objects_nearby():\n  if obj.kind == \"exit_door_closed\":\n    interact(obj)" },
+    ],
+    related: ["queries/objects_nearby", "commands/exit", "commands/pickup"],
+  },
+
   notify: {
     id: "notify",
     name: "notify",

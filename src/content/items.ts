@@ -7,7 +7,10 @@
 
 import type { ItemDef, Slot, SpellOp, EffectKind } from "../types.js";
 
-export const BAG_SIZE = 4;
+// Phase 15: BAG_SIZE removed — inventory is unbounded. Legacy export retained
+// as Infinity for any straggler that still imports it; eventually delete.
+/** @deprecated Phase 15: inventory is uncapped. Use Infinity for compatibility. */
+export const BAG_SIZE = Number.POSITIVE_INFINITY;
 
 export const SLOTS: readonly Slot[] = ["hat", "robe", "staff", "dagger", "focus"] as const;
 
@@ -16,6 +19,19 @@ export function emptyEquipped(): Record<Slot, null> {
 }
 
 // ──────────────────────────── consumables ────────────────────────────
+
+// Phase 15: keys are inert consumables. They have no `body`/use behavior —
+// `interact()` consumes them when adjacent to locked chests / doors.
+// They live in inventory like other consumables and are NEVER routed to the
+// depot at attempt end (discarded instead).
+const key: ItemDef = {
+  id: "key", name: "Key",
+  description: "Opens a single locked chest or door.",
+  kind: "consumable", level: 1,
+  useTarget: "self", range: 0, polarity: "buff",
+  body: [],
+  playerLootable: false,
+};
 
 const health_potion: ItemDef = {
   id: "health_potion", name: "Health Potion",
@@ -437,6 +453,8 @@ const necromancer_focus: ItemDef = {
 // ──────────────────────────── registry ────────────────────────────
 
 export const ITEMS: Record<string, ItemDef> = {
+  // Phase 15: utility items
+  key,
   // Flat consumables
   health_potion, mana_crystal,
   // Effect potions

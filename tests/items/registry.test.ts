@@ -35,7 +35,10 @@ describe("items registry", () => {
         expect(def.useTarget, `${id} missing useTarget`).toBeDefined();
         expect(def.range, `${id} missing range`).toBeDefined();
         expect(def.body, `${id} missing body`).toBeDefined();
-        expect(def.body!.length, `${id} empty body`).toBeGreaterThan(0);
+        // Phase 15: `key` is an inert consumable consumed by interact() — empty body OK.
+        if (id !== "key") {
+          expect(def.body!.length, `${id} empty body`).toBeGreaterThan(0);
+        }
       }
     }
   });
@@ -78,7 +81,7 @@ describe("items registry", () => {
     }
   });
 
-  it("BAG_SIZE is 4", () => {
-    expect(BAG_SIZE).toBe(4);
+  it("BAG_SIZE is unbounded (Phase 15)", () => {
+    expect(BAG_SIZE).toBe(Number.POSITIVE_INFINITY);
   });
 });

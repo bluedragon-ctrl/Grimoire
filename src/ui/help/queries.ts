@@ -120,4 +120,15 @@ export const QUERY_HELP: Record<string, QueryHelp> = {
     examples: [{ caption: "Vary wait duration.", code: "r = random(5)\nif r == 0:\n  wait()" }],
     related: ["queries/chance"],
   },
+  // Phase 15: dungeon objects
+  objects_nearby: {
+    id: "objects_nearby", name: "objects_nearby", signature: "objects_nearby()",
+    blurb: "Dungeon objects (chests, fountains, doors) within 1 tile of the hero.",
+    body: "Returns a list of `{kind, pos, locked?}` records for any RoomObject on the hero's tile or any of the 8 neighbors. Walk-up (`approach(obj)`) until adjacent, then `interact(obj)`.\n\nKinds you'll encounter: `chest`, `fountain_health`, `fountain_mana`, `door_closed`, `exit_door_closed`. Locked variants need a key in the inventory.",
+    examples: [
+      { caption: "Tap a fountain when low on mana.", code: "for obj in objects_nearby():\n  if obj.kind == \"fountain_mana\" and me.mp < me.maxMp:\n    interact(obj)" },
+      { caption: "Open the locked exit after grabbing the keymaster's key.", code: "for obj in objects_nearby():\n  if obj.kind == \"exit_door_closed\":\n    interact(obj)" },
+    ],
+    related: ["commands/interact"],
+  },
 };

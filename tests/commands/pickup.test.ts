@@ -51,20 +51,17 @@ describe("doPickup", () => {
     expect(w.room.floorItems![0]!.defId).toBe("mana_crystal");
   });
 
-  it("fails with 'Bag full' when the hero's bag is already full", () => {
+  it("phase 15: pickup is uncapped — never fails for inventory size", () => {
     const h = mkHero();
     const inv = ensureInventory(h);
-    for (let i = 0; i < BAG_SIZE; i++) inv.consumables.push(mintInstance("health_potion"));
+    for (let i = 0; i < 10; i++) inv.consumables.push(mintInstance("health_potion"));
     const w = mkWorld([h]);
     spawnFloorItem(w, "mana_crystal", { x: 2, y: 2 }, "death", null);
 
     const events = doPickup(w, h, undefined);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.type).toBe("ActionFailed");
-    expect((events[0] as any).reason).toBe("Bag full");
-    // Item still on the floor.
-    expect(w.room.floorItems!.length).toBe(1);
-    expect(h.inventory!.consumables.length).toBe(BAG_SIZE);
+    expect(events[0]!.type).toBe("ItemPickedUp");
+    expect(w.room.floorItems!.length).toBe(0);
+    expect(h.inventory!.consumables.length).toBe(11);
   });
 
   it("fails when no item on the tile", () => {
@@ -74,10 +71,10 @@ describe("doPickup", () => {
     expect(events[0]!.type).toBe("ActionFailed");
   });
 
-  it("equipment pickup queues into foundGear (not bag) and consumes no slot", () => {
+  it("equipment pickup queues into foundGear and lands in inventory", () => {
     const h = mkHero();
     const inv = ensureInventory(h);
-    for (let i = 0; i < BAG_SIZE; i++) inv.consumables.push(mintInstance("health_potion"));
+    for (let i = 0; i < 4; i++) inv.consumables.push(mintInstance("health_potion"));
     const w = mkWorld([h]);
     spawnFloorItem(w, "fire_staff", { x: 2, y: 2 }, "death", null);
 
@@ -85,7 +82,8 @@ describe("doPickup", () => {
     expect(events[0]!.type).toBe("ItemPickedUp");
     expect(h.foundGear).toContain("fire_staff");
     expect(h.knownGear ?? []).not.toContain("fire_staff");
-    expect(h.inventory!.consumables.length).toBe(BAG_SIZE);
+    // Phase 15: wearables stay in inventory until attempt-end auto-routing.
+    expect(h.inventory!.consumables.find(i => i.defId === "fire_staff")).toBeTruthy();
     expect(w.room.floorItems!.length).toBe(0);
   });
 

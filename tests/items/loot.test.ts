@@ -84,12 +84,11 @@ describe("rollDeathDrops", () => {
   });
 });
 
-describe("spawnOverflowDrop", () => {
-  it("unequip with a full bag drops the ex-equipped item on the floor", () => {
+describe("unequip routing (Phase 15: inventory uncapped)", () => {
+  it("unequip pushes the ex-equipped item back into inventory (no overflow)", () => {
     const h = mkHero();
     const inv = ensureInventory(h);
-    // Fill the bag and equip a dagger.
-    for (let i = 0; i < BAG_SIZE; i++) inv.consumables.push(mintInstance("health_potion"));
+    for (let i = 0; i < 10; i++) inv.consumables.push(mintInstance("health_potion"));
     const dagger = mintInstance("bone_dagger");
     inv.equipped.dagger = dagger;
 
@@ -97,11 +96,8 @@ describe("spawnOverflowDrop", () => {
     const events = unequipItem(w, h, "dagger");
 
     expect(events.some(e => e.type === "ItemUnequipped")).toBe(true);
-    const drop = events.find(e => e.type === "ItemDropped");
-    expect(drop).toBeTruthy();
-    expect((drop as any).source).toBe("overflow");
-    expect(w.room.floorItems!.length).toBe(1);
-    expect(w.room.floorItems![0]!.defId).toBe("bone_dagger");
+    expect(w.room.floorItems?.length ?? 0).toBe(0);
+    expect(inv.consumables.find(i => i.defId === "bone_dagger")).toBeTruthy();
   });
 
   it("end-to-end: hero kills goblin, walks to drop, picks up — with a forced-drop table", () => {

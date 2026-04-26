@@ -7,7 +7,7 @@
 import type {
   Actor, FloorItem, GameEvent, Pos, World, ItemInstance,
 } from "../types.js";
-import { ITEMS, BAG_SIZE } from "../content/items.js";
+import { ITEMS } from "../content/items.js";
 import { lootTableFor } from "../content/loot.js";
 import { worldRandom, worldRandInt } from "../rng.js";
 import { ensureInventory } from "./execute.js";
@@ -117,26 +117,12 @@ export function doPickup(world: World, self: Actor, ref: unknown): GameEvent[] {
 
   const inv = ensureInventory(self);
 
-  // Equipment is queued in foundGear during the run and processed at exit
-  // (mirrors how scrolls are processed: knownGear is the long-term record,
-  // foundGear is the per-run buffer). Pickup consumes no bag slot.
-  if (def.kind === "equipment") {
-    if (!self.foundGear) self.foundGear = [];
-    self.foundGear.push(fi.defId);
-    floor.splice(idx, 1);
-    return [{
-      type: "ItemPickedUp",
-      actor: self.id, item: fi.id, defId: fi.defId,
-      pos: { ...self.pos },
-    }];
-  }
+  // Phase 15: pickup is uncapped. All items go into inventory; equipment
+  // stays in inventory until attempt-end auto-routing handles it.
+  // Scrolls still auto-learn at room-clear (existing Phase 13.3 behavior).
+  if (def.kind === "equipment" && !self.foundGear) self.foundGear = [];
+  if (def.kind === "equipment") self.foundGear!.push(fi.defId);
 
-  if (inv.consumables.length >= BAG_SIZE) {
-    return [fail(self, "pickup", "Bag full")];
-  }
-
-  // Move the floor item into the bag as an ItemInstance. We reuse the
-  // floor id as the instance id so log entries correlate across phases.
   const inst: ItemInstance = { id: fi.id, defId: fi.defId };
   inv.consumables.push(inst);
   floor.splice(idx, 1);

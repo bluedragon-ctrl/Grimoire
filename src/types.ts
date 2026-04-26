@@ -273,6 +273,27 @@ export interface Chest { id: string; pos: Pos; opened: boolean; }
 // (scripted/static items) so the loot flow never mutates the designer's list.
 export interface FloorItem { id: string; defId: string; pos: Pos; }
 
+// Phase 15: dungeon objects that the hero can interact() with. Stored on
+// Room alongside actors. Kind dispatches into render/objects.OBJECT_RENDERERS
+// for drawing and into dungeon/objects for interact() behavior.
+export type RoomObjectKind =
+  | "chest" | "fountain_health" | "fountain_mana"
+  | "door_closed" | "exit_door_closed";
+
+export interface RoomObject {
+  id: string;
+  kind: RoomObjectKind;
+  pos: Pos;
+  /** True for locked chests/doors. interact() consumes a key when present. */
+  locked?: boolean;
+  /** Chest loot table id (key into CHEST_LOOT_TABLES). */
+  lootTableId?: string;
+  /** Walls forming the partition for vault chests; rendered as wall tiles. */
+}
+
+/** Wall tile coordinates used to carve interior partitions (vault chests). */
+export interface InteriorWall { pos: Pos; }
+
 export interface Room {
   w: number;
   h: number;
@@ -281,6 +302,14 @@ export interface Room {
   chests: Chest[];
   clouds?: Cloud[];
   floorItems?: FloorItem[];
+  /** Phase 15: data-driven dungeon objects (chests, fountains, locked doors). */
+  objects?: RoomObject[];
+  /** Phase 15: extra wall tiles inside the bounding box (vault partitions). */
+  interiorWalls?: InteriorWall[];
+  /** Phase 15: depth in the current run (1-indexed). */
+  depth?: number;
+  /** Phase 15: archetype label, used for the BREACHING flash. */
+  archetype?: "combat" | "vault" | "conduit" | "cache" | "trap";
 }
 
 export interface World {
@@ -344,7 +373,9 @@ export type GameEvent =
   | { type: "ScrollDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" }
   | { type: "GearLearned"; actor: string; defId: string }
   | { type: "GearDiscarded"; actor: string; defId: string; reason: "learned" | "duplicate" }
-  | { type: "Notified"; actor: string; text: string; style?: "info" | "warning" | "error" | "success"; duration?: number; position?: "top" | "center" | "bottom" };
+  | { type: "Notified"; actor: string; text: string; style?: "info" | "warning" | "error" | "success"; duration?: number; position?: "top" | "center" | "bottom" }
+  | { type: "ObjectInteracted"; actor: string; objectId: string; kind: RoomObjectKind; result: "opened" | "unlocked" | "drained" | "failed:locked" | "failed:no_target" }
+  | { type: "ObjectChanged"; objectId: string; kind: RoomObjectKind; locked?: boolean; removed?: boolean };
 
 export interface LogEntry { t: number; event: GameEvent; }
 export type EventLog = LogEntry[];
@@ -361,6 +392,7 @@ export type PendingAction =
   | { kind: "pickup"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "drop"; cost: number; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "exit"; cost: number; door: Direction; loc?: SourceLoc; locals?: Record<string, unknown> }
+  | { kind: "interact"; cost: number; target?: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "halt"; cost: 0; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "summon"; cost: number; template: string; target: unknown; loc?: SourceLoc; locals?: Record<string, unknown> }
   | { kind: "notify"; cost: 0; text: string; style?: string; duration?: number; position?: string; loc?: SourceLoc; locals?: Record<string, unknown> };
@@ -368,3 +400,21 @@ export type PendingAction =
 // ──────────────────────────── Target resolution seam ────────────────────────────
 
 export type ResolveFailureMode = "silent" | "throw" | "cancel";
+
+// ──────────────────────────── Phase 15: persistent run state ────────────────────────────
+
+export interface RunStats {
+  attempts: number;
+  deepestDepth: number;
+  totalKills: number;
+  totalItemsCollected: number;
+}
+
+export interface PersistentRun {
+  depot: ItemInstance[];
+  equipped: Record<Slot, ItemInstance | null>;
+  knownSpells: string[];
+  knownGear: string[];
+  stats: RunStats;
+  schemaVersion: 1;
+}
