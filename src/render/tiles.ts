@@ -66,9 +66,10 @@ export function drawFloorCracked(ctx: Ctx, gx: number, gy: number, col?: TileCol
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
   wire(ctx, col2, 3);
   const ox = x + 18, oy = y + 22;
-  for (const pts of [[[ox, oy], [ox + 14, oy - 16], [ox + 20, oy - 24]], [[ox, oy], [ox - 10, oy + 12], [ox - 14, oy + 20]], [[ox, oy], [ox + 18, oy + 10]], [[ox, oy], [ox - 7, oy - 10]], [[ox, oy], [ox + 5, oy + 22]]]) {
-    ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  const cracks: [number, number][][] = [[[ox, oy], [ox + 14, oy - 16], [ox + 20, oy - 24]], [[ox, oy], [ox - 10, oy + 12], [ox - 14, oy + 20]], [[ox, oy], [ox + 18, oy + 10]], [[ox, oy], [ox - 7, oy - 10]], [[ox, oy], [ox + 5, oy + 22]]];
+  for (const pts of cracks) {
+    ctx.beginPath(); ctx.moveTo(pts[0]![0], pts[0]![1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]![0], pts[i]![1]);
     ctx.stroke();
   }
 }
@@ -96,7 +97,7 @@ export function drawFloorDirt(ctx: Ctx, gx: number, gy: number, col?: TileColors
   wire(ctx, col1, 1.5);
   ctx.beginPath(); ctx.rect(x + 1, y + 1, TILE - 2, TILE - 2); ctx.stroke();
   wire(ctx, col2, 2);
-  for (const [dx, dy] of [[8, 10], [18, 6], [30, 14], [40, 8], [12, 28], [24, 34], [38, 28], [14, 40], [32, 40], [6, 20], [42, 22]]) {
+  for (const [dx, dy] of [[8, 10], [18, 6], [30, 14], [40, 8], [12, 28], [24, 34], [38, 28], [14, 40], [32, 40], [6, 20], [42, 22]] as [number, number][]) {
     ctx.beginPath(); ctx.arc(x + dx, y + dy, 1, 0, Math.PI * 2); ctx.stroke();
   }
 }
@@ -119,7 +120,7 @@ export function drawFloorMossy(ctx: Ctx, gx: number, gy: number, col?: TileColor
   ctx.moveTo(x + 30, y + 28); ctx.bezierCurveTo(x + 38, y + 26, x + 44, y + 32, x + 42, y + 40); ctx.bezierCurveTo(x + 36, y + 44, x + 28, y + 40, x + 30, y + 28); ctx.closePath();
   ctx.stroke();
   wire(ctx, lighten(col2, 0.3), 3); ctx.globalAlpha = 0.55;
-  for (const [dx, dy] of [[24, 10], [36, 14], [10, 30], [22, 38]]) {
+  for (const [dx, dy] of [[24, 10], [36, 14], [10, 30], [22, 38]] as [number, number][]) {
     ctx.beginPath(); ctx.arc(x + dx, y + dy, 2, 0, Math.PI * 2); ctx.stroke();
   }
   wire(ctx, col2, 2); ctx.globalAlpha = 0.5;
@@ -181,7 +182,7 @@ export function drawWallReinforced(ctx: Ctx, gx: number, gy: number, col?: TileC
   wire(ctx, col2, 6);
   ctx.beginPath(); ctx.moveTo(x + 2, y + TILE / 2); ctx.lineTo(x + TILE - 2, y + TILE / 2); ctx.stroke();
   const rp = 5;
-  for (const [dx, dy] of [[rp, rp], [TILE - rp, rp], [rp, TILE - rp], [TILE - rp, TILE - rp]]) {
+  for (const [dx, dy] of [[rp, rp], [TILE - rp, rp], [rp, TILE - rp], [TILE - rp, TILE - rp]] as [number, number][]) {
     ctx.beginPath(); ctx.arc(x + dx, y + dy, 2.5, 0, Math.PI * 2); ctx.stroke();
   }
 }

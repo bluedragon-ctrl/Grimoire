@@ -1,4 +1,4 @@
-// Phase 13.2 — Summoning & Factions test suite.
+// Summoning & Factions test suite.
 
 import { describe, it, expect } from "vitest";
 import type { Actor, World, Room, GameEvent, Pos } from "../../src/types.js";

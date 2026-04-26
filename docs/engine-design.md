@@ -1,6 +1,6 @@
 # Grimoire Engine Design
 
-Short design note for the headless turn engine. Written before implementation; please confirm alignment before code lands.
+Reference for the headless turn engine: layers, scheduler, effects, commands, events, and the spell/item/summon/RNG mechanics layered on top.
 
 ## Layers
 
@@ -57,11 +57,11 @@ Notes:
 - Tiebreak: descending energy, ascending `id` — deterministic.
 - A terminated main generator with no handlers queued → actor idles forever. The scheduler still ticks energy for them (cheap, keeps logic uniform) but they never show up in `ready`.
 
-## Effects and stat resolution (Phase 5 + 13)
+## Effects and stat resolution
 
-An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tickEvery, source? }` record attached to an actor. The engine only knows about the four lifecycle verbs `apply`, `onApply`, `onTick`, `onExpire`, plus `onStack` (Phase 13) for effects that deviate from standard stacking.
+An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tickEvery, source? }` record attached to an actor. The engine knows the four lifecycle verbs `apply`, `onApply`, `onTick`, `onExpire`, plus `onStack` for effects that deviate from standard stacking.
 
-**Thirteen kinds ship through Phase 13:**
+**Effect kinds:**
 
 | kind | behaviour | mechanism |
 |---|---|---|
@@ -79,8 +79,6 @@ An effect is a uniform `{ id, kind, target, magnitude?, duration, remaining, tic
 | `mana_burn` | mp −N per tick | onTick mutates mp |
 | `power` | int +N flat | effectiveStats delta |
 | `shield` | damage-absorption pool (see below) | onApply/onExpire mutate shieldHp |
-
-**Non-goals (defer to later phases):** `wards` (6 elemental wards — needs damage-type system first); damage-type tagging on spells/attacks.
 
 **Stacking.** Same kind on the same target from any source → refresh `remaining` to `max(existing, new)`; magnitude does not stack (first-write-wins, keeps identity stable). Different kinds stack independently. `haste + slow` coexist, yielding effective `floor(base * 1.5 * 0.5) = floor(base * 0.75)`, clamped to min 1. `chill` composes with haste/slow as an additional speed multiplier.
 
@@ -106,9 +104,7 @@ on tick T → T+1 transition:
 
 Placing the effect phase AFTER the prior tick's actions (i.e., at tick-transition, before new actions for the upcoming tick) keeps the rule "actions first, statuses resolve after" consistent — a burning actor who just struck and killed an enemy still ticks the burn.
 
-**Stat resolution.** `effectiveStats(actor)` is a pure fold over `actor.effects` returning `{ hp, maxHp, speed, atk, def, mp, maxMp, int }`. Modifier effects are read-only — no mutation. Order: flat deltas (might, iron_skin, shock) are applied first, then multipliers (haste, slow, chill), so `chill` reduces the already-boosted atk. `expose` and `shield` are not stats — they are resolved at the damage-apply site in `doAttack`. Direct changes (damage, healing, mana drain) still mutate the actor fields directly.
-
-**Reserved formula (Phase 6).** Spell effects will scale magnitude by `floor(base * (1 + int / 10))`. Phase 5 adds the `int` stat (hero default 5, goblin 0) but no mechanic reads it yet — the contract is reserved so Phase 6 inherits it.
+**Stat resolution.** `effectiveStats(actor)` is a pure fold over `actor.effects` returning `{ hp, maxHp, speed, atk, def, mp, maxMp, int }`. Modifier effects are read-only — no mutation. Order: flat deltas (might, iron_skin, shock) are applied first, then multipliers (haste, slow, chill), so `chill` reduces the already-boosted atk. `expose` and `shield` are not stats — they are resolved at the damage-apply site in `doAttack`. Equipment bonuses are folded in here too (additive across all equipped slots — see `items.md`). Direct changes (damage, healing, mana drain) still mutate the actor fields directly.
 
 **Design choice: regen at full HP skips the tick** — no `EffectTick` event when nothing healed. Rationale: consumers observe ticks as "something happened"; emitting a magnitude-0 event is noise.
 
@@ -129,11 +125,11 @@ MVP: returns `null` on failure, command emits `ActionFailed { reason }`, action 
 
 Queries (`enemies()`, `items()`, `doors()`, `me`, `at(...)`, …) are zero-cost: they run inline during expression eval, return Collections sorted by Chebyshev distance from `actor.pos`. They never consume energy and never yield. The full set is catalogued in `dsl-queries.md`.
 
-Phase 13.5 unified the per-actor distance metric to Chebyshev (8-directional, matches `approach()` movement). Standalone `distance(a, b)`, `adjacent(a, b)`, `can_cast(...)`, and `has_effect(...)` queries were dropped — use the actor surface methods instead: `me.distance_to(other)`, `me.adjacent_to(other)`, `me.can_cast(spell, target?)`, `actor.has_effect("burning")`, `actor.list_effects()`. AoE shapes (`explode`, `frost_nova`) keep Euclidean math so radius-2 blasts read as rounded blobs rather than squares.
+The per-actor distance metric is Chebyshev (8-directional, matches `approach()` movement). Use the actor surface methods: `me.distance_to(other)`, `me.adjacent_to(other)`, `me.can_cast(spell, target?)`, `actor.has_effect("burning")`, `actor.list_effects()`. AoE shapes (`explode`, `frost_nova`) keep Euclidean math so radius-2 blasts read as rounded blobs rather than squares.
 
 ### Commands return bool
 
-Phase 13.5 made command calls expressions: `if attack(foe):` is legal and resolves to `true` when the action fires cleanly, `false` when an `ActionFailed` event is emitted in the resulting bundle. The scheduler resumes the actor's generator with the bool via the per-frame `lastResult` field on `Frame`. Statement-level command calls discard the bool and look identical to before.
+Command calls are expressions: `if attack(foe):` is legal and resolves to `true` when the action fires cleanly, `false` when an `ActionFailed` event is emitted in the resulting bundle. The scheduler resumes the actor's generator with the bool via the per-frame `lastResult` field on `Frame`. Statement-level command calls discard the bool and look identical to before.
 
 Lambda bodies and expression-position user-function calls (`def f(x): return x*2; y = f(3)`) drive the expression generator synchronously and raise `DSLRuntimeError` if a command yield is encountered — matching Python's restriction that lambda bodies are expressions only.
 
@@ -165,7 +161,7 @@ Dispatch rules:
 - Main script does not observe events directly — handlers are the only interface. Keeps the main/handler boundary clean.
 - Dispatch is symmetric across actors: handlers fire for any actor with a matching `on <event>` block — hero and monsters alike. `halt()` ends main but does not disable handlers; a halted actor keeps receiving events until it dies.
 
-Events wired in MVP: `hit` (emitted, handlers dispatched). `see` has plumbing (event type, dispatch path) but nothing emits it yet — parser / vision system will.
+Valid handler names are listed in `src/lang/event-registry.ts`; the parser rejects unknown names at parse time.
 
 ## Termination conditions
 
@@ -177,29 +173,42 @@ Events wired in MVP: `hit` (emitted, handlers dispatched). `see` has plumbing (e
 
 ## AST generality
 
-Interpreter handles the full statement/expression set listed in the spec from day one. MVP demo ASTs only exercise a subset (calls, if, while, simple assigns, handlers), but the evaluator doesn't know that — when the parser lands, no interpreter changes needed.
-
-AST factories (`ast-helpers.ts`) give tests and the demo a readable way to build trees without parser syntax.
+The interpreter handles the full statement/expression set. AST factories in `ast-helpers.ts` give tests a readable way to build trees without parser syntax; production code paths build trees by parsing DSL source via `src/lang/`.
 
 ## File layout
 
 ```
 src/
-  types.ts         AST nodes, World, Actor, Event, PendingAction, Command
-  ast-helpers.ts   node constructors: lit(), ident(), call(), while_(), etc.
-  commands.ts      command impls + queries + resolveTarget
-  interpreter.ts   compile(ast) → generator factory; expr eval; handler gen
-  scheduler.ts    runLoop(world) — energy, dispatch, events, abort
-  engine.ts        runRoom({room, actors}) public API; owns abort signal
-  demo.ts          hardcoded room + hero/goblin ASTs for the UI Run button
-  ui/
-    main.ts        wires Run/Stop to engine, streams log
-    layout.css     grid layout
+  types.ts            AST nodes, World, Actor, Event, PendingAction, ItemDef, ...
+  ast-helpers.ts      node constructors: lit(), ident(), call(), while_(), etc.
+  engine.ts           runRoom({room, actors}) public API; owns abort signal
+  scheduler.ts        runLoop(world) — energy, dispatch, events, abort
+  interpreter.ts      compile(ast) → generator factory; expr eval; handler gen
+  commands.ts         command impls + queries + resolveTarget
+  effects.ts          effect registry, applyEffect, tickEffects, effectiveStats
+  clouds.ts           cloud lifecycle and tick
+  los.ts              Bresenham line-of-sight (smoke-aware)
+  rng.ts              mulberry32, worldRandom
+  persistence.ts      localStorage load/save, fresh run, inventory routing
+  demo.ts             starter hero AST factory used by content/rooms
+  config/             editor config (visuals)
+  content/            data registries: items, monsters, spells, loot, clouds,
+                      visuals, scaling, ai-archetypes, rooms
+  dungeon/            archetypes, generator, dungeon-object types
+  spells/             cast (validation pipeline) + primitives (op registry)
+  items/              execute (use/equip/unequip/procs/aura), loot, legacy script
+  lang/               tokenizer, parser, errors, event-registry, actor-surface,
+                      collection, index (parse() entry point)
+  render/             wire-adapter, mount, pure-pixel draws (context, prims,
+                      items, effects, monsters, objects, tiles), vendor/ bundle
+  ui/                 main, run-state, inventory, proc-format, help/ pane
 index.html
-tests/             vitest specs (one per scenario in the brief)
+tests/                vitest suites mirroring src/ structure
 ```
 
-## Phase 6: data-driven spells + clouds
+---
+
+## Spells and clouds
 
 ### Spell validation order (castSpell)
 
@@ -224,12 +233,10 @@ failed casts don't consume the actor's action slot.
 ### Primitive registry
 
 Spell bodies are declarative `SpellOp[]`. Each op names a primitive and a
-plain args bag. Phase 13.1 ships five implemented primitives (`project`,
-`inflict`, `heal`, `spawn_cloud`, `explode`) and three stubs (`summon`,
-`teleport`, `push`). Phase 13.2 fully implements `summon` (see §Phase 13.2
-Summoning). Remaining stubs (`teleport`, `push`) are callable — they emit
-`ActionFailed { reason: "Primitive 'X' is not implemented yet" }`. Nothing
-throws.
+plain args bag. Implemented primitives: `project`, `inflict`, `heal`,
+`spawn_cloud`, `explode`, `summon`, `cleanse`, `permanent_boost`. Stubs
+(`teleport`, `push`) are callable but emit `ActionFailed { reason:
+"Primitive 'X' is not implemented yet" }` — nothing throws.
 
 Primitives may accept `visual?: string` and `element?: string` args. These
 pass through unchanged onto emitted events (`Cast.visual`,
@@ -269,56 +276,9 @@ discipline.
 duration refreshes to max) apply after. So a second `curse` cast on an
 already-exposed target refreshes the timer but does not stack the magnitude.
 
-### Spell catalog (Phase 13.1 — 20 spells)
+### Spell catalog
 
-**Single-target:**
-
-| spell | target | range | mp | effects |
-|---|---|---|---|---|
-| `bolt` | enemy | 6 | 5 | arcane damage |
-| `firebolt` | enemy | 6 | 8 | fire damage + burning |
-| `frost_lance` | enemy | 6 | 7 | frost damage + chill |
-| `shock_bolt` | enemy | 6 | 7 | lightning damage + shock |
-| `venom_dart` | enemy | 6 | 6 | poison damage + poison |
-| `curse` | enemy | 3 | 6 | expose (incoming dmg ↑) |
-| `mana_leech` | enemy | 3 | 4 | mana_burn (mp drain) |
-
-**AoE explosions (radius scales with int):**
-
-| spell | target | range | mp | effects |
-|---|---|---|---|---|
-| `fireball` | tile | 4 | 12 | fire blast + burning, radius 2 |
-| `frost_nova` | self | 0 | 11 | frost burst + chill, radius 2, self-safe |
-| `thunderclap` | self | 0 | 10 | shock burst, radius 1, self-safe |
-| `meteor` | tile | 5 | 18 | massive fire blast + burning, radius 3 |
-
-**Clouds:**
-
-| spell | target | range | mp | effects |
-|---|---|---|---|---|
-| `firewall` | tile | 4 | 10 | fire cloud (burning DoT) |
-| `poison_cloud` | tile | 4 | 11 | poison cloud (poison DoT) |
-
-**Buffs:**
-
-| spell | target | range | mp | effects |
-|---|---|---|---|---|
-| `bless` | ally | 1 | 7 | haste |
-| `might` | self | 0 | 6 | atk +N |
-| `iron_skin` | self | 0 | 6 | def +N |
-| `mind_spark` | self | 0 | 6 | int +N (power) |
-| `focus` | self | 0 | 5 | mana regen |
-| `shield` | self | 0 | 8 | damage-absorption pool |
-
-**Heal:**
-
-| spell | target | range | mp | effects |
-|---|---|---|---|---|
-| `heal` | ally | 1 | 5 | restore HP |
-
-**Non-goals deferred to later phases:** scrolls and learn-from-scroll flow
-(Phase 13.2/13.3), summoning primitives, `teleport`, `push`, ward/resist
-system, damage-type defence interactions.
+The full spell registry — names, target types, ranges, MP costs, scaling, and op bodies — lives in [`src/content/spells.ts`](../src/content/spells.ts). It groups into single-target damage, AoE explosions (`explode` op, INT-scaling radius), cloud-spawners, self/ally buffs, and `heal`. The in-game help pane (Prep screen) renders the same data with examples.
 
 ### Cloud lifecycle
 
@@ -331,14 +291,14 @@ Each scheduler tick, `tickClouds(world)` runs **after `tickEffects` and
 before the next actor action slot**:
 
 1. For each cloud, find live actors whose position matches the cloud's
-   position, and call `applyEffect` with the configured effect. Phase 5
+   position, and call `applyEffect` with the configured effect. Effect
    stacking semantics (refresh duration to max; magnitude doesn't stack)
    handle repeat ticks and re-entry.
 2. Emit `CloudTicked { id, appliedTo }` if at least one actor was hit.
 3. Decrement `remaining`; at ≤ 0 emit `CloudExpired` and splice out.
 
 Multiple clouds on the same tile tick independently and all apply. Clouds
-do **not** block movement in Phase 6.
+do **not** block movement.
 
 ### Tick order
 
@@ -348,22 +308,23 @@ Within a scheduler tick, when no action is ready and time advances:
    `effectiveStats.speed`.
 2. **Effects phase:** `tickEffects(world, actor)` for each live actor.
 3. **Clouds phase:** `tickClouds(world)` — cloud applications + decays.
-4. **Death-drop sweep (Phase 9):** any `Died` events emitted by the just-
-   fired action or the effect/cloud phase are scanned; each victim's loot
-   table rolls through `worldRandom()` and the resulting `ItemDropped`
-   events are appended to the *same* bundle. Drops never span ticks.
+4. **Death-drop sweep:** any `Died` events emitted by the just-fired action
+   or the effect/cloud phase are scanned; each victim's loot table rolls
+   through `worldRandom()` and the resulting `ItemDropped` events are
+   appended to the *same* bundle. Drops never span ticks.
 5. Dispatch all phase events through handler routing.
 6. Return to action-readiness check.
 
-### Determinism (Phase 9)
+### Determinism
 
 A single mulberry32 state (`World.rngSeed`, seeded from `RunOptions.seed`,
-default 1) drives every random decision — currently just loot rolls, but
-Phase 10's AI and any future crit/miss rolls must draw from the same
-generator so replaying `(setup, seed)` is byte-identical. `Math.random` is
-never called inside `src/`.
+default 1) drives every random decision — loot rolls, monster AI choices,
+proc chance gates. Replaying `(setup, seed)` is byte-identical.
+`Math.random` is never called inside `src/`.
 
-## Phase 13.2: Factions
+---
+
+## Factions
 
 ### Faction field
 
@@ -387,7 +348,7 @@ Every actor carries an optional `faction?: "player" | "enemy" | "neutral"`. All 
 
 Two neutrals are neither allies nor enemies — they ignore each other. All actor selectors use these helpers; no `isHero` comparisons in selector code paths.
 
-## Phase 13.2: Summoning
+## Summoning
 
 ### `summon` primitive
 
@@ -438,9 +399,9 @@ On any `Died` event: all live actors with `owner === deceased.id` are swept, mar
 
 Load-time validation: every `summon_X` entry in SPELLS must reference a template with `summonable === true` and a defined `summonMpCost`. Fails loud at import.
 
-## Phase 13.2: Seedable RNG and DSL builtins
+## Seedable RNG and DSL builtins
 
-`World.rngSeed` (already present from Phase 9) seeds a mulberry32 generator. Two new DSL builtins are exposed via the `queries` object:
+`World.rngSeed` seeds a mulberry32 generator. Two DSL builtins are exposed via the `queries` object:
 
 | builtin | signature | semantics |
 |---|---|---|
@@ -449,16 +410,9 @@ Load-time validation: every `summon_X` entry in SPELLS must reference a template
 
 Both advance `world.rngSeed`. Because the world seed is deterministic from `RunOptions.seed`, replaying `(setup, seed)` produces identical RNG sequences. `chance(0)` is always false; `chance(100)` is always true; `random(1)` always returns 0.
 
-## Phase 13.2: Non-goals
-
-- Monster script universalization (full rewrite for faction-aware selectors) — deferred to the monster-content phase.
-- Neutral actors as content — infrastructure only.
-- `teleport`, `push` primitives — still stubs.
-- Summon visuals beyond portal / despawn puff — summons use their template's `MONSTER_VISUALS` entry unchanged.
-
 ---
 
-## Phase 13.3: Consumables
+## Consumables
 
 ### Item shape
 
@@ -518,26 +472,13 @@ When a hero successfully exits a room (`doExit` reaches a door tile), all scroll
 
 Scrolls are always removed from the bag. Non-scroll items are untouched. If `doExit` returns `ActionFailed` (not on a door tile), the bag is unchanged.
 
-### Content catalogue (Phase 13.3 additions)
+### Content catalogue
 
-| Category | IDs |
-|---|---|
-| Flat consumables (existing) | `health_potion`, `mana_crystal` |
-| Effect potions | `haste_potion`, `shield_potion`, `might_potion`, `iron_skin_potion`, `regen_potion`, `power_potion`, `focus_potion`, `cleanse_potion` |
-| Elixirs (permanent) | `vitality_elixir`, `insight_elixir`, `might_elixir`, `guard_elixir`, `swift_elixir`, `focus_elixir` |
-| Bombs (tile) | `fire_bomb`, `frost_bomb`, `shock_bomb`, `smoke_bomb` |
-| Scrolls | `scroll_bolt` … `scroll_heal` (20 learnable spells; summon spells excluded) |
-
-### Phase 13.3: Non-goals
-
-- Neutral actors as full content — infrastructure only.
-- `teleport`, `push` primitives — still stubs.
-- Structural wall LOS — walls are not yet modelled in the room map.
-- Bag size enforcement beyond the BAG_SIZE constant — UI clamps; engine trusts the bag.
+The consumable, elixir, bomb, and scroll registry lives in [`src/content/items.ts`](../src/content/items.ts). Categories: flat consumables (heal/mana), effect potions, permanent-stat elixirs, tile bombs (one per element), and 20 learnable spell scrolls (summons excluded).
 
 ---
 
-## Phase 13.4: Wearables — structured data, auras, and proc hooks
+## Wearables — structured data, auras, and proc hooks
 
 ### Wearable data shape (`WearableDef`)
 
@@ -570,17 +511,9 @@ interface AuraSpec {
 }
 ```
 
-### Item catalog (31 wearables across 5 slots)
+### Item catalog
 
-**Hats (7):** cloth_cap, wizard_hat, iron_helm, stoic_helm, crown_of_ages, lucky_crown, arcane_diadem
-
-**Robes (6):** leather_robe, silk_robe, chain_vestment, thorned_robe, shadow_cloak, spellweaver_robe
-
-**Staves (5):** wooden_staff, fire_staff, shock_staff, draining_staff, crystal_staff
-
-**Daggers (7):** bone_dagger, steel_dagger, venom_dagger, shadow_blade, frost_shard, wild_dagger, vampiric_blade
-
-**Foci (6):** quartz_focus, runed_focus, void_focus, bloodstone, star_fragment, necromancer_focus
+31 wearables across 5 slots (hat / robe / staff / dagger / focus). Full catalog in [`src/content/items.ts`](../src/content/items.ts); each slot has at least 5 entries (registry test enforces minimum).
 
 ### Aura lifecycle
 
@@ -621,22 +554,3 @@ rawDamage = max(1, effectiveStats(attacker).atk − effectiveStats(defender).def
 
 `effectiveStats` folds in all equipped-item bonuses additive-sum style before the formula runs. Minimum damage is 1 (never zero or negative, regardless of how high the defender's def is).
 
-### Non-goals (Phase 13.4)
-
-- Level scaling for items (flat bonuses only).
-- Set bonuses (no cross-item synergy).
-- Damage-type affinities (no elemental resistances).
-- Cursed items (no equip-lock mechanic).
-- Threshold-gated procs (`on_low_hp`, `on_ally_death`).
-- Grants-spell items (`grants_spell`).
-- Room-transition hooks (`on_enter_room`).
-
----
-
-## Open questions (flagging, not blocking)
-
-- Do queries see a snapshot of world state at yield time, or live state each evaluation? **Proposed: live** — simpler, and scripts are single-threaded per actor so no race.
-- Sort stability for queries with equal Manhattan distance? **Proposed: secondary key = actor id / tile (x,y) lex.**
-- Does `ActionFailed` count as a fired action for cost purposes? **Proposed: yes** (as above — prevents starvation).
-
-Will proceed with the "proposed" answers unless told otherwise.

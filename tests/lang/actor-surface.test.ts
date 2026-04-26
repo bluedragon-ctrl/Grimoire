@@ -1,4 +1,4 @@
-// Phase 13.5: actor dot-walk surface — me.hp, me.is_hero, me.distance_to(),
+// Actor dot-walk surface — me.hp, me.is_hero, me.distance_to(),
 // me.adjacent_to(), me.has_effect(), me.summoner, etc.
 
 import { describe, it, expect } from "vitest";

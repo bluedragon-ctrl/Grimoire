@@ -1,4 +1,4 @@
-// Phase 13.3: consumable-specific tests covering:
+// Consumable-specific tests covering:
 // - use() with ally/enemy/tile targeting via doUse
 // - cleanse primitive (removes debuffs, keeps buffs)
 // - permanent_boost primitive (bumps base stat)
@@ -15,7 +15,7 @@ import { PRIMITIVES } from "../../src/spells/primitives.js";
 
 const S = script(cHalt());
 
-function mkWorld(actors: Actor[], clouds = []): World {
+function mkWorld(actors: Actor[], clouds: import("../../src/types.js").Cloud[] = []): World {
   return {
     tick: 0,
     room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [...clouds] },

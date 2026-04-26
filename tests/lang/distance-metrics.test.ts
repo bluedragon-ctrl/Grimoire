@@ -1,4 +1,4 @@
-// Phase 13.5: distance metrics decouple by purpose —
+// Distance metrics decouple by purpose —
 //   actor-to-actor distance is Chebyshev (8-directional, diagonals = 1 tile),
 //   AoE inclusion is Euclidean (round blasts; corners drop out at R≥2).
 

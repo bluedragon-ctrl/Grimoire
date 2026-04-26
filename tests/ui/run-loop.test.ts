@@ -1,4 +1,4 @@
-// Phase 15: run-state machine tests. New lifecycle:
+// Run-state machine tests. Lifecycle:
 //   loadout → running → death_recap → loadout
 //                     ↘ quit_confirm → final_review → loadout
 

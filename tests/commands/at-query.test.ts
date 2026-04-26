@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, Room, World } from "../src/types.js";
-import { queries } from "../src/commands.js";
-import { runRoom } from "../src/engine.js";
+import type { Actor, Room, World } from "../../src/types.js";
+import { queries } from "../../src/commands.js";
+import { runRoom } from "../../src/engine.js";
 import {
   script, call, lit, while_, un, index, cApproach, cExit, cHalt,
-} from "../src/ast-helpers.js";
+} from "../../src/ast-helpers.js";
 
 function emptyRoom(overrides: Partial<Room> = {}): Room {
   return { w: 10, h: 10, doors: [], items: [], chests: [], ...overrides };

@@ -1,13 +1,13 @@
-# Dungeon — Archetypes, Run Lifecycle, Inventory (Phase 15)
+# Dungeon — Archetypes, Run Lifecycle, Inventory
 
-The Phase-11 fixed 10×10 single-room generator has been replaced by a procedural single-room infinite-depth dungeon. Each room is one of 5 archetypes; rooms scale with depth.
+A procedural single-room infinite-depth dungeon. Each room is one of 5 archetypes; rooms scale with depth.
 
 ## Run lifecycle
 
 ```
 [Game start]
   └─ Fresh empty depot seeded with STARTING_INVENTORY consumables
-  └─ Equipped slots = Phase 13.7 starter wearables (wooden_staff, bone_dagger)
+  └─ Equipped slots = starter wearables (wooden_staff, bone_dagger)
   └─ Known spells = starter spells
   └─ Run stats zero
   └─ Pre-attempt loadout screen → attempt 1, depth 1
@@ -19,7 +19,7 @@ The Phase-11 fixed 10×10 single-room generator has been replaced by a procedura
 [On hero death]
   └─ Auto-route inventory wearables (empty slot → equip, occupied → depot)
   └─ Inventory consumables → depot; keys discarded; equipped wearables stay equipped
-  └─ Death recap (Phase 13.7) with TWO buttons:
+  └─ Death recap with TWO buttons:
       ┌─ TRY AGAIN: pre-attempt loadout screen → new attempt at depth 1
       └─ QUIT: confirm dialog → final review screen → wipe localStorage → fresh game state
 ```
@@ -83,7 +83,7 @@ Three persistent zones + one transient zone:
 
 - `pickup()` and chest-open route everything to `inventory` — no caps.
 - Wearables collected during an attempt **stay in inventory**. No auto-equip mid-attempt.
-- Scrolls auto-learn at room-clear (Phase 13.3 behavior).
+- Scrolls auto-learn at room-clear.
 - Keys live in inventory; auto-consumed by `interact()` on locked things.
 - `use()` operates on inventory consumables only.
 
@@ -99,7 +99,7 @@ Consumables → depot. Keys → discarded. Equipped wearables stay equipped. Kno
 
 Shown at the start of every attempt. Lists depot consumables and lets the player pick up to **4 items** to seed inventory. Wearables and scrolls are not pickable here. The BREACH button starts the attempt.
 
-## DSL surface (Phase 15 additions)
+## DSL surface — dungeon objects
 
 - `interact(target?)` — opens chests, taps fountains, unlocks doors. Single verb. 10 energy. Failed interacts (no target, locked + no key) refund.
 - `objects_nearby()` — array of `{kind, pos, locked?}` records for adjacent dungeon objects.
@@ -123,8 +123,8 @@ for obj in objects_nearby():
 
 Single localStorage key: `grimoire.run.v1`. Saved at room clear, attempt end, attempt start, quit. Cleared by QUIT confirmation only.
 
-## Out of scope (future phases)
+## Out of scope (future work)
 
-- Loadout UI for wearables/equipment (Phase 16)
-- Traps placement (Phase 17 candidate — visuals already exist)
+- Loadout UI for wearables/equipment
+- Traps placement (visuals already exist)
 - Boss rooms; multi-tier keys; tile decoration; adaptive difficulty

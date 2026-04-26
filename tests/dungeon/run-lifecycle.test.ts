@@ -1,4 +1,4 @@
-// Phase 15: run-lifecycle integration tests.
+// Run-lifecycle integration tests.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { RunController } from "../../src/ui/run-state.js";

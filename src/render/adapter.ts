@@ -4,7 +4,7 @@
 //   FakeRendererAdapter — records apply() calls. Used in tests (esp. the
 //                         mount.ts timing test) where we just need to verify
 //                         sequencing, not pixels.
-//   WireRendererAdapter — translates events into the Samples/ wire renderer's
+//   WireRendererAdapter — translates events into the vendored wire renderer's
 //                         state snapshot and asks it to draw. Lives in
 //                         wire-adapter.ts.
 //

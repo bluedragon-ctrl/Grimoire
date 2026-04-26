@@ -7,7 +7,7 @@ energy, never yield, never emit events, and never mutate world state.
 Implementation lives in `src/commands.ts::queries`. All registry entries are
 symmetric with respect to the caller: the `self` passed in is whichever
 actor's script is currently evaluating, so the same query set powers the
-hero and the AI scripts of Phase 11 monsters.
+hero and monster AI scripts uniformly.
 
 ## Core
 
@@ -50,7 +50,7 @@ Both `distance` and `adjacent` accept actors, doors, items, chests, and bare
 | `clouds()`                   | `{id, pos, kind, remaining}[]` | Snapshot of live cloud tiles.                                                           |
 | `cloud_at(target)`           | `string \| null`       | Topmost cloud kind on a tile, or `null`.                                                |
 
-## Floor items (Phase 9)
+## Floor items
 
 | Query                        | Returns                | Notes                                                                                   |
 | ---------------------------- | ---------------------- | --------------------------------------------------------------------------------------- |

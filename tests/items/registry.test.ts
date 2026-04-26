@@ -1,24 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { ITEMS, BAG_SIZE, SLOTS } from "../../src/content/items.js";
-import { parseAllItems, getItemOps, validateAllWearables } from "../../src/items/execute.js";
+import { validateAllWearables } from "../../src/items/execute.js";
 import { ITEM_VISUAL_PRESETS } from "../../src/content/item-visuals.js";
 
 describe("items registry", () => {
-  it("parseAllItems: parses without throwing", () => {
-    expect(() => parseAllItems()).not.toThrow();
-  });
-
   it("validateAllWearables: all 31 wearables pass load-time validation", () => {
     expect(() => validateAllWearables()).not.toThrow();
-  });
-
-  it("equipment items with DSL script parse to non-empty ItemOp[]", () => {
-    for (const [id, def] of Object.entries(ITEMS)) {
-      if (def.kind === "equipment" && def.script) {
-        const ops = getItemOps(id);
-        expect(ops.length, `${id} ops empty`).toBeGreaterThan(0);
-      }
-    }
   });
 
   it("equipment items have a valid slot", () => {

@@ -41,7 +41,7 @@ the loot-table key for [`rollDeathDrops`](../src/items/loot.ts).
 The registry is frozen at module load, so there's no need (or way) to mutate
 it at runtime.
 
-## Phase 14: families, immunities, scaling
+## Families, immunities, scaling
 
 Each `MonsterTemplate` now carries a **family** axis and a tier **level**.
 
@@ -115,7 +115,7 @@ Intelligent monsters (lich, dark wizard, vampire, dragon, cultist, mage) get a `
 
 Templates can declare `onDeath?: { summon?: { template, count } }`. The scheduler fires the proc after the `Died` event and before `appendDeathDrops`. Currently used for slime split (2× `lesser_slime`). Spawned summons are flagged `summoned: true` (skips loot) but their `owner` is left blank so the death-cascade despawn pass doesn't immediately kill them. `lesser_slime` deliberately does not declare its own `onDeath` — split is one-shot.
 
-## Starter roster (Phase 11)
+## Starter roster
 
 | id       | role               | notes                                               |
 |----------|--------------------|-----------------------------------------------------|

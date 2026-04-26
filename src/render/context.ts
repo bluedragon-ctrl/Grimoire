@@ -1,4 +1,4 @@
-// Shared renderer state and utilities. Ported from Samples/ui/render-context.js.
+// Shared renderer state and utilities.
 // Tile size, color palette, `wire()` helper, and hex-color utilities.
 
 export const TILE = 48;

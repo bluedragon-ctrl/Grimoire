@@ -1,4 +1,4 @@
-// Phase 13.5: lambdas and `def` user functions — parameter binding,
+// Lambdas and `def` user functions — parameter binding,
 // lexical capture, return, recursion, LEGB scoping (no leak to caller).
 
 import { describe, it, expect } from "vitest";

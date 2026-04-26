@@ -1,4 +1,4 @@
-// Phase 15: dungeon generator tests.
+// Dungeon generator tests.
 
 import { describe, it, expect } from "vitest";
 import { generateRoom } from "../../src/dungeon/generator.js";

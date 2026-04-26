@@ -11,10 +11,9 @@
 // - Bonus aggregation: additive across all equipped slots.
 
 import type {
-  Actor, ItemInstance, ItemDef, ProcSpec, Slot, World, GameEvent, Pos,
+  Actor, ItemInstance, ItemDef, ProcSpec, Slot, StatKey, World, GameEvent, Pos,
 } from "../types.js";
 import { ITEMS, BAG_SIZE, SLOTS, emptyEquipped } from "../content/items.js";
-import { parseItemScript, type ItemOp, type MergeStat } from "./script.js";
 import {
   applyEffect, wireEquipmentBonuses, wireOnKillHook,
   callOnKillHook, REGISTRY as EFFECT_REGISTRY,
@@ -22,28 +21,6 @@ import {
 import { PRIMITIVES, type TargetRef } from "../spells/primitives.js";
 import { spawnOverflowDrop } from "./loot.js";
 import { worldRandom } from "../rng.js";
-
-// ──────────────────────────── parse cache (equipment with DSL script) ────────────────────────────
-
-const OP_CACHE = new Map<string, ItemOp[]>();
-
-export function getItemOps(defId: string): ItemOp[] {
-  let cached = OP_CACHE.get(defId);
-  if (cached) return cached;
-  const def = ITEMS[defId];
-  if (!def) throw new Error(`unknown item '${defId}'`);
-  if (!def.script) { const empty: ItemOp[] = []; OP_CACHE.set(defId, empty); return empty; }
-  cached = parseItemScript(defId, def.script);
-  OP_CACHE.set(defId, cached);
-  return cached;
-}
-
-// Parse every equipment item with a DSL script — used at load-time to fail fast on bad content.
-export function parseAllItems(): void {
-  for (const [id, def] of Object.entries(ITEMS)) {
-    if (def.kind === "equipment" && def.script) getItemOps(id);
-  }
-}
 
 // Validate all wearables at load time: effect kinds, stat keys, target arity, chance range.
 export function validateAllWearables(): void {
@@ -107,6 +84,10 @@ export function ensureInventory(actor: Actor): NonNullable<Actor["inventory"]> {
   return actor.inventory;
 }
 
+// Module-level counter is intentional: callers (mostly tests) need monotonically
+// unique ids across many calls within a single process. Engine determinism is
+// unaffected — tests that care about replay build inputs explicitly, and the
+// engine itself never calls mintInstance.
 let nextInstanceId = 1;
 export function mintInstance(defId: string): ItemInstance {
   return { id: `it${nextInstanceId++}_${defId}`, defId };
@@ -236,26 +217,18 @@ export function unequipItem(world: World, actor: Actor, slot: Slot): GameEvent[]
 // ──────────────────────────── bonus aggregation (additive) ────────────────────────────
 
 // Sum bonuses across all equipped slots. Two items each with +2 int yield +4 total.
-export function getEquipmentBonuses(actor: Actor): Partial<Record<MergeStat, number>> {
+export function getEquipmentBonuses(actor: Actor): Partial<Record<StatKey, number>> {
   const inv = actor.inventory;
   if (!inv) return {};
-  const out: Partial<Record<MergeStat, number>> = {};
+  const out: Partial<Record<StatKey, number>> = {};
   for (const slotKey of Object.keys(inv.equipped) as Slot[]) {
     const inst = inv.equipped[slotKey];
     if (!inst) continue;
     const def = ITEMS[inst.defId];
     if (!def || def.kind !== "equipment") continue;
     if (def.bonuses) {
-      for (const [stat, amount] of Object.entries(def.bonuses) as [MergeStat, number][]) {
+      for (const [stat, amount] of Object.entries(def.bonuses) as [StatKey, number][]) {
         out[stat] = (out[stat] ?? 0) + amount;
-      }
-    }
-    // Legacy DSL-script equipment still contributes via merge ops.
-    if (def.script) {
-      for (const op of getItemOps(inst.defId)) {
-        if (op.op !== "merge") continue;
-        const cur = out[op.stat] ?? 0;
-        if (op.amount > cur) out[op.stat] = op.amount;
       }
     }
   }

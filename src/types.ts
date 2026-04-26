@@ -198,8 +198,7 @@ export interface ItemDef {
   level: number;
   // Equipment-only (kind === "equipment")
   slot?: Slot;
-  script?: string;        // DSL merge/on_hit_inflict ops; parsed at registry load
-  bonuses?: Partial<Record<StatKey, number>>;   // Phase 13.4: additive stat bonuses
+  bonuses?: Partial<Record<StatKey, number>>;   // additive stat bonuses
   on_hit?:    ProcSpec;
   on_damage?: ProcSpec;
   on_kill?:   ProcSpec;

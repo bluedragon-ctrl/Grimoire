@@ -96,7 +96,6 @@ export function itemEntries(): HelpEntry[] {
       if (d.on_damage) meta.push(["on_damage", procLine("on_damage", d.on_damage)]);
       if (d.on_kill)   meta.push(["on_kill",   procLine("on_kill",   d.on_kill)]);
       if (d.on_cast)   meta.push(["on_cast",   procLine("on_cast",   d.on_cast)]);
-      if (d.script)    meta.push(["script", d.script]);
     }
     out.push({
       id: d.id,

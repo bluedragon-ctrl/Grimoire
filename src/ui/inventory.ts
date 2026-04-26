@@ -14,7 +14,7 @@ import { ITEM_DRAWS } from "../render/items.js";
 import { ITEM_VISUAL_PRESETS, FALLBACK_PRESETS, type ItemShape } from "../content/item-visuals.js";
 import { getEquipmentBonuses } from "../items/execute.js";
 import { formatItemProcs } from "./proc-format.js";
-import type { MergeStat } from "../items/script.js";
+import type { StatKey } from "../types.js";
 
 const ICON_PX = 40;
 const PICKER_ICON_PX = 24;
@@ -311,11 +311,11 @@ export function mountInventoryPanel(
       int:   hero.int   ?? 0,
       speed: hero.speed,
     };
-    const bonuses = getEquipmentBonuses(hero) as Partial<Record<MergeStat, number>>;
+    const bonuses = getEquipmentBonuses(hero) as Partial<Record<StatKey, number>>;
 
     const table = document.createElement("table");
     table.className = "inv-stats-tbl";
-    const rows: Array<[string, number, MergeStat | null]> = [
+    const rows: Array<[string, number, StatKey | null]> = [
       ["HP",     base.hp!,    null],
       ["Max HP", base.maxHp!, "maxHp"],
       ["MP",     base.mp!,    null],

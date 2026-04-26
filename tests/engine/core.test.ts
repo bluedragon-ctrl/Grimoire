@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { Actor, Room, GameEvent } from "../src/types.js";
-import { runRoom } from "../src/engine.js";
+import type { Actor, Room, GameEvent } from "../../src/types.js";
+import { runRoom } from "../../src/engine.js";
 import {
   script, ident, call, lit, while_, bin, member, index, exprStmt, if_, onEvent,
   cApproach, cAttack, cCast, cExit, cHalt, cWait,
-} from "../src/ast-helpers.js";
+} from "../../src/ast-helpers.js";
 
 function emptyRoom(overrides: Partial<Room> = {}): Room {
   return {

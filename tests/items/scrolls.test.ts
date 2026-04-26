@@ -1,4 +1,4 @@
-// Phase 13.3 – Scroll auto-consume tests.
+// Scroll auto-consume tests.
 // doExit processes all scroll items in the hero's bag before HeroExited:
 //   • New spell → SpellLearned + ScrollDiscarded(reason:"learned")
 //   • Already known → ScrollDiscarded(reason:"duplicate"), no SpellLearned
