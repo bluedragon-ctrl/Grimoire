@@ -71,13 +71,29 @@ export interface InventoryController {
   setEditable: (yes: boolean) => void;
 }
 
+/** Phase 15: optional loadout-mode binding. When provided the bag becomes a
+ *  fixed-length picker backed by the run's depot. */
+export interface LoadoutBinding {
+  /** Returns the current 4-slot loadout (null = empty slot). */
+  getSelection: () => Array<string | null>;
+  /** Returns counts of available depot consumables (excluding scrolls + keys). */
+  getDepotCounts: () => Map<string, number>;
+  /** Called when the user picks/clears a slot. */
+  setSlot: (idx: number, defId: string | null) => void;
+}
+
 export function mountInventoryPanel(
   container: HTMLElement,
   getHero: () => Actor | null,
+  loadoutBinding?: LoadoutBinding | (() => LoadoutBinding | null),
 ): InventoryController {
   let editable = true;
   let instSeq = 0;
   const mintInstId = (defId: string) => `eq_${defId}_${++instSeq}`;
+  const getLoadout = (): LoadoutBinding | null => {
+    if (!loadoutBinding) return null;
+    return typeof loadoutBinding === "function" ? loadoutBinding() : loadoutBinding;
+  };
 
   function closePicker(): void {
     document.querySelectorAll(".inv-picker").forEach(p => p.remove());
@@ -182,17 +198,102 @@ export function mountInventoryPanel(
     slotsCol.appendChild(equipRow);
 
     const bagH = document.createElement("h3");
-    bagH.textContent = "Inventory";
+    const loadout = getLoadout();
+    const inLoadoutMode = editable && !!loadout;
+    bagH.textContent = inLoadoutMode ? "Loadout (4 consumables)" : "Inventory";
     slotsCol.appendChild(bagH);
     const bagRow = document.createElement("div");
     bagRow.className = "inv-row";
-    const slots = Math.max(MIN_INVENTORY_SLOTS, inv.consumables.length);
-    for (let i = 0; i < slots; i++) {
-      bagRow.appendChild(renderBagSlot(i, inv.consumables[i] ?? null));
+
+    if (inLoadoutMode && loadout) {
+      const sel = loadout.getSelection();
+      for (let i = 0; i < MIN_INVENTORY_SLOTS; i++) {
+        bagRow.appendChild(renderLoadoutSlot(i, sel[i] ?? null, loadout));
+      }
+    } else {
+      const slots = Math.max(MIN_INVENTORY_SLOTS, inv.consumables.length);
+      for (let i = 0; i < slots; i++) {
+        bagRow.appendChild(renderBagSlot(i, inv.consumables[i] ?? null));
+      }
     }
     slotsCol.appendChild(bagRow);
 
     renderStats(statsCol, hero);
+  }
+
+  function openLoadoutPicker(anchor: HTMLElement, slotIdx: number, loadout: LoadoutBinding): void {
+    closePicker();
+    const counts = loadout.getDepotCounts();
+    const sel = loadout.getSelection();
+    const usedByOtherSlots = new Map<string, number>();
+    sel.forEach((d, i) => {
+      if (!d || i === slotIdx) return;
+      usedByOtherSlots.set(d, (usedByOtherSlots.get(d) ?? 0) + 1);
+    });
+
+    const picker = document.createElement("div");
+    picker.className = "inv-picker";
+    picker.style.position = "absolute";
+
+    const empty = document.createElement("button");
+    empty.className = "inv-picker-row";
+    empty.type = "button";
+    empty.textContent = "— (empty) —";
+    empty.addEventListener("click", () => {
+      loadout.setSlot(slotIdx, null);
+      closePicker();
+      render();
+    });
+    picker.appendChild(empty);
+
+    for (const [defId, total] of counts) {
+      const def = ITEMS[defId]!;
+      const used = usedByOtherSlots.get(defId) ?? 0;
+      const remaining = total - used;
+      if (remaining <= 0) continue;
+      const row = document.createElement("button");
+      row.className = "inv-picker-row";
+      row.type = "button";
+      const icon = document.createElement("canvas");
+      icon.width = PICKER_ICON_PX;
+      icon.height = PICKER_ICON_PX;
+      icon.className = "inv-picker-icon";
+      drawItemIcon(icon, defId);
+      row.appendChild(icon);
+      const label = document.createElement("span");
+      label.textContent = `${def.name} × ${remaining}`;
+      row.appendChild(label);
+      row.addEventListener("click", () => {
+        loadout.setSlot(slotIdx, defId);
+        closePicker();
+        render();
+      });
+      picker.appendChild(row);
+    }
+
+    document.body.appendChild(picker);
+    const r = anchor.getBoundingClientRect();
+    picker.style.left = `${r.left + window.scrollX}px`;
+    picker.style.top = `${r.bottom + window.scrollY + 4}px`;
+
+    const onDocClick = (ev: MouseEvent) => {
+      if (!picker.contains(ev.target as Node) && ev.target !== anchor) {
+        closePicker();
+        document.removeEventListener("click", onDocClick, true);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", onDocClick, true), 0);
+  }
+
+  function renderLoadoutSlot(idx: number, defId: string | null, loadout: LoadoutBinding): HTMLElement {
+    const def = defId ? ITEMS[defId] : undefined;
+    const cell = renderSlotCell(defId, def?.name ?? `Slot ${idx + 1}`, true);
+    cell.title = def ? `${def.name} (loadout slot ${idx + 1})` : `Empty loadout slot ${idx + 1}`;
+    cell.addEventListener("click", ev => {
+      ev.stopPropagation();
+      openLoadoutPicker(cell as HTMLElement, idx, loadout);
+    });
+    return cell;
   }
 
   function renderStats(col: HTMLElement, hero: Actor): void {

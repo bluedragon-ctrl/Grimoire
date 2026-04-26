@@ -16,9 +16,9 @@ import {
   inspectorTabEnabled, helpTabEnabled,
   type Phase,
 } from "./run-state.js";
-import { generateRoom, defaultHero } from "../dungeon/generator.js";
+import { generateRoom } from "../dungeon/generator.js";
 import { mountHelpPane } from "./help/help-pane.js";
-import { mountLoadoutPanel } from "./loadout.js";
+import { depotConsumableInstances } from "../persistence.js";
 import { ITEMS } from "../content/items.js";
 
 const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
@@ -80,7 +80,7 @@ if (editorEl.value.trim() === "") editorEl.value = DEFAULT_SCRIPT;
 // ── Run state + engine handle ───────────────────────────────────────────────
 
 const runCtl = new RunController({
-  generate: (depth, _run, _loadout) => generateRoom(depth, depth * 0x9E3779B1, { hero: defaultHero({ x: 1, y: 1 }) }),
+  generate: (depth, _run, _loadout) => generateRoom(depth, depth * 0x9E3779B1),
 });
 
 let currentHandle: DebugHandle | null = null;
@@ -325,11 +325,19 @@ const SPAWN_HOLD_MS = WireRendererAdapter.SPAWN_HOLD_MS;
 // ── Button wiring ───────────────────────────────────────────────────────────
 
 btnRun.addEventListener("click", async () => {
-  const phase = runCtl.getState().phase;
-  if (phase === "loadout") {
-    runCtl.startAttempt();
-    return; // renderPhase will mount the adapter via startFromSource
+  if (runCtl.getState().phase !== "loadout") return;
+  // First parse the script as a fast-fail before transitioning to running.
+  try {
+    parse(editorEl.value);
+  } catch (err) {
+    if (err instanceof ParseError) {
+      appendLine("— parse error —", "fail");
+      for (const line of formatError(editorEl.value, err).split("\n")) appendLine(line, "fail");
+      return;
+    }
+    throw err;
   }
+  runCtl.startAttempt();
 });
 
 btnPause.addEventListener("click", () => {
@@ -406,8 +414,6 @@ speedEl.addEventListener("input", () => {
 // ── Phase-driven UI rendering ───────────────────────────────────────────────
 
 let prevPhase: Phase | null = null;
-let loadoutCtl: ReturnType<typeof mountLoadoutPanel> | null = null;
-const loadoutHostId = "loadout-host";
 
 runCtl.on(renderPhase);
 
@@ -430,7 +436,7 @@ function renderPhase(): void {
 
   // Controls enablement.
   btnRun.disabled    = phase !== "loadout";
-  btnRun.textContent = phase === "loadout" ? "Breach" : "Run";
+  btnRun.textContent = "Run";
   btnPause.disabled  = phase !== "running";
   btnStep.disabled   = phase !== "paused";
   btnResume.disabled = phase !== "paused";
@@ -449,26 +455,12 @@ function renderPhase(): void {
     applyCursor = 0;
   }
 
-  // Inventory pane: show normal inventory only during running/paused (read-only).
-  // During loadout, replace with the loadout panel.
-  gridEl.classList.toggle("no-inventory", phase !== "loadout" && phase !== "running" && phase !== "paused");
-  if (phase === "loadout") {
-    if (!loadoutCtl) {
-      inventoryEl.innerHTML = "";
-      const host = document.createElement("div");
-      host.id = loadoutHostId;
-      inventoryEl.appendChild(host);
-      loadoutCtl = mountLoadoutPanel(host, runCtl, () => runCtl.startAttempt());
-    }
-    loadoutCtl.refresh();
-  } else if (loadoutCtl) {
-    loadoutCtl = null;
-    inventoryEl.innerHTML = "";
-    inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
-  }
-
-  if (inventoryCtl && phase !== "loadout") {
-    inventoryCtl.setEditable(false);
+  // Inventory pane visible ONLY in loadout (Phase 13.7-style editor + 4-slot
+  // loadout picker). Running/paused/recap modes hide it; the canvas HUD takes
+  // over during play, and the recap/final modals own the foreground.
+  gridEl.classList.toggle("no-inventory", phase !== "loadout");
+  if (inventoryCtl) {
+    inventoryCtl.setEditable(phase === "loadout");
     inventoryCtl.refresh();
   }
 
@@ -686,6 +678,24 @@ function escapeHtml(s: string): string {
 }
 
 // Initial state.
+inventoryCtl = mountInventoryPanel(
+  inventoryEl,
+  () => runCtl.getState().current.actors[0] ?? null,
+  () => {
+    if (runCtl.getState().phase !== "loadout") return null;
+    return {
+      getSelection: () => runCtl.getState().loadout,
+      getDepotCounts: () => {
+        const inst = depotConsumableInstances(runCtl.getState().run);
+        const counts = new Map<string, number>();
+        for (const [defId, list] of inst) counts.set(defId, list.length);
+        return counts;
+      },
+      setSlot: (idx, defId) => runCtl.setLoadoutSlot(idx, defId),
+    };
+  },
+);
+
 const helpEl = document.getElementById("help") as HTMLDivElement;
 const helpPane = mountHelpPane(helpEl, {
   isSpellVisible: (name: string) => {
