@@ -16,10 +16,11 @@ import {
   inspectorTabEnabled, helpTabEnabled,
   type Phase,
 } from "./run-state.js";
-import { generateRoom, defaultHero } from "../dungeon/generator.js";
+import { generateRoom } from "../dungeon/generator.js";
 import { mountHelpPane } from "./help/help-pane.js";
-import { mountLoadoutPanel } from "./loadout.js";
+import { depotConsumableInstances } from "../persistence.js";
 import { ITEMS } from "../content/items.js";
+import { visualConfig } from "../config/visuals.js";
 
 const btnRun      = document.getElementById("btn-run")      as HTMLButtonElement;
 const btnPause    = document.getElementById("btn-pause")    as HTMLButtonElement;
@@ -80,7 +81,7 @@ if (editorEl.value.trim() === "") editorEl.value = DEFAULT_SCRIPT;
 // ── Run state + engine handle ───────────────────────────────────────────────
 
 const runCtl = new RunController({
-  generate: (depth, _run, _loadout) => generateRoom(depth, depth * 0x9E3779B1, { hero: defaultHero({ x: 1, y: 1 }) }),
+  generate: (depth, _run, _loadout) => generateRoom(depth, depth * 0x9E3779B1),
 });
 
 let currentHandle: DebugHandle | null = null;
@@ -121,6 +122,91 @@ export function pushNotification(text: string, opts: NotifyOpts = {}): void {
       setTimeout(() => el.remove(), 320);
     }, fadeMs);
   }
+}
+
+// ── Canvas-slot typewriter (boot banner + idle prompt) ───────────────────
+// Renders terminal-style lines char-by-char inside the empty #game-view,
+// where "> AWAITING RUN SIGNAL <" lives during loadout/recap. Returns a
+// Promise that resolves after the final hold completes.
+function typeLinesInCanvas(
+  host: HTMLElement,
+  lines: string[],
+  opts: { charMs?: number; lineGapMs?: number; holdMs?: number; clearOnDone?: boolean } = {},
+): Promise<void> {
+  const { charMs = 35, lineGapMs = 220, holdMs = 600, clearOnDone = true } = opts;
+  return new Promise(resolve => {
+    let screen = host.querySelector<HTMLDivElement>(".boot-screen");
+    if (!screen) {
+      screen = document.createElement("div");
+      screen.className = "boot-screen";
+      host.appendChild(screen);
+    }
+    let cursorTime = 0;
+    for (const line of lines) {
+      const lineStartAt = cursorTime;
+      setTimeout(() => {
+        if (!screen!.isConnected) return;
+        const li = document.createElement("div");
+        li.className = "boot-line typing";
+        const txt = document.createElement("span");
+        txt.className = "boot-text";
+        const cur = document.createElement("span");
+        cur.className = "boot-cursor";
+        cur.textContent = "_";
+        li.appendChild(txt);
+        li.appendChild(cur);
+        const prev = screen!.querySelector(".boot-line.typing");
+        if (prev) prev.classList.remove("typing");
+        screen!.appendChild(li);
+        let i = 0;
+        const tick = () => {
+          if (!li.isConnected) return;
+          i++;
+          txt.textContent = line.slice(0, i);
+          if (i < line.length) setTimeout(tick, charMs);
+        };
+        tick();
+      }, lineStartAt);
+      cursorTime += line.length * charMs + lineGapMs;
+    }
+    setTimeout(() => {
+      if (clearOnDone && screen!.isConnected) screen!.remove();
+      resolve();
+    }, cursorTime + holdMs);
+  });
+}
+
+// ── Boot banner (first load) ──────────────────────────────────────────────
+let bootBannerShown = false;
+let bootDone = false;
+function showBootBanner(): Promise<void> {
+  const cfg = visualConfig.bootBanner;
+  if (!cfg.enabled) return Promise.resolve();
+  if (cfg.firstRunOnlyPerSession && bootBannerShown) return Promise.resolve();
+  bootBannerShown = true;
+  if (!gameEl || gameEl.children.length > 0) return Promise.resolve();
+
+  const version = "0.15";
+  const middle = cfg.middleLines[Math.floor(Math.random() * cfg.middleLines.length)] ?? "LOADING...";
+  return typeLinesInCanvas(gameEl, [
+    `> GRIMOIRE v${version}`,
+    `> COMPILING SCRIPT...`,
+    `> ${middle}`,
+    `> RUN`,
+  ], { holdMs: 300, clearOnDone: false });
+}
+
+// ── Idle prompt ───────────────────────────────────────────────────────────
+const IDLE_LINE = "> AWAITING RUN SIGNAL";
+function showIdlePrompt(): void {
+  if (!gameEl) return;
+  if (!bootDone) return;
+  const onlyChild = gameEl.children[0];
+  if (onlyChild && !onlyChild.classList.contains("boot-screen")) return;
+  const existing = Array.from(gameEl.querySelectorAll(".boot-line .boot-text"))
+    .some(el => el.textContent === IDLE_LINE);
+  if (existing) return;
+  void typeLinesInCanvas(gameEl, [IDLE_LINE], { holdMs: 0, clearOnDone: false });
 }
 
 function clearPlayTimer() {
@@ -282,6 +368,13 @@ function cloneHeroForCarry(hero: Actor): Actor {
   };
 }
 
+async function showCompilingFlash(): Promise<void> {
+  // Brief "> COMPILING SCRIPT..." typewriter flash inside the canvas slot,
+  // mirroring the boot banner. Clears when the adapter mounts.
+  if (!gameEl) return;
+  await typeLinesInCanvas(gameEl, ["> COMPILING SCRIPT..."], { holdMs: 250 });
+}
+
 async function startFromSource(): Promise<boolean> {
   teardownCurrent();
   clearLog();
@@ -310,6 +403,9 @@ async function startFromSource(): Promise<boolean> {
     duration: 1.5,
   });
 
+  // Brief COMPILING flash inside the canvas slot before the adapter mounts.
+  await showCompilingFlash();
+
   const handle = startRoom(setup, { maxTicks: 5000 });
   currentHandle = handle;
   const adapter = new WireRendererAdapter();
@@ -325,11 +421,19 @@ const SPAWN_HOLD_MS = WireRendererAdapter.SPAWN_HOLD_MS;
 // ── Button wiring ───────────────────────────────────────────────────────────
 
 btnRun.addEventListener("click", async () => {
-  const phase = runCtl.getState().phase;
-  if (phase === "loadout") {
-    runCtl.startAttempt();
-    return; // renderPhase will mount the adapter via startFromSource
+  if (runCtl.getState().phase !== "loadout") return;
+  // First parse the script as a fast-fail before transitioning to running.
+  try {
+    parse(editorEl.value);
+  } catch (err) {
+    if (err instanceof ParseError) {
+      appendLine("— parse error —", "fail");
+      for (const line of formatError(editorEl.value, err).split("\n")) appendLine(line, "fail");
+      return;
+    }
+    throw err;
   }
+  runCtl.startAttempt();
 });
 
 btnPause.addEventListener("click", () => {
@@ -406,8 +510,6 @@ speedEl.addEventListener("input", () => {
 // ── Phase-driven UI rendering ───────────────────────────────────────────────
 
 let prevPhase: Phase | null = null;
-let loadoutCtl: ReturnType<typeof mountLoadoutPanel> | null = null;
-const loadoutHostId = "loadout-host";
 
 runCtl.on(renderPhase);
 
@@ -430,7 +532,7 @@ function renderPhase(): void {
 
   // Controls enablement.
   btnRun.disabled    = phase !== "loadout";
-  btnRun.textContent = phase === "loadout" ? "Breach" : "Run";
+  btnRun.textContent = "Run";
   btnPause.disabled  = phase !== "running";
   btnStep.disabled   = phase !== "paused";
   btnResume.disabled = phase !== "paused";
@@ -447,28 +549,16 @@ function renderPhase(): void {
     }
     currentHandle = null;
     applyCursor = 0;
+    // Re-type "> AWAITING RUN SIGNAL" once the canvas is idle. Idempotent.
+    showIdlePrompt();
   }
 
-  // Inventory pane: show normal inventory only during running/paused (read-only).
-  // During loadout, replace with the loadout panel.
-  gridEl.classList.toggle("no-inventory", phase !== "loadout" && phase !== "running" && phase !== "paused");
-  if (phase === "loadout") {
-    if (!loadoutCtl) {
-      inventoryEl.innerHTML = "";
-      const host = document.createElement("div");
-      host.id = loadoutHostId;
-      inventoryEl.appendChild(host);
-      loadoutCtl = mountLoadoutPanel(host, runCtl, () => runCtl.startAttempt());
-    }
-    loadoutCtl.refresh();
-  } else if (loadoutCtl) {
-    loadoutCtl = null;
-    inventoryEl.innerHTML = "";
-    inventoryCtl = mountInventoryPanel(inventoryEl, () => runCtl.getState().current.actors[0] ?? null);
-  }
-
-  if (inventoryCtl && phase !== "loadout") {
-    inventoryCtl.setEditable(false);
+  // Inventory pane visible ONLY in loadout (Phase 13.7-style editor + 4-slot
+  // loadout picker). Running/paused/recap modes hide it; the canvas HUD takes
+  // over during play, and the recap/final modals own the foreground.
+  gridEl.classList.toggle("no-inventory", phase !== "loadout");
+  if (inventoryCtl) {
+    inventoryCtl.setEditable(phase === "loadout");
     inventoryCtl.refresh();
   }
 
@@ -686,6 +776,24 @@ function escapeHtml(s: string): string {
 }
 
 // Initial state.
+inventoryCtl = mountInventoryPanel(
+  inventoryEl,
+  () => runCtl.getState().current.actors[0] ?? null,
+  () => {
+    if (runCtl.getState().phase !== "loadout") return null;
+    return {
+      getSelection: () => runCtl.getState().loadout,
+      getDepotCounts: () => {
+        const inst = depotConsumableInstances(runCtl.getState().run);
+        const counts = new Map<string, number>();
+        for (const [defId, list] of inst) counts.set(defId, list.length);
+        return counts;
+      },
+      setSlot: (idx, defId) => runCtl.setLoadoutSlot(idx, defId),
+    };
+  },
+);
+
 const helpEl = document.getElementById("help") as HTMLDivElement;
 const helpPane = mountHelpPane(helpEl, {
   isSpellVisible: (name: string) => {
@@ -695,4 +803,11 @@ const helpPane = mountHelpPane(helpEl, {
   },
 });
 speedOut.textContent = `${tickDelayMs()}ms`;
+
+// Boot banner before the first renderPhase so its .boot-screen occupies
+// #game-view. renderPhase's showIdlePrompt is suppressed while boot is in
+// progress; once boot finishes, we flip the gate and append the AWAITING
+// line below the boot transcript.
+const bootPromise = showBootBanner();
 renderPhase();
+bootPromise.then(() => { bootDone = true; showIdlePrompt(); });

@@ -5,7 +5,7 @@
 // (no per-room modal). HP/MP persist across consecutive rooms.
 
 import type { RoomSetup } from "../engine.js";
-import type { PersistentRun } from "../types.js";
+import type { Actor, PersistentRun, Slot } from "../types.js";
 import { freshRun, loadRun, saveRun, wipeRun, buildAttemptHero, routeInventoryToRun } from "../persistence.js";
 
 export type Phase =
@@ -36,8 +36,8 @@ export interface RunState {
   run: PersistentRun;
   /** Death-recap payload (death_recap phase only). */
   recap: RecapInfo | null;
-  /** Per-attempt loadout selection (depot defIds the player picked). */
-  loadout: string[];
+  /** Per-attempt loadout selection — fixed length 4; `null` = empty slot. */
+  loadout: Array<string | null>;
   /** Snapshot of the run state for the final-review screen. */
   finalSnapshot: PersistentRun | null;
 }
@@ -61,14 +61,20 @@ export class RunController {
   constructor(opts: RunControllerOptions) {
     this.opts = opts;
     const run = opts.initialRun ?? loadRun();
+    const setup = opts.generate(1, run, []);
+    // Replace the generator's default-hero with one mirroring run.equipped /
+    // run.knownSpells / run.knownGear so the prep panel reflects persistent state.
+    const heroPos = setup.actors[0]?.pos ?? { x: 1, y: 1 };
+    const liveHero = buildAttemptHero(run, [], heroPos);
+    setup.actors[0] = liveHero;
     this.state = {
       phase: "loadout",
       depth: 1,
       attempts: 1,
-      current: opts.generate(1, run, []),
+      current: setup,
       run,
       recap: null,
-      loadout: [],
+      loadout: [null, null, null, null],
       finalSnapshot: null,
     };
   }
@@ -86,28 +92,50 @@ export class RunController {
 
   // ── loadout helpers ────────────────────────────────────────────────────
 
+  /** Set the consumable in slot `idx` (0..3). Pass `null` to clear. */
+  setLoadoutSlot(idx: number, defId: string | null): void {
+    if (this.state.phase !== "loadout") return;
+    if (idx < 0 || idx >= MAX_LOADOUT) return;
+    this.state.loadout[idx] = defId;
+    this.emit();
+  }
+
+  /** Legacy toggle helper retained for tests. Adds to the first empty slot,
+   *  or clears the first slot containing this defId if present. */
   toggleLoadout(defId: string): void {
     if (this.state.phase !== "loadout") return;
-    const idx = this.state.loadout.indexOf(defId);
-    if (idx >= 0) {
-      this.state.loadout.splice(idx, 1);
-    } else if (this.state.loadout.length < MAX_LOADOUT) {
-      this.state.loadout.push(defId);
+    const existing = this.state.loadout.indexOf(defId);
+    if (existing >= 0) {
+      this.state.loadout[existing] = null;
+      this.emit();
+      return;
     }
-    this.emit();
+    const empty = this.state.loadout.indexOf(null);
+    if (empty >= 0) {
+      this.state.loadout[empty] = defId;
+      this.emit();
+    }
   }
 
   // ── attempt lifecycle ──────────────────────────────────────────────────
 
-  /** loadout → running. Pulls selected items from depot into hero inventory. */
+  /** loadout → running. Syncs prep-panel edits to run, pulls loadout consumables. */
   startAttempt(): void {
     if (this.state.phase !== "loadout") return;
-    const heroPos = this.state.current.actors[0]?.pos ?? { x: 1, y: 1 };
+    const previewHero = this.state.current.actors[0];
+    if (previewHero?.inventory) {
+      // Sync any equipment changes the user made in the prep panel back into
+      // the persistent run (knownGear-driven picker mutates hero.inventory.equipped).
+      for (const slot of Object.keys(this.state.run.equipped) as Slot[]) {
+        const inst = previewHero.inventory.equipped[slot];
+        this.state.run.equipped[slot] = inst ? { id: inst.id, defId: inst.defId } : null;
+      }
+    }
+    const heroPos = previewHero?.pos ?? { x: 1, y: 1 };
     const hero = buildAttemptHero(this.state.run, this.state.loadout, heroPos);
-    // Replace hero in current setup (preserves AI's monsters in current).
     this.state.current.actors[0] = hero;
     this.state.run.stats.attempts = Math.max(this.state.run.stats.attempts, this.state.attempts);
-    this.state.loadout = [];
+    this.state.loadout = [null, null, null, null];
     saveRun(this.state.run);
     this.state.phase = "running";
     this.emit();
@@ -162,8 +190,10 @@ export class RunController {
     this.state.attempts += 1;
     this.state.depth = 1;
     this.state.recap = null;
-    this.state.loadout = [];
-    this.state.current = this.opts.generate(1, this.state.run, []);
+    this.state.loadout = [null, null, null, null];
+    const setup = this.opts.generate(1, this.state.run, []);
+    setup.actors[0] = buildAttemptHero(this.state.run, [], setup.actors[0]?.pos ?? { x: 1, y: 1 });
+    this.state.current = setup;
     this.state.phase = "loadout";
     saveRun(this.state.run);
     this.emit();
@@ -200,9 +230,11 @@ export class RunController {
     this.state.depth = 1;
     this.state.attempts = 1;
     this.state.recap = null;
-    this.state.loadout = [];
+    this.state.loadout = [null, null, null, null];
     this.state.finalSnapshot = null;
-    this.state.current = this.opts.generate(1, run, []);
+    const setup = this.opts.generate(1, run, []);
+    setup.actors[0] = buildAttemptHero(run, [], setup.actors[0]?.pos ?? { x: 1, y: 1 });
+    this.state.current = setup;
     this.state.phase = "loadout";
     this.emit();
   }

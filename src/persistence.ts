@@ -163,17 +163,22 @@ export function routeInventoryToRun(hero: Actor, run: PersistentRun): void {
 }
 
 /**
- * Build a hero Actor for a new attempt. Loadout selections are pulled from
- * the depot into the hero's transient inventory; equipped slots/known spells
- * carry through.
+ * Build a hero Actor mirroring the persistent run state.
+ *
+ * If `loadoutDefIds` is non-empty the matching instances are pulled out of
+ * the depot into the hero's inventory (consuming them); pass an empty array
+ * to build a "loadout-preview" hero whose equipment reflects run.equipped
+ * but whose inventory is empty (the prep panel mutates this hero, then
+ * startAttempt syncs back).
  */
 export function buildAttemptHero(
-  run: PersistentRun, loadoutDefIds: string[], pos: { x: number; y: number },
+  run: PersistentRun, loadoutDefIds: ReadonlyArray<string | null>, pos: { x: number; y: number },
 ): Actor {
   // Pull selected items from the depot in order.
   const consumables: ItemInstance[] = [];
   const remaining: ItemInstance[] = [...run.depot];
   for (const defId of loadoutDefIds) {
+    if (!defId) continue;
     const idx = remaining.findIndex(i => i.defId === defId);
     if (idx < 0) continue;
     consumables.push(remaining[idx]!);
@@ -200,4 +205,20 @@ export function buildAttemptHero(
     inventory: { consumables, equipped },
   };
   return hero;
+}
+
+/**
+ * Phase 15: count depot consumables (excluding scrolls + keys, which are not
+ * loadout-pickable). Returns a Map<defId, instances> used by the prep panel
+ * to render the picker grouped by defId with counts.
+ */
+export function depotConsumableInstances(run: PersistentRun): Map<string, ItemInstance[]> {
+  const out = new Map<string, ItemInstance[]>();
+  for (const inst of run.depot) {
+    const def = ITEMS[inst.defId];
+    if (!def || def.kind !== "consumable" || def.id === "key") continue;
+    if (!out.has(inst.defId)) out.set(inst.defId, []);
+    out.get(inst.defId)!.push(inst);
+  }
+  return out;
 }
