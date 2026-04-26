@@ -300,10 +300,22 @@ export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): 
       const b = raw.trimEnd();
       if (!b) continue;
       if (b.startsWith("```")) {
+        const langMatch = b.match(/^```([a-zA-Z0-9_-]*)/);
+        const lang = langMatch ? langMatch[1] : "";
+        const code = b.replace(/^```[a-zA-Z0-9_-]*\n?/, "").replace(/```\s*$/, "");
         const pre = document.createElement("pre");
         pre.className = "help-code";
-        pre.textContent = b.replace(/^```[a-zA-Z0-9_-]*\n?/, "").replace(/```\s*$/, "");
-        wrap.appendChild(pre);
+        pre.textContent = code;
+        if (lang === "text") {
+          // ASCII diagrams (e.g., AoE shapes) — no copy button.
+          wrap.appendChild(pre);
+        } else {
+          const box = document.createElement("div");
+          box.className = "help-example";
+          box.appendChild(pre);
+          box.appendChild(makeCopyButton(code));
+          wrap.appendChild(box);
+        }
         continue;
       }
       if (b.startsWith("# ")) {
@@ -345,6 +357,11 @@ export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): 
     pre.textContent = code;
     box.appendChild(pre);
 
+    box.appendChild(makeCopyButton(code));
+    return box;
+  }
+
+  function makeCopyButton(code: string): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "help-copy";
@@ -361,8 +378,7 @@ export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): 
         // Silent: clipboard denied. The snippet is still visible to copy by hand.
       }
     });
-    box.appendChild(btn);
-    return box;
+    return btn;
   }
 
   function renderRelated(paths: string[]): HTMLElement {
