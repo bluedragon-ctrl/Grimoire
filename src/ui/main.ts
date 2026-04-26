@@ -105,29 +105,6 @@ function appendLine(text: string, cls?: string): void {
 }
 function clearLog(): void { logEl.innerHTML = ""; }
 
-const notifyOverlay = document.getElementById("notify-overlay")!;
-
-interface NotifyOpts {
-  style?: "info" | "warning" | "error" | "success";
-  duration?: number;
-  position?: "top" | "center" | "bottom";
-}
-
-export function pushNotification(text: string, opts: NotifyOpts = {}): void {
-  const { style = "info", duration = 2 } = opts;
-  const el = document.createElement("div");
-  el.className = "notify-item" + (style !== "info" ? ` ${style}` : "");
-  el.textContent = text;
-  notifyOverlay.prepend(el);
-  if (duration > 0) {
-    const fadeMs = duration * 1000;
-    setTimeout(() => {
-      el.classList.add("fading");
-      setTimeout(() => el.remove(), 320);
-    }, fadeMs);
-  }
-}
-
 let bootDone = false;
 
 function clearPlayTimer() {
@@ -264,7 +241,6 @@ function onRunEnded(): void {
       // Carry the live hero (with hp/mp/inventory/effects) into the next room.
       // Re-clone via a structural copy to detach from the dying world.
       const carry = cloneHeroForCarry(heroSnap);
-      pushNotification("ROOM CLEARED", { style: "success", duration: 1.5 });
       teardownCurrent();
       runCtl.advanceDepth(carry);
     } else if (heroSnap) {
@@ -317,12 +293,6 @@ async function startFromSource(): Promise<boolean> {
 
   const setup: RoomSetup = runCtl.getState().current;
   setup.actors[0]!.script = heroScript;
-
-  const archLabel = setup.room.archetype ? setup.room.archetype.toUpperCase() : "ROOM";
-  pushNotification(`BREACHING ROOM ${runCtl.getState().depth} — ${archLabel}`, {
-    style: archLabel === "TRAP" ? "warning" : archLabel === "VAULT" ? "success" : "info",
-    duration: 1.5,
-  });
 
   // Brief COMPILING flash inside the canvas slot before the adapter mounts.
   await showCompilingFlash();

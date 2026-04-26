@@ -203,7 +203,44 @@ export function doApproach(world: World, self: Actor, targetRef: unknown): GameE
 export function doFlee(world: World, self: Actor, targetRef: unknown): GameEvent[] {
   const pos = resolvePos(targetRef);
   if (!pos) return [fail(self, "flee", "no target")];
-  return stepToward(world, self, pos, "flee", -1);
+  return stepAwayFrom(world, self, pos);
+}
+
+// Flee scoring: among the 8 neighbors that don't decrease Chebyshev distance
+// from the threat, pick the one with the most open neighbors (so we don't
+// step into a corner). Ties broken by raw distance from threat.
+function stepAwayFrom(world: World, self: Actor, threat: Pos): GameEvent[] {
+  const here = self.pos;
+  const curDist = chebyshev(here, threat);
+  type Cand = { pos: Pos; dist: number; openness: number };
+  const cands: Cand[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const next = { x: here.x + dx, y: here.y + dy };
+      if (!inBounds(world, next)) continue;
+      if (actorAt(world, next)) continue;
+      if (tileBlocked(world, next)) continue;
+      const dist = chebyshev(next, threat);
+      if (dist < curDist) continue;
+      let openness = 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          const n = { x: next.x + ox, y: next.y + oy };
+          if (!inBounds(world, n)) continue;
+          if (tileBlocked(world, n)) continue;
+          openness++;
+        }
+      }
+      cands.push({ pos: next, dist, openness });
+    }
+  }
+  if (cands.length === 0) return [fail(self, "flee", "blocked")];
+  cands.sort((a, b) => (b.openness - a.openness) || (b.dist - a.dist));
+  const from = { ...self.pos };
+  self.pos = cands[0]!.pos;
+  return [{ type: "Moved", actor: self.id, from, to: self.pos }];
 }
 
 function stepToward(
