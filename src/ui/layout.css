@@ -663,45 +663,6 @@ body::before {
 }
 .help-related-link:hover { color: var(--fg-hi); text-decoration: underline; }
 
-/* ─────── Notify overlay ─────── */
-#notify-overlay {
-  position: fixed;
-  top: 32px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  pointer-events: none;
-}
-.notify-item {
-  font-family: "Share Tech Mono", monospace;
-  font-size: 13px;
-  letter-spacing: 1px;
-  padding: 4px 14px;
-  border: 1px solid var(--border-hi);
-  background: rgba(5, 2, 0, 0.88);
-  color: var(--fg);
-  text-shadow: var(--glow);
-  animation: notify-in 0.12s ease-out;
-  white-space: nowrap;
-}
-.notify-item::before { content: "> "; color: var(--muted); }
-.notify-item.warning { color: #ffc040; border-color: #ffc040; }
-.notify-item.error   { color: var(--fail); border-color: var(--fail); }
-.notify-item.success { color: var(--good); border-color: var(--good); }
-@keyframes notify-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes notify-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
-}
-.notify-item.fading { animation: notify-out 0.3s ease-in forwards; }
-
 /* ─────── Recap modal ─────── */
 .modal {
   position: fixed;
