@@ -2,7 +2,7 @@
 // Target resolution goes through a single seam: `resolveTarget`.
 
 import type {
-  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef, RoomObject,
+  Actor, World, Pos, GameEvent, Door, Direction, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef, RoomObject,
 } from "./types.js";
 import { hasEffect, listEffects, effectiveStats, getEffect } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
@@ -12,7 +12,7 @@ import { ITEMS } from "./content/items.js";
 import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
 import { worldRandom } from "./rng.js";
 import { hasLineOfSight } from "./los.js";
-import { doInteractCore, objectsWithin, tileBlocked } from "./dungeon/objects.js";
+import { doInteractCore, tileBlocked } from "./dungeon/objects.js";
 import { chebyshev, manhattan, inBounds, adjacent } from "./geometry.js";
 import { resolveActor, resolvePos, sameFaction } from "./resolve.js";
 import { actionFailed } from "./lang/errors.js";
@@ -105,7 +105,14 @@ export function resolveDoor(world: World, ref: unknown): Door | null {
 
 export const queries = {
   me: (world: World, self: Actor): Actor => self,
-  hp: (world: World, self: Actor): number => self.hp,
+  // Shortcuts for self-state. The convention is "room data = bare query,
+  // self data = me.foo" — these four are kept as aliases because they show
+  // up constantly in scripts (`if hp() < 5: ...`) and read more naturally
+  // than `me.hp` in arithmetic-heavy guards.
+  hp:     (_world: World, self: Actor): number => self.hp,
+  max_hp: (_world: World, self: Actor): number => self.maxHp ?? 0,
+  mp:     (_world: World, self: Actor): number => self.mp ?? 0,
+  max_mp: (_world: World, self: Actor): number => self.maxMp ?? 0,
   enemies: (world: World, self: Actor): Actor[] => {
     const sf = self.faction ?? (self.isHero ? "player" : "enemy");
     const others = world.actors.filter(a => {
@@ -128,7 +135,6 @@ export const queries = {
     });
     return sortByDistance(self, others);
   },
-  items: (world: World, self: Actor): Item[] => sortByDistance(self, world.room.items),
   chests: (world: World, self: Actor): Chest[] => sortByDistance(self, world.room.chests),
   doors: (world: World, self: Actor): Door[] => sortByDistance(self, world.room.doors),
   at: (_world: World, self: Actor, target: unknown): boolean => {
@@ -144,36 +150,34 @@ export const queries = {
     const cs = world.room.clouds ?? [];
     return cs.map(c => ({ id: c.id, pos: { ...c.pos }, kind: c.kind, remaining: c.remaining }));
   },
-  cloud_at: (world: World, _self: Actor, target: unknown): string | null => {
-    const p = resolvePos(target);
-    if (!p) return null;
-    const cs = world.room.clouds ?? [];
-    // Topmost = most recently spawned (last in array).
-    for (let i = cs.length - 1; i >= 0; i--) {
-      const c = cs[i]!;
-      if (c.pos.x === p.x && c.pos.y === p.y) return c.kind;
-    }
-    return null;
-  },
-  mp: (_world: World, self: Actor): number => self.mp ?? 0,
-  max_mp: (_world: World, self: Actor): number => self.maxMp ?? 0,
-  known_spells: (_world: World, self: Actor): string[] => [...(self.knownSpells ?? [])],
-  // Phase 9: floor-item queries. Zero-cost. `items_here()` returns the stack
-  // on the hero's tile (topmost first — LIFO, matches doPickup() default).
-  // `items_nearby(r?)` Manhattan-sorted by distance; radius defaults to 4.
-  items_here: (world: World, self: Actor): FloorItem[] => {
+  // Floor pickups, Chebyshev nearest-first. No arg → all floor items in the
+  // room. With `r`, restrict to Chebyshev distance ≤ r (so `items(0)` is the
+  // stack on the hero's tile).
+  items: (world: World, self: Actor, r?: unknown): FloorItem[] => {
     const floor = world.room.floorItems ?? [];
-    const here = floor.filter(f => f.pos.x === self.pos.x && f.pos.y === self.pos.y);
-    here.reverse();
-    return here.map(f => ({ ...f, pos: { ...f.pos } }));
+    const filtered = (typeof r === "number" && r >= 0)
+      ? floor.filter(f => chebyshev(f.pos, self.pos) <= Math.floor(r))
+      : floor;
+    return sortByDistance(self, filtered).map(f => ({ ...f, pos: { ...f.pos } }));
   },
-  items_nearby: (world: World, self: Actor, r?: unknown): FloorItem[] => {
-    const radius = typeof r === "number" && r >= 0 ? Math.floor(r) : 4;
-    const floor = world.room.floorItems ?? [];
-    const within = floor.filter(f => chebyshev(f.pos, self.pos) <= radius);
-    return sortByDistance(self, within).map(f => ({ ...f, pos: { ...f.pos } }));
+  // Dungeon objects (chests, fountains, doors), Chebyshev nearest-first.
+  // No arg → all objects in the room. With `r`, restrict to Chebyshev ≤ r.
+  objects: (world: World, self: Actor, r?: unknown): RoomObject[] => {
+    const objs = world.room.objects ?? [];
+    const filtered = (typeof r === "number" && r >= 0)
+      ? objs.filter(o => chebyshev(o.pos, self.pos) <= Math.floor(r))
+      : objs;
+    return sortByDistance(self, filtered).map(o => ({ ...o, pos: { ...o.pos } }));
   },
-  // Phase 13.2: RNG builtins — backed by the world's seedable mulberry32 RNG.
+  // Chebyshev distance between any two pos-likes (actors, items, objects,
+  // doors, chests, or bare {x,y} / {pos:{x,y}}). Returns 0 on unresolvable args.
+  distance: (_world: World, _self: Actor, a: unknown, b: unknown): number => {
+    const pa = resolvePos(a);
+    const pb = resolvePos(b);
+    if (!pa || !pb) return 0;
+    return chebyshev(pa, pb);
+  },
+  // RNG builtins — backed by the world's seedable mulberry32 RNG.
   chance: (world: World, _self: Actor, p: unknown): boolean => {
     const pct = typeof p === "number" ? p : 0;
     return worldRandom(world) * 100 < pct;
@@ -182,10 +186,6 @@ export const queries = {
     const max = typeof n === "number" ? Math.floor(n) : 0;
     if (max <= 0) return 0;
     return Math.floor(worldRandom(world) * max);
-  },
-  // Phase 15: dungeon objects within Chebyshev radius 1 (self tile + 8 neighbors).
-  objects_nearby: (world: World, self: Actor): RoomObject[] => {
-    return objectsWithin(world, self.pos, 1).map(o => ({ ...o, pos: { ...o.pos } }));
   },
 };
 

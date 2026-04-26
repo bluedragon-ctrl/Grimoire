@@ -65,7 +65,7 @@ export const KNOWN_NAMES = [
   "distance_to", "adjacent_to", "in_los", "is_hero", "is_summoned", "summoner",
   "has_effect", "effect_remaining", "effect_magnitude", "list_effects", "can_cast",
   // Phase 6
-  "clouds", "cloud_at", "max_mp", "known_spells",
+  "clouds", "in_cloud", "max_hp", "max_mp",
   "firebolt", "chill", "bless", "firewall",
 ] as const;
 

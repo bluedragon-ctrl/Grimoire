@@ -264,12 +264,10 @@ export interface Effect {
 export type Direction = "N" | "S" | "E" | "W";
 
 export interface Door { dir: Direction; pos: Pos; }
-export interface Item { id: string; kind: string; pos: Pos; }
 export interface Chest { id: string; pos: Pos; opened: boolean; }
 
-// Phase 9: items that have been dropped onto the floor (loot drops, overflow
-// drops from equip swaps, or explicit hero drop()). Distinct from Room.items
-// (scripted/static items) so the loot flow never mutates the designer's list.
+// Items dropped onto the floor: loot drops, overflow from equip swaps, or
+// explicit hero drop(). Pickupable via pickup().
 export interface FloorItem { id: string; defId: string; pos: Pos; }
 
 // Phase 15: dungeon objects that the hero can interact() with. Stored on
@@ -297,7 +295,6 @@ export interface Room {
   w: number;
   h: number;
   doors: Door[];
-  items: Item[];
   chests: Chest[];
   clouds?: Cloud[];
   floorItems?: FloorItem[];

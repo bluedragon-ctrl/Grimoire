@@ -10,7 +10,7 @@ import {
 } from "../../src/ast-helpers.js";
 
 function emptyRoom(): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [] };
+  return { w: 10, h: 10, doors: [], chests: [] };
 }
 
 function passiveHero(pos: { x: number; y: number }, over: Partial<Actor> = {}): Actor {

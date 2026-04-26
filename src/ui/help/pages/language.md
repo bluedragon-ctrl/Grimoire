@@ -42,7 +42,7 @@ while len(enemies()) > 0:
 Iterates over an array value. The loop variable is scoped to the block.
 
 ```
-for f in items_nearby():
+for f in items():
   approach(f)
   pickup(f)
 ```
@@ -54,11 +54,11 @@ for f in items_nearby():
 - `pass` does nothing on purpose — handy when a block needs at least one line but you've got nothing to put there yet.
 
 ```
-for f in items_nearby():
+for f in items():
   if f.defId == "trap_rune":
     continue
   pickup(f)
-  if len(items_here()) == 0:
+  if len(items(0)) == 0:
     break
 ```
 

@@ -7,7 +7,7 @@ import { emptyEquipped } from "../../src/content/items.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
 
 function mkWorld(actors: Actor[]): World {
-  return { tick: 0, room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false, rngSeed: 1 };
+  return { tick: 0, room: { w: 5, h: 5, doors: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false, rngSeed: 1 };
 }
 function mkHero(over: Partial<Actor> = {}): Actor {
   return {

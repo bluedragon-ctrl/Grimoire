@@ -33,6 +33,7 @@ function wrap<T extends { id: string; examples: HelpEntry["examples"]; related?:
     examples: e.examples,
     related: e.related ?? [],
     ...((e as any).meta ? { meta: (e as any).meta } : {}),
+    ...((e as any).group ? { group: (e as any).group } : {}),
   }));
 }
 

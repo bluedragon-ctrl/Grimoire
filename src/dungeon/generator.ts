@@ -28,19 +28,20 @@ function buildHeroScript(): Script {
   const firstDoor = index(call("doors"), lit(0));
   const mePos = member(ident("me"), "pos");
   const doorPos = member(firstDoor, "pos");
-  const hereItemsLen = member(call("items_here"), "length");
+  const hereItemsLen = member(call("items", lit(0)), "length");
+  const allItemsLen  = member(call("items"), "length");
 
   return script(
     while_(bin(">", enemiesLen, lit(0)), [
       cApproach(firstEnemy),
       cAttack(firstEnemy),
     ]),
-    if_(bin(">", member(call("items_nearby"), "length"), lit(0)), [
+    if_(bin(">", allItemsLen, lit(0)), [
       while_(
-        bin(">", member(call("items_nearby"), "length"), lit(0)),
+        bin(">", allItemsLen, lit(0)),
         [
           if_(bin("==", hereItemsLen, lit(0)),
-            [cApproach(index(call("items_nearby"), lit(0)))],
+            [cApproach(index(call("items"), lit(0)))],
             [exprStmt(call("pickup"))],
           ),
         ],
@@ -186,7 +187,6 @@ export function generateRoom(
   const room: Room = {
     w, h,
     doors,
-    items: [],
     chests: [],
     floorItems,
     objects: arch.objects,

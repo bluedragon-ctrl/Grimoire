@@ -156,6 +156,13 @@ export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): 
     return ul;
   }
 
+  // Subgroup display order for categories that use the optional `group` field.
+  // Entries lacking a group (or with a group not in this list) sort after the
+  // listed groups, alphabetically by group name.
+  const GROUP_ORDER: Partial<Record<CategoryId, readonly string[]>> = {
+    queries: ["Self shortcuts", "Room listings", "Positioning", "RNG"],
+  };
+
   function renderList(category: CategoryId): HTMLElement {
     const ul = document.createElement("ul");
     ul.className = "help-list";
@@ -167,6 +174,34 @@ export function mountHelpPane(container: HTMLElement, opts: HelpPaneOpts = {}): 
         ? "You haven't learned any spells yet."
         : "No entries.";
       ul.appendChild(li);
+      return ul;
+    }
+    const order = GROUP_ORDER[category];
+    if (order && rows.some(r => r.group)) {
+      const rank = (g: string | undefined): number => {
+        if (!g) return order.length + 1;
+        const i = order.indexOf(g);
+        return i < 0 ? order.length : i;
+      };
+      const sorted = [...rows].sort((a, b) => {
+        const ra = rank(a.group), rb = rank(b.group);
+        if (ra !== rb) return ra - rb;
+        const ga = a.group ?? "", gb = b.group ?? "";
+        if (ga !== gb) return ga.localeCompare(gb);
+        return a.name.localeCompare(b.name);
+      });
+      let lastGroup: string | null = null;
+      for (const e of sorted) {
+        const g = e.group ?? "Other";
+        if (g !== lastGroup) {
+          const header = document.createElement("li");
+          header.className = "help-group";
+          header.textContent = g;
+          ul.appendChild(header);
+          lastGroup = g;
+        }
+        ul.appendChild(renderRow(e));
+      }
       return ul;
     }
     for (const e of rows) ul.appendChild(renderRow(e));

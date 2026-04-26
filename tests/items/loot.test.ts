@@ -13,7 +13,7 @@ import {
 function mkWorld(actors: Actor[], room?: Partial<Room>): World {
   return {
     tick: 0,
-    room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [], floorItems: [], ...room },
+    room: { w: 5, h: 5, doors: [], chests: [], clouds: [], floorItems: [], ...room },
     actors, log: [], aborted: false, ended: false,
     rngSeed: 1, floorSeq: 0,
   };
@@ -107,9 +107,9 @@ describe("unequip routing (Phase 15: inventory uncapped)", () => {
     try {
       const enemies0 = member(call("enemies"), "length");
       const firstEnemy = index(call("enemies"), lit(0));
-      const hereLen = member(call("items_here"), "length");
-      const nearbyLen = member(call("items_nearby"), "length");
-      const firstNearby = index(call("items_nearby"), lit(0));
+      const hereLen = member(call("items", lit(0)), "length");
+      const nearbyLen = member(call("items"), "length");
+      const firstNearby = index(call("items"), lit(0));
 
       const heroScript = script(
         while_(bin(">", enemies0, lit(0)), [
@@ -134,7 +134,7 @@ describe("unequip routing (Phase 15: inventory uncapped)", () => {
         pos: { x: 3, y: 1 }, script: script(cHalt()), alive: true,
         lootTable: "goblin_loot",  // must be explicit now — no actor.kind fallback
       };
-      const room: Room = { w: 6, h: 6, doors: [], items: [], chests: [] };
+      const room: Room = { w: 6, h: 6, doors: [], chests: [] };
       const h = runRoom({ room, actors: [hero, gob] }, { seed: 1, maxTicks: 500 });
 
       const events = h.log.map(l => l.event);

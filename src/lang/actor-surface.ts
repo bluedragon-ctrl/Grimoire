@@ -89,6 +89,17 @@ export function actorMember(actor: Actor, name: string, ctx: ActorSurfaceCtx): u
       if (!p) return false;
       return hasLineOfSight(ctx.world, actor.pos, p);
     };
+    // No-arg → is the actor standing in any cloud?
+    // With kind → standing in a cloud of that specific kind?
+    case "in_cloud": return (kind?: unknown) => {
+      const cs = ctx.world.room.clouds ?? [];
+      const want = typeof kind === "string" ? kind : null;
+      for (const c of cs) {
+        if (c.pos.x !== actor.pos.x || c.pos.y !== actor.pos.y) continue;
+        if (want === null || c.kind === want) return true;
+      }
+      return false;
+    };
   }
   return UNSET;
 }

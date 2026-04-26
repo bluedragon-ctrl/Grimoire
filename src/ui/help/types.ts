@@ -54,6 +54,10 @@ export interface HelpEntry {
   related: string[];
   /** Optional key/value detail shown as a definition table. */
   meta?: Array<[string, string]>;
+  /** Optional subgroup label. Renderer shows a section header in the list when
+   * adjacent entries differ. Currently used to split Queries into Self
+   * shortcuts / Room listings / Positioning / RNG. */
+  group?: string;
 }
 
 export interface HelpCategory {
@@ -64,7 +68,7 @@ export interface HelpCategory {
 
 export const CATEGORIES: readonly HelpCategory[] = [
   { id: "language",  title: "Language", blurb: "DSL syntax: blocks, control flow, expressions." },
-  { id: "data",      title: "Data",     blurb: "Shapes returned by queries: Actor, Door, Item, FloorItem, Cloud." },
+  { id: "data",      title: "Data",     blurb: "Shapes returned by queries: Actor, Door, FloorItem, Cloud." },
   { id: "commands",  title: "Commands", blurb: "Actions the hero can take (cost energy)." },
   { id: "queries",   title: "Queries",  blurb: "Zero-cost lookups into the world." },
   { id: "spells",    title: "Spells",   blurb: "Every spell in the registry with range, cost, target." },

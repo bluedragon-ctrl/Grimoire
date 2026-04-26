@@ -10,7 +10,7 @@ import { script, cHalt } from "../../src/ast-helpers.js";
 function mkWorld(actors: Actor[], room?: Partial<Room>): World {
   return {
     tick: 0,
-    room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [], floorItems: [], ...room },
+    room: { w: 5, h: 5, doors: [], chests: [], clouds: [], floorItems: [], ...room },
     actors, log: [], aborted: false, ended: false,
     rngSeed: 1, floorSeq: 0,
   };
@@ -115,7 +115,7 @@ describe("doDrop", () => {
 });
 
 describe("floor-item queries", () => {
-  it("items_here returns topmost-first, items_nearby is Manhattan-sorted", () => {
+  it("items() sorts by Chebyshev distance; items(r) filters by radius; items(0) is same tile", () => {
     const h = mkHero();
     const w = mkWorld([h]);
     spawnFloorItem(w, "health_potion", { x: 2, y: 2 }, "death", null);
@@ -123,14 +123,21 @@ describe("floor-item queries", () => {
     spawnFloorItem(w, "haste_potion", { x: 4, y: 2 }, "death", null);
     spawnFloorItem(w, "cleanse_potion", { x: 2, y: 4 }, "death", null);
 
-    const here = queries.items_here(w, h);
-    expect(here.map(f => f.defId)).toEqual(["mana_crystal", "health_potion"]);
+    const here = queries.items(w, h, 0);
+    expect(here.every(f => f.pos.x === 2 && f.pos.y === 2)).toBe(true);
+    expect(here).toHaveLength(2);
 
-    const near = queries.items_nearby(w, h, 5);
-    // First two are on-tile (distance 0), then distance 2 (two tiles away).
+    const near = queries.items(w, h, 5);
+    // First two are on-tile (distance 0), then distance 2.
     expect(near[0]!.pos).toEqual({ x: 2, y: 2 });
     expect(near[1]!.pos).toEqual({ x: 2, y: 2 });
-    expect(near.map(f => Math.abs(f.pos.x - 2) + Math.abs(f.pos.y - 2))).toEqual([0, 0, 2, 2]);
+    expect(near.slice(2).every(f => Math.max(Math.abs(f.pos.x - 2), Math.abs(f.pos.y - 2)) === 2)).toBe(true);
+
+    const all = queries.items(w, h);
+    expect(all).toHaveLength(4);
+
+    const tight = queries.items(w, h, 1);
+    expect(tight).toHaveLength(2);
   });
 });
 
@@ -142,7 +149,7 @@ describe("renderer adapter — floor-item events", () => {
     };
     return new WireRendererAdapter(deps);
   }
-  const room: Room = { w: 5, h: 5, doors: [], items: [], chests: [], floorItems: [] };
+  const room: Room = { w: 5, h: 5, doors: [], chests: [], floorItems: [] };
 
   it("ItemDropped adds a floor item and an effect; ItemPickedUp removes it", () => {
     const adapter = makeAdapter();

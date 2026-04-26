@@ -13,7 +13,7 @@ import { runRoom, startRoom } from "../../src/engine.js";
 import { script, while_, bin, member, call, index, lit, exprStmt, cHalt } from "../../src/ast-helpers.js";
 
 function emptyRoom(): Room {
-  return { w: 12, h: 12, doors: [], items: [], chests: [] };
+  return { w: 12, h: 12, doors: [], chests: [] };
 }
 
 function passiveHero(over: Partial<Actor> = {}): Actor {

@@ -12,9 +12,9 @@ while len(enemies()) > 0:
   approach(foe)
   attack(foe)
 
-while len(items_nearby()) > 0:
-  if len(items_here()) == 0:
-    approach(items_nearby()[0])
+while len(items()) > 0:
+  if len(items(0)) == 0:
+    approach(items()[0])
   else:
     pickup()
 
@@ -36,7 +36,6 @@ export function demoSetup(): { room: Room; actors: Actor[] } {
       { dir: "N", pos: { x: 5, y: 0 } },
       { dir: "S", pos: { x: 5, y: 9 } },
     ],
-    items: [],
     chests: [],
   };
 

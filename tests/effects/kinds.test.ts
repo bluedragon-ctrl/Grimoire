@@ -8,7 +8,7 @@ import { runRoom } from "../../src/engine.js";
 import { script, cHalt, while_, lit, cWait } from "../../src/ast-helpers.js";
 
 function emptyRoom(): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [] };
+  return { w: 10, h: 10, doors: [], chests: [] };
 }
 
 function makeActor(over: Partial<Actor> = {}): Actor {

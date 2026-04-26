@@ -25,13 +25,11 @@ export interface EngineHandle {
 }
 
 export interface ActorSummary { id: string; kind: string; pos: { x: number; y: number }; hp: number; }
-export interface ItemSummary { id: string; kind: string; pos: { x: number; y: number }; }
 
 export interface InspectSnapshot {
   locals: Record<string, unknown>;
   visible: {
     enemies: ActorSummary[];
-    items: ItemSummary[];
     hp: number;
     maxHp: number;
     pos: { x: number; y: number };
@@ -86,7 +84,6 @@ function snapshotSetup(setup: RoomSetup): RoomSetup {
       w: setup.room.w,
       h: setup.room.h,
       doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
-      items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
       clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
       floorItems: (setup.room.floorItems ?? []).map(f => ({ ...f, pos: { ...f.pos } })),
@@ -143,7 +140,6 @@ function buildWorld(setup: RoomSetup, seed: number): World {
     room: {
       w: setup.room.w, h: setup.room.h,
       doors: setup.room.doors.map(d => ({ ...d, pos: { ...d.pos } })),
-      items: setup.room.items.map(i => ({ ...i, pos: { ...i.pos } })),
       chests: setup.room.chests.map(c => ({ ...c, pos: { ...c.pos } })),
       clouds: (setup.room.clouds ?? []).map(c => ({ ...c, pos: { ...c.pos } })),
       floorItems: (setup.room.floorItems ?? []).map(f => ({ ...f, pos: { ...f.pos } })),
@@ -220,7 +216,6 @@ export function startRoom(setup: RoomSetup, opts: RunOptions = {}): DebugHandle 
         locals,
         visible: {
           enemies: world.actors.filter(a => a.alive && a.id !== actorId).map(summarizeActor),
-          items: world.room.items.map(i => ({ id: i.id, kind: i.kind, pos: { ...i.pos } })),
           hp: actor.hp,
           maxHp: actor.maxHp,
           pos: { ...actor.pos },

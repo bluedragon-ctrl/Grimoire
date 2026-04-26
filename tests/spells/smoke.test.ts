@@ -12,7 +12,7 @@ const ALL_SPELLS = Object.keys(SPELLS);
 function mkWorld(actors: Actor[], room?: Partial<Room>): World {
   return {
     tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [], ...room },
+    room: { w: 10, h: 10, doors: [], chests: [], clouds: [], ...room },
     actors, log: [], aborted: false, ended: false,
   };
 }

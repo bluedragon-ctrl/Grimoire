@@ -81,7 +81,7 @@ export function itemEntries(): HelpEntry[] {
         : d.kind === "consumable"
           ? [{ code: `use("${d.id}")` }]
           : [];
-    const related = d.help?.related ?? (d.kind === "consumable" ? ["commands/use"] : ["data/item"]);
+    const related = d.help?.related ?? (d.kind === "consumable" ? ["commands/use"] : ["data/flooritem"]);
     const meta: Array<[string, string]> = [["kind", d.kind]];
 
     if (d.kind === "equipment") {

@@ -7,7 +7,7 @@ import {
 } from "../../src/ast-helpers.js";
 
 function room(over: Partial<Room> = {}): Room {
-  return { w: 10, h: 10, doors: [], items: [], chests: [], ...over };
+  return { w: 10, h: 10, doors: [], chests: [], ...over };
 }
 
 function goblin(id: string, pos: { x: number; y: number }, scriptNode: any): Actor {

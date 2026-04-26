@@ -12,7 +12,7 @@ function makeRoom(): Room {
   return {
     w: 5, h: 5,
     doors: [{ dir: "N", pos: { x: 2, y: 0 } }],
-    items: [], chests: [],
+    chests: [],
   };
 }
 

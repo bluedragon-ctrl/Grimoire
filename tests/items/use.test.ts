@@ -6,7 +6,7 @@ import { emptyEquipped } from "../../src/content/items.js";
 import { script, cHalt } from "../../src/ast-helpers.js";
 
 function mkWorld(actors: Actor[]): World {
-  return { tick: 0, room: { w: 5, h: 5, doors: [], items: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false };
+  return { tick: 0, room: { w: 5, h: 5, doors: [], chests: [], clouds: [] }, actors, log: [], aborted: false, ended: false };
 }
 function mkHero(over: Partial<Actor> = {}): Actor {
   return {
@@ -184,7 +184,7 @@ describe("use() via engine", () => {
       ),
     } as any;
     const { log, world } = runRoom({
-      room: { w: 5, h: 5, doors: [], items: [], chests: [] },
+      room: { w: 5, h: 5, doors: [], chests: [] },
       actors: [hero],
     }, { maxTicks: 100 });
     const used = log.find(l => l.event.type === "ItemUsed");
@@ -210,7 +210,7 @@ describe("use() via engine", () => {
       ),
     } as any;
     const { log } = runRoom({
-      room: { w: 5, h: 5, doors: [], items: [], chests: [] },
+      room: { w: 5, h: 5, doors: [], chests: [] },
       actors: [hero],
     }, { maxTicks: 200 });
     const fails = log.filter(l => l.event.type === "ActionFailed" && (l.event as any).action === "use");

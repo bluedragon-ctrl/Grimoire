@@ -135,7 +135,7 @@ Lambda bodies and expression-position user-function calls (`def f(x): return x*2
 
 ### Pythonic collections, lambdas, def, control flow
 
-- `enemies()`, `allies()`, `items_nearby()`, etc. return `Collection` (Pythonic list with `len()`, indexing, iteration, truthiness, `.filter(pred)`, `.sorted_by(key)`, `.first()`, `.last()`, `.min_by(key)`, `.max_by(key)`).
+- `enemies()`, `allies()`, `items()`, `objects()`, etc. return `Collection` (Pythonic list with `len()`, indexing, iteration, truthiness, `.filter(pred)`, `.sorted_by(key)`, `.first()`, `.last()`, `.min_by(key)`, `.max_by(key)`).
 - Builtins: `len(coll)`, `min(coll, key?)`, `max(coll, key?)`.
 - `lambda x: x.hp` returns a JS closure capturing the lexical Env. Expression-only body, no statements.
 - `def name(params): body` registers a user function. Nested defs respect Python LEGB: each call gets a fresh `funcs` map so inner defs don't leak to callers.

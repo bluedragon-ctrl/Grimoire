@@ -21,7 +21,7 @@ function mkWorld(hero: Actor): World {
     room: {
       w: 10, h: 10,
       doors: [{ dir: "N", pos: { x: 5, y: 0 } }],
-      items: [], chests: [], clouds: [],
+      chests: [], clouds: [],
     },
     actors: [hero], log: [], aborted: false, ended: false,
   };

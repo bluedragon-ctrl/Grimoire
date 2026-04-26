@@ -16,13 +16,13 @@ function mkActor(over: Partial<Actor> & Pick<Actor, "id" | "kind" | "pos">): Act
 function mkWorld(actors: Actor[], clouds: Cloud[] = []): World {
   return {
     tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds },
+    room: { w: 10, h: 10, doors: [], chests: [], clouds },
     actors, log: [], aborted: false, ended: false,
   };
 }
 
-describe("phase 6 queries", () => {
-  it("clouds() returns list matching world state; cloud_at finds kind", () => {
+describe("cloud queries", () => {
+  it("clouds() returns list matching world state", () => {
     const h = mkActor({ id: "h", kind: "hero", pos: { x: 0, y: 0 } });
     const fire: Cloud = { id: "c1", pos: { x: 3, y: 3 }, kind: "fire", duration: 20, remaining: 20 };
     const frost: Cloud = { id: "c2", pos: { x: 3, y: 3 }, kind: "frost", duration: 20, remaining: 20 };
@@ -30,20 +30,13 @@ describe("phase 6 queries", () => {
     const list = queries.clouds(w, h);
     expect(list.length).toBe(2);
     expect(list[0]).toEqual({ id: "c1", pos: { x: 3, y: 3 }, kind: "fire", remaining: 20 });
-    // cloud_at topmost = most recent.
-    expect(queries.cloud_at(w, h, { x: 3, y: 3 })).toBe("frost");
-    expect(queries.cloud_at(w, h, { x: 0, y: 0 })).toBe(null);
   });
 
-  it("known_spells() returns default hero spells", () => {
-    const h = mkActor({ id: "h", kind: "hero", pos: { x: 0, y: 0 } });
+  it("hp/mp/max_hp/max_mp shortcut queries reflect current values", () => {
+    const h = mkActor({ id: "h", kind: "hero", pos: { x: 0, y: 0 }, hp: 12, maxHp: 18, mp: 7, maxMp: 20 });
     const w = mkWorld([h]);
-    expect(queries.known_spells(w, h)).toEqual(["bolt", "heal"]);
-  });
-
-  it("mp() / max_mp() reflect current values", () => {
-    const h = mkActor({ id: "h", kind: "hero", pos: { x: 0, y: 0 }, mp: 7, maxMp: 20 });
-    const w = mkWorld([h]);
+    expect(queries.hp(w, h)).toBe(12);
+    expect(queries.max_hp(w, h)).toBe(18);
     expect(queries.mp(w, h)).toBe(7);
     expect(queries.max_mp(w, h)).toBe(20);
   });

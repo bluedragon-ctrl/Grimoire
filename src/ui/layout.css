@@ -563,6 +563,19 @@ body::before {
 }
 .help-empty { color: var(--muted); font-style: italic; }
 
+.help-group {
+  list-style: none;
+  margin: 8px 0 2px;
+  padding: 0 4px;
+  font-family: "VT323", monospace;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px dashed #231500;
+}
+.help-group:first-child { margin-top: 0; }
+
 .help-leaf-name {
   margin: 0 0 2px;
   font-family: "VT323", monospace;

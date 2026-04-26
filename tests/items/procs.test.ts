@@ -11,7 +11,7 @@ import { script, cHalt } from "../../src/ast-helpers.js";
 function mkWorld(actors: Actor[], seed = 42): World {
   return {
     tick: 0,
-    room: { w: 10, h: 10, doors: [], items: [], chests: [], clouds: [] },
+    room: { w: 10, h: 10, doors: [], chests: [], clouds: [] },
     actors, log: [], aborted: false, ended: false, rngSeed: seed,
   };
 }

@@ -269,4 +269,31 @@ halt
     const h = runUntilWait([hero, gob]);
     expect(h.inspect("h")!.locals.sees).toBe(true);
   });
+
+  it("me.in_cloud returns true when standing in any cloud, false otherwise", () => {
+    const hero = heroWith(`
+any = me.in_cloud()
+fire = me.in_cloud("fire")
+frost = me.in_cloud("frost")
+wait()
+halt
+`, { pos: { x: 2, y: 2 } });
+    const room = { clouds: [{ id: "c1", pos: { x: 2, y: 2 }, kind: "fire", duration: 20, remaining: 20 }] };
+    const h = runUntilWait([hero], room);
+    const snap = h.inspect("h")!;
+    expect(snap.locals.any).toBe(true);
+    expect(snap.locals.fire).toBe(true);
+    expect(snap.locals.frost).toBe(false);
+  });
+
+  it("me.in_cloud returns false when not in a cloud", () => {
+    const hero = heroWith(`
+any = me.in_cloud()
+wait()
+halt
+`, { pos: { x: 0, y: 0 } });
+    const room = { clouds: [{ id: "c1", pos: { x: 5, y: 5 }, kind: "fire", duration: 20, remaining: 20 }] };
+    const h = runUntilWait([hero], room);
+    expect(h.inspect("h")!.locals.any).toBe(false);
+  });
 });

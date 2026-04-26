@@ -9,7 +9,7 @@ import { freshRun } from "../../src/persistence.js";
 
 function makeSetup(): RoomSetup {
   return {
-    room: { w: 5, h: 5, doors: [{ dir: "N", pos: { x: 2, y: 0 } }], items: [], chests: [] },
+    room: { w: 5, h: 5, doors: [{ dir: "N", pos: { x: 2, y: 0 } }], chests: [] },
     actors: [{
       id: "hero", kind: "hero", isHero: true, hp: 20, maxHp: 20,
       speed: 10, energy: 0, pos: { x: 2, y: 2 },

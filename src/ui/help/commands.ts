@@ -58,12 +58,13 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "cast(spellName, target?)",
     blurb: "Cast a known spell. Costs 15 energy + the spell's MP.",
     body:
-      "`spellName` must be a string matching a learned spell (see `known_spells()`). `target` depends on the spell's targetType — self, ally, enemy, any, or tile. `heal` defaults its target to self if omitted.\n\nFailed casts (out of range, out of MP, unknown spell, target resolution fail) emit ActionFailed only — the action-slot cost is refunded, so a `me.can_cast(...)` gate followed by a blind `cast(...)` doesn't drain energy while the hero tries.\n\nIn an `if`/`while` condition, `cast(...)` resolves to `True` on success and `False` on a clean fail, so you can branch on the outcome.",
+      "`spellName` must be a string matching a learned spell (read `me.knownSpells` to inspect). `target` depends on the spell's targetType — self, ally, enemy, any, or tile. `heal` defaults its target to self if omitted.\n\nFailed casts (out of range, out of MP, unknown spell, target resolution fail) emit ActionFailed only — the action-slot cost is refunded, so a `me.can_cast(...)` gate followed by a blind `cast(...)` doesn't drain energy while the hero tries.\n\nIn an `if`/`while` condition, `cast(...)` resolves to `True` on success and `False` on a clean fail, so you can branch on the outcome.",
     examples: [
       { caption: "Bolt the closest enemy when you can afford it.", code: "if me.can_cast(\"bolt\", enemies()[0]):\n  cast(\"bolt\", enemies()[0])" },
       { caption: "Heal yourself.", code: "cast(\"heal\")" },
+      { caption: "Only cast what you know.", code: "if len(me.knownSpells) > 0:\n  cast(me.knownSpells[0], enemies()[0])" },
     ],
-    related: ["queries/known_spells", "queries/mp", "data/actor", "data/failure", "spells/bolt", "spells/heal"],
+    related: ["queries/mp", "data/actor", "data/failure", "spells/bolt", "spells/heal"],
   },
 
   use: {
@@ -72,11 +73,11 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "use(item)",
     blurb: "Consume an item from your bag. Costs 15 energy.",
     body:
-      "`item` is either an ItemInstance from `items()`/inventory or a bare defId string (the first matching bag instance is chosen). Running a use-script mid-run can apply effects, restore resources, or cleanse. Failed uses (no such item, empty bag) refund the action slot.",
+      "`item` is either an ItemInstance from inventory or a bare defId string (the first matching bag instance is chosen). Running a use-script mid-run can apply effects, restore resources, or cleanse. Failed uses (no such item, empty bag) refund the action slot.",
     examples: [
       { caption: "Pop a health potion when low.", code: "if me.hp < 8:\n  use(\"health_potion\")" },
     ],
-    related: ["items/health_potion", "items/mana_crystal", "data/item", "data/failure"],
+    related: ["items/health_potion", "items/mana_crystal", "data/flooritem", "data/failure"],
   },
 
   pickup: {
@@ -85,12 +86,12 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "pickup(target?)",
     blurb: "Pick up a floor-item. Costs 10 energy.",
     body:
-      "With no argument, picks up the topmost item on the hero's tile (LIFO). With a FloorItem arg (from `items_here()` / `items_nearby()`), picks that specific drop — the hero must be standing on it.\n\nRouting depends on the item kind:\n\n- **Consumables / scrolls** go into the bag (4 slots). A bag-full failure refunds the action slot so a retry loop doesn't drain energy.\n- **Equipment** is queued for post-run processing (no bag slot used, never fails for fullness). Scrolls and equipment are both reconciled at `exit()`: scrolls become learned spells, equipment becomes known gear available in the prep-panel picker.",
+      "With no argument, picks up the topmost item on the hero's tile (LIFO). With a FloorItem arg (from `items()` / `items(0)`), picks that specific drop — the hero must be standing on it.\n\nRouting depends on the item kind:\n\n- **Consumables / scrolls** go into the bag (4 slots). A bag-full failure refunds the action slot so a retry loop doesn't drain energy.\n- **Equipment** is queued for post-run processing (no bag slot used, never fails for fullness). Scrolls and equipment are both reconciled at `exit()`: scrolls become learned spells, equipment becomes known gear available in the prep-panel picker.",
     examples: [
       { caption: "Grab whatever's under you.", code: "pickup()" },
-      { caption: "Scoop drops after clearing the room.", code: "for loot in items_here():\n  pickup(loot)" },
+      { caption: "Scoop drops on the hero's tile.", code: "for loot in items(0):\n  pickup(loot)" },
     ],
-    related: ["commands/drop", "queries/items_here", "queries/items_nearby", "data/flooritem", "data/failure"],
+    related: ["commands/drop", "queries/items", "data/flooritem", "data/failure"],
   },
 
   drop: {
@@ -164,13 +165,13 @@ export const COMMAND_HELP: Record<string, CommandHelp> = {
     signature: "interact(target?)",
     blurb: "Use a chest, fountain, or door adjacent to the hero. Costs 10 energy.",
     body:
-      "Single verb for opening chests, tapping fountains, and unlocking doors. With no argument, picks the most relevant adjacent object (the one on the hero's tile, then the nearest neighbor).\n\nLocked chests and doors consume a `key` consumable from the inventory; if no key is present, the action fails cleanly (refunds energy). Fountains never deplete — they restore HP or MP to full and remain visible. Chests vanish on open and dump their loot into the inventory.\n\nUse `objects_nearby()` to discover what's around. Failed interacts (no target, locked + no key) emit ActionFailed and refund.",
+      "Single verb for opening chests, tapping fountains, and unlocking doors. With no argument, picks the most relevant adjacent object (the one on the hero's tile, then the nearest neighbor).\n\nLocked chests and doors consume a `key` consumable from the inventory; if no key is present, the action fails cleanly (refunds energy). Fountains never deplete — they restore HP or MP to full and remain visible. Chests vanish on open and dump their loot into the inventory.\n\nUse `objects(1)` to discover what's adjacent. Failed interacts (no target, locked + no key) emit ActionFailed and refund.",
     examples: [
-      { caption: "Tap a fountain when low on HP.", code: "for obj in objects_nearby():\n  if obj.kind == \"fountain_health\" and me.hp < me.maxHp:\n    interact(obj)" },
-      { caption: "Kill the keymaster, then unlock the chest.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nfor obj in objects_nearby():\n  if obj.kind == \"chest\":\n    interact(obj)" },
-      { caption: "Open the locked exit door.", code: "for obj in objects_nearby():\n  if obj.kind == \"exit_door_closed\":\n    interact(obj)" },
+      { caption: "Tap a fountain when low on HP.", code: "for obj in objects(1):\n  if obj.kind == \"fountain_health\" and me.hp < me.maxHp:\n    interact(obj)" },
+      { caption: "Kill the keymaster, then unlock the chest.", code: "while len(enemies()) > 0:\n  approach(enemies()[0])\n  attack(enemies()[0])\nfor obj in objects(1):\n  if obj.kind == \"chest\":\n    interact(obj)" },
+      { caption: "Open the locked exit door.", code: "for obj in objects(1):\n  if obj.kind == \"exit_door_closed\":\n    interact(obj)" },
     ],
-    related: ["queries/objects_nearby", "commands/exit", "commands/pickup"],
+    related: ["queries/objects", "commands/exit", "commands/pickup"],
   },
 
   notify: {

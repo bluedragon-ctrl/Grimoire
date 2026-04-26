@@ -9,7 +9,7 @@ import {
 } from "../../src/ast-helpers.js";
 
 function mkRoom(): Room {
-  return { w: 5, h: 5, doors: [], items: [], chests: [] };
+  return { w: 5, h: 5, doors: [], chests: [] };
 }
 function mkHero(scriptArg: ReturnType<typeof script>): Actor {
   return {

@@ -102,11 +102,11 @@ Shown at the start of every attempt. Lists depot consumables and lets the player
 ## DSL surface — dungeon objects
 
 - `interact(target?)` — opens chests, taps fountains, unlocks doors. Single verb. 10 energy. Failed interacts (no target, locked + no key) refund.
-- `objects_nearby()` — array of `{kind, pos, locked?}` records for adjacent dungeon objects.
+- `objects(r?)` — array of `{kind, pos, locked?}` records, Chebyshev nearest-first. No arg = whole room; `objects(1)` = the set you can `interact()` with right now.
 
 ```python
 # Tap a fountain when low on mana
-for obj in objects_nearby():
+for obj in objects(1):
   if obj.kind == "fountain_mana" and me.mp < me.maxMp:
     interact(obj)
 
@@ -114,7 +114,7 @@ for obj in objects_nearby():
 while len(enemies()) > 0:
   approach(enemies()[0])
   attack(enemies()[0])
-for obj in objects_nearby():
+for obj in objects(1):
   if obj.kind == "chest":
     interact(obj)
 ```
