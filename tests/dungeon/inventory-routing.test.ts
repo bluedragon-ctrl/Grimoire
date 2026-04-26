@@ -1,4 +1,4 @@
-// Phase 15: inventory routing tests.
+// Inventory routing tests.
 
 import { describe, it, expect } from "vitest";
 import type { Actor, Room, World } from "../../src/types.js";

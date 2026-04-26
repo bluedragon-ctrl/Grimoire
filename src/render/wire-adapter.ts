@@ -3,7 +3,7 @@
 //
 // Design:
 //   - apply(event) mutates a local VisualState that matches the shape
-//     Samples/ui/renderer.js reads (player, monsters, activeEffects, …).
+//     the vendored wire renderer reads (player, monsters, activeEffects, …).
 //   - A frame loop (default: requestAnimationFrame) advances effect timers
 //     and calls the vendor render(state) at ~60 Hz so camera damping and
 //     effect animation stay smooth — independent of the setTimeout-driven

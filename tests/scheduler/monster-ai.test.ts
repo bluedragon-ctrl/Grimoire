@@ -1,4 +1,4 @@
-// Phase 11: exercise each starter monster template's DSL AI end-to-end through
+// Exercise each starter monster template's DSL AI end-to-end through
 // the scheduler. Verifies behavior described in comments in src/content/monsters.ts.
 
 import { describe, it, expect } from "vitest";

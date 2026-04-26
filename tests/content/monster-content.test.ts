@@ -1,4 +1,4 @@
-// Phase 14: monster content expansion. Verifies the spec deliverables:
+// Monster content expansion. Verifies the spec deliverables:
 // 30+ templates load, scaleByLevel formula, ghost def vs spell damage,
 // skeleton poison immunity, slime split (and lesser_slime no-split),
 // fire_elemental burning immunity, deterministic lich notify with seeded

@@ -21,12 +21,9 @@ const STARTER_EQUIPPED: Partial<Record<Slot, string>> = {
   dagger: "bone_dagger",
 };
 
-let _seq = 0;
-function mintId(defId: string): string {
-  return `r${++_seq}_${defId}`;
-}
-
 export function freshRun(): PersistentRun {
+  let seq = 0;
+  const mintId = (defId: string): string => `r${++seq}_${defId}`;
   const depot: ItemInstance[] = [];
   for (const e of STARTING_INVENTORY) {
     for (let i = 0; i < e.count; i++) depot.push({ id: mintId(e.defId), defId: e.defId });

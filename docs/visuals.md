@@ -240,7 +240,7 @@ No renderer edits needed. The validation pass will verify the `renderer` key exi
 
 ### Authoring a new draw function
 
-New draw functions (genuinely new shapes) are out of scope for Phase 12.6. Flag in the
+New draw functions (genuinely new shapes) are out of scope for the catalog. Flag in the
 content backlog with the desired shape description. When authored:
 
 1. Add the draw function to the appropriate typed file (`src/render/monsters.ts`, etc.).
@@ -266,10 +266,10 @@ MONSTER_TEMPLATES.lich_king = {
 };
 ```
 
-### Tile declaration (Phase 14 dungeon-gen)
+### Tile declaration (dungeon-gen)
 
 ```ts
-// Phase 14 — themed room
+// Themed room
 const room = {
   tiles: [
     [{ kind: "wall_cyclopean" }, { kind: "floor_mossy" }, ...],
@@ -281,7 +281,7 @@ const room = {
 };
 ```
 
-### Room-gen snippet (Phase 14)
+### Room-gen snippet
 
 ```ts
 import { TILE_VISUALS } from "../content/visuals.js";

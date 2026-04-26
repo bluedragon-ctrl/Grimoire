@@ -1,6 +1,6 @@
 // Batched canvas primitives. One beginPath/stroke per call shared across many
 // sub-shapes — meaningful perf win when shadowBlur > 0, since each stroke()
-// triggers a full blur pass. Ported from Samples/ui/render-prims.js.
+// triggers a full blur pass.
 
 const TAU = Math.PI * 2;
 

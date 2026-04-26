@@ -26,7 +26,7 @@ export function tickClouds(world: World): GameEvent[] {
         if (!a.alive) continue;
         if (a.pos.x !== cloud.pos.x || a.pos.y !== cloud.pos.y) continue;
         const ev = applyEffect(world, a.id, spec.effect.kind, spec.effect.duration, {
-          source: cloud.source,
+          source: cloud.source !== undefined ? { type: "actor", id: cloud.source } : undefined,
         });
         if (ev.length > 0) {
           appliedTo.push(a.id);

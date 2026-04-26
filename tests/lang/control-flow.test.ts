@@ -1,4 +1,4 @@
-// Phase 13.5: control flow — break, continue, pass inside while / for loops.
+// Control flow — break, continue, pass inside while / for loops.
 
 import { describe, it, expect } from "vitest";
 import type { Actor } from "../../src/types.js";

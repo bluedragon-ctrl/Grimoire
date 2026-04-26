@@ -1,96 +1,82 @@
-# Gameplay loop (Phase 10)
+# Gameplay loop — UI state machine
 
-Grimoire plays out room by room. Each room is a prep / run / (recap | retry)
-cycle driven by a single UI-side state machine.
+This doc covers the **UI state machine**: the six phases the prep/run/recap UI cycles through. The underlying run/attempt model and dungeon mechanics live in [dungeon.md](dungeon.md).
 
-## State machine
+The engine itself is pure and does **not** know about phases or attempts — it simply runs one room to a terminal event (`HeroExited`, `HeroDied`, or `maxTicks` exhaustion). Phases are a UI concept.
 
-Lives in [`src/ui/run-state.ts`](../src/ui/run-state.ts). The engine is
-pure and does **not** know about phases, levels, or attempts — those are UI
-concepts. The engine simply runs one room to a terminal event (`HeroExited`,
-`HeroDied`, or maxTicks exhaustion).
+## Phases
+
+State and transitions live in [src/ui/run-state.ts](../src/ui/run-state.ts).
 
 ```
-                                 ┌──────────────────────────┐
-                                 │                          │
-                  startRun       v                          │
-   ┌───────┐  ─────────────►  ┌───────┐   pause   ┌────────┐│
-   │       │                  │running│──────────►│ paused ││
-   │ prep  │ ◄───── fail ───  │       │◄──resume──│        ││
-   │       │                  └───────┘           └────────┘│
-   │       │                     │   │               │     │
-   │       │       succeed ──────┤   └─── fail ──────┤     │
-   │       │               │     │                   │     │
-   │       │               v     v                   │     │
-   │       │               ┌─────────┐               │     │
-   │       │◄── continue ──│ recap   │               │     │
-   │       │               └─────────┘               │     │
-   │       │                                         │     │
-   │       │ skipRoom (level+1, new room, att=1)     │     │
-   │       │ ◄────────────────────────────────────── │     │
-   └───────┘                                               │
-       ▲                                                   │
-       └── resetAll (any phase → level 1, attempts 1) ─────┘
+                                 pause
+                          ┌──────────────►──────────┐
+                          │                         v
+   ┌──────────┐ start  ┌───────┐                ┌────────┐
+   │ loadout  │───────►│running│ ◄── resume ─── │ paused │
+   └──────────┘        └───────┘                └────────┘
+       ▲                  │                         │
+       │ tryAgain         │ HeroDied                │ HeroDied
+       │                  ▼                         ▼
+       │            ┌──────────────┐                │
+       └────────────│ death_recap  │◄───────────────┘
+                    └──────────────┘
+                       │      │
+                requestQuit   │ (HeroExited stays in `running`;
+                       │      │  advanceDepth regenerates the next
+                       ▼      │  room within the same attempt)
+                ┌──────────────┐
+                │ quit_confirm │── cancelQuit ──► death_recap
+                └──────────────┘
+                       │ confirmQuit
+                       ▼
+                ┌──────────────┐
+                │ final_review │── acknowledgeFinal ──► loadout (fresh run)
+                └──────────────┘
 ```
 
-Four phases:
+| Phase          | Meaning                                                        |
+|----------------|----------------------------------------------------------------|
+| `loadout`      | Pre-attempt screen: pick up to 4 consumables, edit script + equipment, BREACH |
+| `running`      | Engine driving; hero acting in the current room                |
+| `paused`       | Engine paused; inspector visible                               |
+| `death_recap`  | Hero died this attempt — show recap, offer TRY AGAIN / QUIT    |
+| `quit_confirm` | Confirmation dialog for QUIT                                   |
+| `final_review` | Post-quit summary; on ack, wipes localStorage and reseeds      |
 
-| Phase    | Canvas     | Editor   | Inventory | Inspector tab | Help tab |
-|----------|------------|----------|-----------|---------------|----------|
-| prep     | hidden     | editable | editable  | disabled      | enabled  |
-| running  | visible    | —        | read-only | disabled      | disabled |
-| paused   | visible    | —        | read-only | **enabled**   | disabled |
-| recap    | hidden     | editable | editable  | disabled      | disabled |
+`HeroExited` does **not** change phase — `advanceDepth(carryHero)` regenerates the next room within the same attempt while staying in `running`. HP/MP and inventory carry over between rooms; only `HeroDied` triggers the recap.
 
-### Counter rules
+## UI gating
 
-- **attempts** starts at 1 for a new room. Increments by exactly 1 on each
-  failed run (hero died, user clicked Stop, or script exhausted without
-  exiting). Never increments on pause/resume or successful runs.
-- **level** starts at 1. Increments on success via `continueAfterRecap` and
-  on `skipRoom` (skip advances to the next room without running the current
-  one). `resetAll` returns it to 1.
-- Game-over semantics (max attempts / lives) are intentionally **out of
-  scope** for this phase — retries are unbounded.
+```ts
+inspectorTabEnabled(phase) === phase === "paused"
+helpTabEnabled(phase)      === phase === "loadout"
+```
 
-## Snapshot contract
+The script editor and inventory/equipment pickers are read-only outside `loadout`. The canvas is hidden during `loadout`, `death_recap`, `quit_confirm`, and `final_review`.
 
-When the user clicks **Run**, the controller `structuredClone`s the current
-`RoomSetup` into `state.snapshot`. This snapshot captures everything
-mutable that the run could touch:
+## Counter rules
 
-- `room` (walls, doors, clouds, floorItems, chests) — cloned.
-- `actors` — cloned, including hero inventory (consumables + equipped) and
-  the hero's script AST.
+- `attempts` starts at 1. Increments by exactly 1 on `tryAgain` (each TRY AGAIN is a fresh descent at depth 1). Never increments on pause/resume or successful exits.
+- `depth` starts at 1, increments on `advanceDepth` (successful `exit()`), resets to 1 on `tryAgain` and `acknowledgeFinal`.
+- `run.stats.deepestDepth` is monotone-max across all attempts within the run.
+- `run.stats.attempts` mirrors the attempt counter.
+- Game-over semantics (max attempts, lives) are intentionally absent — TRY AGAIN is unbounded until QUIT.
 
-Because every field of `RoomSetup` is plain data (no class instances, no
-function references, no DOM refs), `structuredClone` is a complete deep copy.
-If anything ever becomes non-cloneable, the fix is to refactor that field
-into plain data — **not** to write a bespoke deep-copy.
+## Persistence
 
-On `fail()`, the controller replaces `state.current` with the snapshot and
-clears the snapshot ref. Post-restore, `attempts++` and the phase returns to
-`prep`. The live engine handle and renderer adapter are torn down separately
-by the UI (`src/ui/main.ts`) — the state machine owns only data, not
-resources.
+The `run` field (`PersistentRun`) is serialized to a single localStorage key (`grimoire.run.v1`) on every phase transition that mutates it: `startAttempt`, `advanceDepth`, `die`, `tryAgain`, `acknowledgeFinal`. `confirmQuit` snapshots into `finalSnapshot` for the review screen but does not wipe yet — `acknowledgeFinal` is what clears storage and reseeds.
 
-On `succeed()`, the snapshot is dropped (not restored) — the next room will
-be generated fresh.
-
-## Room generation
-
-[`src/content/rooms.ts`](../src/content/rooms.ts) exposes
-`generateRoom(level, rng)` returning a `RoomSetup`. For Phase 10 this is
-intentionally minimal: the demo layout with goblin HP scaled lightly by
-level. Deep generation (varied shapes, multiple monster types, loot tables
-per room) is a later phase. The `rng` parameter is threaded for future use.
+Inventory is **not** snapshotted for rollback. On `die`, `routeInventoryToRun(hero, run)` moves the dead hero's wearables into open equipment slots (or back to depot), consumables into the depot, and discards keys. The next `startAttempt` rebuilds the hero from `run.equipped` + the loadout selection via `buildAttemptHero`.
 
 ## Where to look
 
-| Concern                     | File                                  |
-|-----------------------------|---------------------------------------|
-| State machine + transitions | `src/ui/run-state.ts`                 |
-| Room generator              | `src/content/rooms.ts`                |
-| Button wiring + rendering   | `src/ui/main.ts`                      |
-| Phase-driven CSS            | `src/ui/layout.css` (`[data-phase]`)  |
-| State machine tests         | `tests/ui/run-loop.test.ts`           |
+| Concern                         | File                                       |
+|---------------------------------|--------------------------------------------|
+| State machine + transitions     | [src/ui/run-state.ts](../src/ui/run-state.ts) |
+| Persistence + inventory routing | [src/persistence.ts](../src/persistence.ts) |
+| Dungeon room generation         | [src/dungeon/generator.ts](../src/dungeon/generator.ts) |
+| Button wiring + rendering       | [src/ui/main.ts](../src/ui/main.ts)       |
+| Phase-driven CSS                | `src/ui/layout.css` (`[data-phase]`)       |
+| State machine tests             | [tests/ui/run-loop.test.ts](../tests/ui/run-loop.test.ts) |
+| Death recap + try-again tests   | [tests/ui/recap.test.ts](../tests/ui/recap.test.ts) |

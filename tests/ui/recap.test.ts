@@ -1,4 +1,4 @@
-// Phase 15: death recap + try-again flow.
+// Death recap + try-again flow.
 
 import { describe, it, expect } from "vitest";
 import { RunController } from "../../src/ui/run-state.js";

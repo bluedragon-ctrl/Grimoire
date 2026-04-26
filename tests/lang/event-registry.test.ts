@@ -1,4 +1,4 @@
-// Phase 13.5: parse-time validation of `on <event>:` handler names.
+// Parse-time validation of `on <event>:` handler names.
 
 import { describe, it, expect } from "vitest";
 import { parse } from "../../src/lang/parser.js";

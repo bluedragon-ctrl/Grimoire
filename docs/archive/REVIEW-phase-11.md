@@ -1,4 +1,6 @@
-# Grimoire post-Phase-11 Code Review
+# Grimoire post-Phase-11 Code Review (ARCHIVED)
+
+> **Frozen historical snapshot.** This review was taken just after Phase 11. Many items have since been resolved, refactored, or rendered obsolete by subsequent phases. **All `file:line` references are stale** — line numbers no longer match current code. Useful only as a record of which problems were known at the time. Do not rely on it for current correctness analysis.
 
 Cold read-only pass. File citations are `file:line`. Fixes are sentence-length hints, not prescriptions.
 

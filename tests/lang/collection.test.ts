@@ -1,4 +1,4 @@
-// Phase 13.5: Pythonic list semantics on Collection — len/indexing/iteration,
+// Pythonic list semantics on Collection — len/indexing/iteration,
 // truthiness, .filter / .sorted_by / .first / .last / .min_by / .max_by, plus
 // the min() / max() builtins.
 

@@ -1,4 +1,4 @@
-// Item sprite draws — ported from Samples/ui/render-items.js.
+// Item sprite draws.
 // Each function is a pure canvas draw: (ctx, cx, cy, t, colors).
 
 import { C, wire, lighten, darken } from "./context.js";

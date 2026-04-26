@@ -600,8 +600,11 @@ export function scriptFor(id: string): Script | undefined {
 // ──────────────────────────── actor factory ────────────────────────────
 
 // Local instance-id counter for monster startingInventory. Independent of
-// the items/execute mintInstance so we don't pull that module in (would
-// create a cycle through spells/primitives → monsters → items/execute).
+// items/execute::mintInstance to avoid a circular import (spells/primitives →
+// monsters → items/execute). Module-level lifetime is intentional: each
+// createActor call needs a fresh unique id across all monsters generated in a
+// session, and ItemInstance ids do not appear in determinism-sensitive event
+// payloads (they're opaque handles).
 let _bagInstanceSeq = 1;
 function mintBagInstance(defId: string): ItemInstance {
   return { id: `m${_bagInstanceSeq++}_${defId}`, defId };

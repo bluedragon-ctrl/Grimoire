@@ -1,5 +1,4 @@
 // Visual effects — projectiles, areas, tile-based clouds, entity overlays.
-// Ported from Samples/ui/render-effects.js.
 //
 // ── Contract ──────────────────────────────────────────────
 // Every renderer has the signature:    drawFn(ctx, params, t, colors)

@@ -1,4 +1,4 @@
-// Phase 13 effects: passive stat modifiers, shield mechanic, mana effects.
+// Concrete effect kinds: passive stat modifiers, shield mechanic, mana effects.
 
 import { describe, it, expect } from "vitest";
 import type { Actor, GameEvent, Room } from "../../src/types.js";

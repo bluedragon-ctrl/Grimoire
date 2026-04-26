@@ -22,7 +22,7 @@ function validateLootEntries(key: string, entries: LootEntry[]): void {
   }
 }
 
-// Phase 14: every visual referenced by a stock MonsterTemplate.
+// Every visual referenced by a stock MonsterTemplate.
 const KNOWN_RENDERERS = new Set([
   "skeleton", "bat", "slime", "dark_wizard", "rat", "giant_snail",
   "mushroom", "spider", "zombie", "skeleton_archer", "orc_warrior",

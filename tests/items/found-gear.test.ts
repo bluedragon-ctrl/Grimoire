@@ -1,4 +1,4 @@
-// Phase 13.7 – Equipment auto-process tests.
+// Equipment auto-process tests.
 // doExit processes foundGear (equipment picked up this run) before HeroExited:
 //   • New defId → GearLearned + GearDiscarded(reason:"learned"), merged into knownGear
 //   • Already known → GearDiscarded(reason:"duplicate"), no GearLearned

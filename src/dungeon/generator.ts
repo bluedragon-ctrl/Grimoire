@@ -118,8 +118,6 @@ export interface GenerateOptions {
   hero?: Actor;
 }
 
-let _objectSeq = 0;
-
 export function generateRoom(
   depth: number, seed: number = depth * 0x9E3779B1, opts: GenerateOptions = {},
 ): RoomSetup {
@@ -196,10 +194,6 @@ export function generateRoom(
     depth,
     archetype,
   };
-
-  // Inject a synthetic monster id offset so re-runs from the same setup
-  // don't collide with hero id.
-  void _objectSeq;
 
   return { room, actors: [hero, ...monsters] };
 }

@@ -1,4 +1,4 @@
-// Phase 13.5: commands return a bool — `if attack(foe):`, `if cast(...):`,
+// Commands return a bool — `if attack(foe):`, `if cast(...):`,
 // etc. The script gets back true on success / false on ActionFailed.
 
 import { describe, it, expect } from "vitest";

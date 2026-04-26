@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import type { Actor, Room } from "../../src/types.js";
 import { runRoom } from "../../src/engine.js";
-import { createActor } from "../../src/content/monsters.ts";
+import { createActor } from "../../src/content/monsters.js";
 import {
   script, while_, bin, member, call, index, lit, exprStmt, cHalt,
   funcDef, cCast, cAttack, cApproach,
