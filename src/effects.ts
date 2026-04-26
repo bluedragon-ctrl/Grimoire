@@ -34,28 +34,32 @@ export interface EffectSpec {
 
 // ──────────────────────────── specs ────────────────────────────
 
+// Shared DoT (damage-over-time) tick: deal `dmg`, emit EffectTick, then if the
+// actor died this tick emit Died (+ HeroDied) and credit the kill to the
+// effect's source actor, if any.
+function dotTick(w: World, eff: Effect, actor: Actor, dmg: number): GameEvent[] {
+  actor.hp -= dmg;
+  const events: GameEvent[] = [
+    { type: "EffectTick", actor: actor.id, kind: eff.kind, magnitude: dmg },
+  ];
+  if (actor.hp <= 0 && actor.alive) {
+    actor.alive = false;
+    events.push({ type: "Died", actor: actor.id });
+    if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
+    if (eff.source?.type === "actor") {
+      const killer = w.actors.find(a => a.id === (eff.source as { id: string }).id);
+      if (killer?.alive) events.push(...callOnKillHook(w, killer, actor));
+    }
+  }
+  return events;
+}
+
 const burning: EffectSpec = {
   kind: "burning", polarity: "debuff",
   defaultDuration: 50,
   defaultMagnitude: 1,
   tickEvery: 10,
-  onTick: (w, eff, actor) => {
-    const dmg = eff.magnitude ?? 1;
-    actor.hp -= dmg;
-    const events: GameEvent[] = [
-      { type: "EffectTick", actor: actor.id, kind: "burning", magnitude: dmg },
-    ];
-    if (actor.hp <= 0 && actor.alive) {
-      actor.alive = false;
-      events.push({ type: "Died", actor: actor.id });
-      if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
-      if (eff.source?.type === "actor") {
-        const killer = w.actors.find(a => a.id === (eff.source as { id: string }).id);
-        if (killer?.alive) events.push(...callOnKillHook(w, killer, actor));
-      }
-    }
-    return events;
-  },
+  onTick: (w, eff, actor) => dotTick(w, eff, actor, eff.magnitude ?? 1),
 };
 
 const regen: EffectSpec = {
@@ -101,23 +105,7 @@ const poison: EffectSpec = {
   defaultDuration: 30,
   defaultMagnitude: 1,
   tickEvery: 15,
-  onTick: (w, eff, actor) => {
-    const dmg = eff.magnitude ?? 1;
-    actor.hp -= dmg;
-    const events: GameEvent[] = [
-      { type: "EffectTick", actor: actor.id, kind: "poison", magnitude: dmg },
-    ];
-    if (actor.hp <= 0 && actor.alive) {
-      actor.alive = false;
-      events.push({ type: "Died", actor: actor.id });
-      if (actor.isHero) events.push({ type: "HeroDied", actor: actor.id });
-      if (eff.source?.type === "actor") {
-        const killer = w.actors.find(a => a.id === (eff.source as { id: string }).id);
-        if (killer?.alive) events.push(...callOnKillHook(w, killer, actor));
-      }
-    }
-    return events;
-  },
+  onTick: (w, eff, actor) => dotTick(w, eff, actor, eff.magnitude ?? 1),
 };
 
 // ── Phase 13 effects ──────────────────────────────────────────────────────────
@@ -481,6 +469,13 @@ export function callOnKillHook(world: World, killer: Actor, victim: Actor): Game
 export function hasEffect(actor: Actor, kind: string): boolean {
   const effects = actor.effects ?? [];
   return effects.some(e => e.kind === kind);
+}
+
+// Return the first matching effect on `actor`, or null. Use when callers
+// need the magnitude/remaining/source — pairs naturally with hasEffect.
+export function getEffect(actor: Actor, kind: string): Effect | null {
+  const effects = actor.effects ?? [];
+  return effects.find(e => e.kind === kind) ?? null;
 }
 
 export function listEffects(actor: Actor): string[] {

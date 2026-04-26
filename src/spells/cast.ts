@@ -8,33 +8,12 @@ import { SPELLS, type Spell } from "../content/spells.js";
 import { PRIMITIVES, type TargetRef } from "./primitives.js";
 import { hasEffect } from "../effects.js";
 import { hasLineOfSight } from "../los.js";
-import { didYouMean } from "../lang/errors.js";
+import { didYouMean, actionFailed } from "../lang/errors.js";
+import { chebyshev } from "../geometry.js";
+import { resolveActor, resolvePos, sameFaction } from "../resolve.js";
 
 function fail(caster: Actor, reason: string): GameEvent {
-  return { type: "ActionFailed", actor: caster.id, action: "cast", reason };
-}
-
-function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
-
-function resolveTargetActor(world: World, ref: unknown): Actor | null {
-  if (!ref || typeof ref !== "object") return null;
-  const r = ref as Actor;
-  if (typeof r.id !== "string") return null;
-  const found = world.actors.find(a => a.id === r.id);
-  if (!found || !found.alive) return null;
-  return found;
-}
-
-function resolvePos(ref: unknown): Pos | null {
-  if (!ref || typeof ref !== "object") return null;
-  const r = ref as any;
-  if (r.pos && typeof r.pos.x === "number" && typeof r.pos.y === "number") {
-    return { x: r.pos.x, y: r.pos.y };
-  }
-  if (typeof r.x === "number" && typeof r.y === "number") return { x: r.x, y: r.y };
-  return null;
+  return actionFailed(caster, "cast", reason);
 }
 
 function targetKindMatches(caster: Actor, spell: Spell, target: Actor | null): boolean {
@@ -47,13 +26,61 @@ function targetKindMatches(caster: Actor, spell: Spell, target: Actor | null): b
   }
 }
 
-function sameFaction(a: Actor, b: Actor): boolean {
-  // Phase 13.2: use explicit faction field with isHero fallback for backward compat.
-  const fa = a.faction ?? (a.isHero ? "player" : "enemy");
-  const fb = b.faction ?? (b.isHero ? "player" : "enemy");
-  // Two neutrals are neither allies nor enemies — treat as not same faction.
-  if (fa === "neutral" && fb === "neutral") return false;
-  return fa === fb;
+// Resolve {target actor, target position} for `spell` from a raw DSL ref.
+// Returns a typed result; the reason string is the user-facing failure message.
+type ResolvedSpellTarget =
+  | { ok: true; targetActor: Actor | null; targetPos: Pos }
+  | { ok: false; reason: string };
+
+function resolveSpellTarget(world: World, caster: Actor, spell: Spell, spellName: string, targetRef: unknown): ResolvedSpellTarget {
+  if (spell.targetType === "self") {
+    return { ok: true, targetActor: caster, targetPos: { ...caster.pos } };
+  }
+  if (spell.targetType === "tile") {
+    const a = resolveActor(world, targetRef);
+    const pos = a ? { ...a.pos } : resolvePos(targetRef);
+    if (!pos) return { ok: false, reason: `${capitalize(spellName)} needs a tile target.` };
+    return { ok: true, targetActor: null, targetPos: pos };
+  }
+  const targetActor = resolveActor(world, targetRef);
+  if (!targetKindMatches(caster, spell, targetActor)) {
+    const need = spell.targetType === "ally" ? "an ally" : spell.targetType === "enemy" ? "an enemy" : "a valid target";
+    return { ok: false, reason: `${capitalize(spellName)} needs ${need} target.` };
+  }
+  return { ok: true, targetActor, targetPos: targetActor!.pos };
+}
+
+// Range gate. Returns null on pass, reason string on fail.
+function checkRange(caster: Actor, targetPos: Pos, range: number): string | null {
+  if (chebyshev(caster.pos, targetPos) > range) {
+    return `Target is out of range (max ${range} tiles).`;
+  }
+  return null;
+}
+
+// LOS gate — smoke clouds block line of sight. Self-targeted and adjacent
+// targets always pass. Returns null on pass, reason string on fail.
+function checkLineOfSight(world: World, caster: Actor, targetPos: Pos, isSelf: boolean): string | null {
+  if (isSelf) return null;
+  if (chebyshev(caster.pos, targetPos) <= 1) return null;
+  if (!hasLineOfSight(world, caster.pos, targetPos)) {
+    return "No line of sight to target (smoke).";
+  }
+  return null;
+}
+
+// Blinded gate — if caster is blinded, ranged targets (Chebyshev > 1) are denied.
+function checkBlinded(caster: Actor, targetPos: Pos): string | null {
+  if (!hasEffect(caster, "blinded")) return null;
+  if (chebyshev(caster.pos, targetPos) <= 1) return null;
+  return "You are blinded and can only target adjacent tiles.";
+}
+
+// Mana gate.
+function checkMana(caster: Actor, cost: number): string | null {
+  const mp = caster.mp ?? 0;
+  if (mp < cost) return `Not enough mana (needs ${cost}, you have ${mp}).`;
+  return null;
 }
 
 // Shared validation for steps 1–5. Returns a resolved target on success, or a
@@ -90,51 +117,28 @@ export function validateCast(
   let targetPos: Pos | null = null;
 
   if (!opts.skipTarget) {
-    // 3–4. Resolve target + type/range.
-    if (spell.targetType === "self") {
-      targetActor = caster;
-      targetPos = { ...caster.pos };
-    } else if (spell.targetType === "tile") {
-      const a = resolveTargetActor(world, targetRef);
-      if (a) targetPos = { ...a.pos };
-      else targetPos = resolvePos(targetRef);
-      if (!targetPos) {
-        return { ok: false, reason: `${capitalize(spellName)} needs a tile target.` };
-      }
-    } else {
-      targetActor = resolveTargetActor(world, targetRef);
-      if (!targetKindMatches(caster, spell, targetActor)) {
-        const need = spell.targetType === "ally" ? "an ally" : spell.targetType === "enemy" ? "an enemy" : "a valid target";
-        return { ok: false, reason: `${capitalize(spellName)} needs ${need} target.` };
-      }
-      targetPos = targetActor!.pos;
-    }
+    // 3–4. Resolve target + type, range, LOS.
+    const r = resolveSpellTarget(world, caster, spell, spellName, targetRef);
+    if (!r.ok) return r;
+    targetActor = r.targetActor;
+    targetPos = r.targetPos;
 
-    const dist = chebyshev(caster.pos, targetPos!);
-    if (dist > spell.range) {
-      return { ok: false, reason: `Target is out of range (max ${spell.range} tiles).` };
-    }
+    const rangeFail = checkRange(caster, targetPos, spell.range);
+    if (rangeFail) return { ok: false, reason: rangeFail };
 
-    // 4b. LOS gate — smoke clouds between caster and target block line of sight.
-    // Self-targeted and adjacent targets always have LOS.
-    if (spell.targetType !== "self" && dist > 1 && !hasLineOfSight(world, caster.pos, targetPos!)) {
-      return { ok: false, reason: "No line of sight to target (smoke)." };
-    }
+    const losFail = checkLineOfSight(world, caster, targetPos, spell.targetType === "self");
+    if (losFail) return { ok: false, reason: losFail };
   }
 
-  // 5. Blinded gate: if caster is blinded, ranged targets (Chebyshev > 1) are denied.
-  if (!opts.skipTarget && hasEffect(caster, "blinded") && targetPos) {
-    const dist = chebyshev(caster.pos, targetPos);
-    if (dist > 1) {
-      return { ok: false, reason: "You are blinded and can only target adjacent tiles." };
-    }
+  // 5. Blinded gate.
+  if (!opts.skipTarget && targetPos) {
+    const blindFail = checkBlinded(caster, targetPos);
+    if (blindFail) return { ok: false, reason: blindFail };
   }
 
   // 6. Mana.
-  const mp = caster.mp ?? 0;
-  if (mp < spell.mpCost) {
-    return { ok: false, reason: `Not enough mana (needs ${spell.mpCost}, you have ${mp}).` };
-  }
+  const manaFail = checkMana(caster, spell.mpCost);
+  if (manaFail) return { ok: false, reason: manaFail };
 
   return { ok: true, spell, targetActor, targetPos };
 }

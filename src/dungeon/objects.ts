@@ -16,6 +16,7 @@ import type {
 import { worldRandom, worldRandInt } from "../rng.js";
 import { ITEMS } from "../content/items.js";
 import { CHEST_LOOT_TABLES } from "../content/loot.js";
+import { chebyshev } from "../geometry.js";
 
 // ──────────────────────────── walkability ────────────────────────────
 
@@ -33,10 +34,6 @@ export function tileBlocked(world: World, pos: Pos): boolean {
 }
 
 // ──────────────────────────── adjacency / picking ────────────────────────────
-
-function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
 
 /** Return all RoomObjects within Chebyshev radius `r` of `from` (inclusive). */
 export function objectsWithin(world: World, from: Pos, r: number): RoomObject[] {

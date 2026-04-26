@@ -21,6 +21,7 @@ import {
 import { PRIMITIVES, type TargetRef } from "../spells/primitives.js";
 import { spawnOverflowDrop } from "./loot.js";
 import { worldRandom } from "../rng.js";
+import { actionFailed } from "../lang/errors.js";
 
 // Validate all wearables at load time: effect kinds, stat keys, target arity, chance range.
 export function validateAllWearables(): void {
@@ -101,7 +102,7 @@ function findInBag(actor: Actor, instance: ItemInstance): number {
 // ──────────────────────────── use (consumable) ────────────────────────────
 
 function fail(actor: Actor, reason: string): GameEvent {
-  return { type: "ActionFailed", actor: actor.id, action: "use", reason };
+  return actionFailed(actor, "use", reason);
 }
 
 // Execute a consumable item, dispatching its SpellOp[] body through PRIMITIVES.
@@ -171,13 +172,13 @@ function applyAura(world: World, actor: Actor, def: ItemDef): GameEvent[] {
 
 export function equipItem(world: World, actor: Actor, instance: ItemInstance): GameEvent[] {
   const def = ITEMS[instance.defId];
-  if (!def) return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `Unknown item '${instance.defId}'.` }];
+  if (!def) return [actionFailed(actor, "equip", `Unknown item '${instance.defId}'.`)];
   if (def.kind !== "equipment" || !def.slot) {
-    return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `${def.name} cannot be equipped.` }];
+    return [actionFailed(actor, "equip", `${def.name} cannot be equipped.`)];
   }
   const inv = ensureInventory(actor);
   const idx = inv.consumables.findIndex(i => i.id === instance.id);
-  if (idx < 0) return [{ type: "ActionFailed", actor: actor.id, action: "equip", reason: `${def.name} is not in your bag.` }];
+  if (idx < 0) return [actionFailed(actor, "equip", `${def.name} is not in your bag.`)];
 
   const slot = def.slot;
   const events: GameEvent[] = [];
@@ -200,7 +201,7 @@ export function equipItem(world: World, actor: Actor, instance: ItemInstance): G
 export function unequipItem(world: World, actor: Actor, slot: Slot): GameEvent[] {
   const inv = ensureInventory(actor);
   const inst = inv.equipped[slot];
-  if (!inst) return [{ type: "ActionFailed", actor: actor.id, action: "unequip", reason: `Nothing equipped in ${slot}.` }];
+  if (!inst) return [actionFailed(actor, "unequip", `Nothing equipped in ${slot}.`)];
   inv.equipped[slot] = null;
   const def = ITEMS[inst.defId]!;
   const events: GameEvent[] = [];

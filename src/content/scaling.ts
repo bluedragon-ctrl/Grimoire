@@ -17,3 +17,9 @@ export function scaleRadius(base: number, int: number): number {
 export function scaleByLevel(base: number, level: number): number {
   return Math.floor(base * (1 + 0.15 * (level - 1)));
 }
+
+// Floor tier from depth (1..5). Used by both monster spawning and chest loot
+// table selection — keep them in sync by going through this single helper.
+export function floorTier(depth: number): number {
+  return Math.min(5, Math.max(1, Math.ceil(depth / 3)));
+}

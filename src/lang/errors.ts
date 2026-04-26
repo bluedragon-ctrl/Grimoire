@@ -1,5 +1,14 @@
 // Parse-time errors with position + optional hint + "did you mean?".
 
+import type { Actor, GameEvent } from "../types.js";
+
+// Single ActionFailed factory used by every command/cast/use path. Standard
+// shape: { type, actor, action, reason }. Failed-cleanly helpers in commands.ts
+// pattern-match on this exact shape so the scheduler can refund energy.
+export function actionFailed(actor: Actor, action: string, reason: string): GameEvent {
+  return { type: "ActionFailed", actor: actor.id, action, reason };
+}
+
 // Thrown by the interpreter when a DSL script violates a runtime constraint
 // (e.g. calling an action-bearing function in expression position). The
 // scheduler catches only this class and converts it to a ScriptError event;

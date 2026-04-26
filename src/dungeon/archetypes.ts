@@ -8,6 +8,8 @@
 import type { Actor, InteriorWall, Pos, Room, RoomObject } from "../types.js";
 import { MONSTER_TEMPLATES, createActor } from "../content/monsters.js";
 import { chestLootTableFor } from "../content/loot.js";
+import { floorTier } from "../content/scaling.js";
+import { chebyshev } from "../geometry.js";
 
 export type Rng = () => number;
 
@@ -46,10 +48,6 @@ function randInt(rng: Rng, lo: number, hi: number): number {
   return lo + Math.floor(rng() * (hi - lo + 1));
 }
 
-function chebyshev(a: Pos, b: Pos): number {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
-}
-
 function pickFloorTile(ctx: ArchCtx, opts: { minDist?: number } = {}): Pos | null {
   const { minDist = 0 } = opts;
   for (let i = 0; i < 80; i++) {
@@ -65,10 +63,6 @@ function pickFloorTile(ctx: ArchCtx, opts: { minDist?: number } = {}): Pos | nul
 }
 
 // ──────────────────────────── monster picks ────────────────────────────
-
-function floorTier(depth: number): number {
-  return Math.min(5, Math.max(1, Math.ceil(depth / 3)));
-}
 
 function templatesAtTier(tier: number): string[] {
   return Object.entries(MONSTER_TEMPLATES)
