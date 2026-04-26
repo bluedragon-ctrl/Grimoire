@@ -1,54 +1,57 @@
-// Phase 10: run-state machine. Source of truth for the gameplay loop phase,
-// the room/attempt counters, and the pre-run snapshot. Engine-free — this
-// module never touches the scheduler, the World, or any GameEvent.
-//
-// Phases:
-//   prep     — editable script + inventory; room hidden. Snapshot is null.
-//   running  — simulation is playing. Snapshot holds the pre-run RoomSetup.
-//   paused   — engine halted mid-run. Snapshot still held.
-//   recap    — success modal showing. Snapshot dropped.
-//
-// Transitions (driven by UI button clicks in main.ts):
-//   prep     --startRun-->     running   (snapshot pre-run state)
-//   running  --pause-->        paused
-//   paused   --resume-->       running
-//   running|paused --fail-->   prep      (restore snapshot, attempts++)
-//   running|paused --succeed-> recap     (drop snapshot, record turns)
-//   recap    --continue-->     prep      (level++, attempts=1, new room)
-//   prep     --skipRoom-->     prep      (same level, attempts=1, new room)
-//   *        --resetAll-->     prep      (level=1, attempts=1, new room)
+// Phase 15: run-state machine. Models the procedural-dungeon lifecycle:
+//   loadout → running → (paused) → running ... → death_recap → loadout
+//                                                          ↘ quit_confirm → final_review → loadout
+// Successful exit() regenerates the next-depth room within the same attempt
+// (no per-room modal). HP/MP persist across consecutive rooms.
 
 import type { RoomSetup } from "../engine.js";
+import type { PersistentRun } from "../types.js";
+import { freshRun, loadRun, saveRun, wipeRun, buildAttemptHero, routeInventoryToRun } from "../persistence.js";
 
-export type Phase = "prep" | "running" | "paused" | "recap";
+export type Phase =
+  | "loadout"        // pre-attempt screen
+  | "running"
+  | "paused"
+  | "death_recap"
+  | "quit_confirm"
+  | "final_review";
 
 export interface RecapInfo {
-  level: number;
+  depth: number;
   attempts: number;
   turns: number;
-  outcome: "success" | "death" | "recall";
-  /** Free-text cause shown under the title (death/recall only). */
+  outcome: "death";
   cause?: string;
 }
 
 export interface RunState {
   phase: Phase;
-  level: number;
+  /** Current depth within the active attempt. */
+  depth: number;
+  /** Number of attempts started so far (1 = first attempt). */
   attempts: number;
-  /** The RoomSetup the hero enters on Run. Rebuilt on success/skip/reset/fail. */
+  /** The RoomSetup the hero enters on Run. Rebuilt on advance/restart. */
   current: RoomSetup;
-  /** Pre-run snapshot used to restore on failure. Null in prep/recap. */
-  snapshot: RoomSetup | null;
-  /** Populated only while phase === "recap". */
+  /** Persistent meta-state — depot, equipped, knownSpells, lifetime stats. */
+  run: PersistentRun;
+  /** Death-recap payload (death_recap phase only). */
   recap: RecapInfo | null;
+  /** Per-attempt loadout selection (depot defIds the player picked). */
+  loadout: string[];
+  /** Snapshot of the run state for the final-review screen. */
+  finalSnapshot: PersistentRun | null;
 }
 
 export interface RunControllerOptions {
-  /** Produce a fresh RoomSetup for a given level. Called for init/skip/reset/continue. */
-  generate: (level: number) => RoomSetup;
+  /** Produce a fresh RoomSetup for a (depth, run, loadout) triple. */
+  generate: (depth: number, run: PersistentRun, loadout: string[]) => RoomSetup;
+  /** Initial run state (defaults to loadRun()). */
+  initialRun?: PersistentRun;
 }
 
 type Listener = (state: Readonly<RunState>) => void;
+
+export const MAX_LOADOUT = 4;
 
 export class RunController {
   private state: RunState;
@@ -57,13 +60,16 @@ export class RunController {
 
   constructor(opts: RunControllerOptions) {
     this.opts = opts;
+    const run = opts.initialRun ?? loadRun();
     this.state = {
-      phase: "prep",
-      level: 1,
+      phase: "loadout",
+      depth: 1,
       attempts: 1,
-      current: opts.generate(1),
-      snapshot: null,
+      current: opts.generate(1, run, []),
+      run,
       recap: null,
+      loadout: [],
+      finalSnapshot: null,
     };
   }
 
@@ -78,10 +84,31 @@ export class RunController {
     for (const cb of this.listeners) cb(this.state);
   }
 
-  /** prep → running. Deep-clones current into snapshot. */
-  startRun(): void {
-    if (this.state.phase !== "prep") return;
-    this.state.snapshot = structuredClone(this.state.current);
+  // ── loadout helpers ────────────────────────────────────────────────────
+
+  toggleLoadout(defId: string): void {
+    if (this.state.phase !== "loadout") return;
+    const idx = this.state.loadout.indexOf(defId);
+    if (idx >= 0) {
+      this.state.loadout.splice(idx, 1);
+    } else if (this.state.loadout.length < MAX_LOADOUT) {
+      this.state.loadout.push(defId);
+    }
+    this.emit();
+  }
+
+  // ── attempt lifecycle ──────────────────────────────────────────────────
+
+  /** loadout → running. Pulls selected items from depot into hero inventory. */
+  startAttempt(): void {
+    if (this.state.phase !== "loadout") return;
+    const heroPos = this.state.current.actors[0]?.pos ?? { x: 1, y: 1 };
+    const hero = buildAttemptHero(this.state.run, this.state.loadout, heroPos);
+    // Replace hero in current setup (preserves AI's monsters in current).
+    this.state.current.actors[0] = hero;
+    this.state.run.stats.attempts = Math.max(this.state.run.stats.attempts, this.state.attempts);
+    this.state.loadout = [];
+    saveRun(this.state.run);
     this.state.phase = "running";
     this.emit();
   }
@@ -98,92 +125,95 @@ export class RunController {
     this.emit();
   }
 
-  /** running|paused → prep. Restore snapshot and increment attempts. */
-  fail(): void {
+  /** Successful exit() — advance depth in the same attempt, regenerate room. */
+  advanceDepth(carryHero: import("../types.js").Actor): void {
     if (this.state.phase !== "running" && this.state.phase !== "paused") return;
-    if (this.state.snapshot) this.state.current = this.state.snapshot;
-    this.state.snapshot = null;
-    this.state.attempts += 1;
-    this.state.phase = "prep";
+    this.state.depth += 1;
+    this.state.run.stats.deepestDepth = Math.max(this.state.run.stats.deepestDepth, this.state.depth);
+    saveRun(this.state.run);
+    // Build the next room; carry the live hero (with hp/mp/inventory) into it.
+    const next = this.opts.generate(this.state.depth, this.state.run, []);
+    next.actors[0] = carryHero;
+    next.actors[0].pos = { ...next.actors[0].pos };
+    this.state.current = next;
+    this.state.phase = "running";
     this.emit();
   }
 
-  /** running|paused → recap. Drop snapshot; caller passes `turns` from world.tick. */
-  succeed(turns: number): void {
+  /** Hero died — route inventory, increment attempts, show death recap. */
+  die(turns: number, hero: import("../types.js").Actor, cause?: string): void {
     if (this.state.phase !== "running" && this.state.phase !== "paused") return;
+    routeInventoryToRun(hero, this.state.run);
     this.state.recap = {
-      level: this.state.level,
-      attempts: this.state.attempts,
-      turns,
-      outcome: "success",
-    };
-    this.state.snapshot = null;
-    this.state.phase = "recap";
-    this.emit();
-  }
-
-  /** running|paused → recap (death). Restore snapshot for retry but show death screen first. */
-  die(turns: number, cause?: string): void {
-    if (this.state.phase !== "running" && this.state.phase !== "paused") return;
-    this.state.recap = {
-      level: this.state.level,
+      depth: this.state.depth,
       attempts: this.state.attempts,
       turns,
       outcome: "death",
       cause,
     };
-    this.state.snapshot = null;
-    this.state.phase = "recap";
+    saveRun(this.state.run);
+    this.state.phase = "death_recap";
     this.emit();
   }
 
-  /** recap → prep. On success: level++, attempts=1, new room. On death: attempts++, same room. */
-  continueAfterRecap(): void {
-    if (this.state.phase !== "recap") return;
-    const wasSuccess = this.state.recap?.outcome === "success";
-    if (wasSuccess) {
-      this.state.level += 1;
-      this.state.attempts = 1;
-      this.state.current = this.opts.generate(this.state.level);
-    } else {
-      this.state.attempts += 1;
-      this.state.current = this.opts.generate(this.state.level);
-    }
+  /** TRY AGAIN button — bump attempts, depth=1, regenerate, show loadout. */
+  tryAgain(): void {
+    if (this.state.phase !== "death_recap") return;
+    this.state.attempts += 1;
+    this.state.depth = 1;
     this.state.recap = null;
-    this.state.phase = "prep";
+    this.state.loadout = [];
+    this.state.current = this.opts.generate(1, this.state.run, []);
+    this.state.phase = "loadout";
+    saveRun(this.state.run);
     this.emit();
   }
 
-  /** prep → prep at level+1. Advances past the current room without running it. */
-  // TODO: cost — skipping should cost something (gold? attempts budget?) once
-  // those systems exist.
-  skipRoom(): void {
-    if (this.state.phase !== "prep") return;
-    this.state.level += 1;
-    this.state.attempts = 1;
-    this.state.current = this.opts.generate(this.state.level);
+  /** QUIT button (from death recap) — open the confirm dialog. */
+  requestQuit(): void {
+    if (this.state.phase !== "death_recap") return;
+    this.state.phase = "quit_confirm";
     this.emit();
   }
 
-  /** Full teardown to level 1 / attempts 1 / fresh room in prep. */
-  resetAll(): void {
-    this.state.level = 1;
+  /** Cancel the QUIT confirm — return to death recap. */
+  cancelQuit(): void {
+    if (this.state.phase !== "quit_confirm") return;
+    this.state.phase = "death_recap";
+    this.emit();
+  }
+
+  /** Confirm QUIT — snapshot for final review, the ack will reset state. */
+  confirmQuit(): void {
+    if (this.state.phase !== "quit_confirm") return;
+    this.state.finalSnapshot = JSON.parse(JSON.stringify(this.state.run)) as PersistentRun;
+    this.state.phase = "final_review";
+    this.emit();
+  }
+
+  /** Acknowledge final review — wipe storage and reseed a fresh run. */
+  acknowledgeFinal(): void {
+    if (this.state.phase !== "final_review") return;
+    wipeRun();
+    const run = freshRun();
+    this.state.run = run;
+    this.state.depth = 1;
     this.state.attempts = 1;
-    this.state.snapshot = null;
     this.state.recap = null;
-    this.state.current = this.opts.generate(1);
-    this.state.phase = "prep";
+    this.state.loadout = [];
+    this.state.finalSnapshot = null;
+    this.state.current = this.opts.generate(1, run, []);
+    this.state.phase = "loadout";
     this.emit();
   }
 }
 
 // ── Phase-derived UI helpers ────────────────────────────────────────────────
-// Kept here so both the UI and the tests agree on the tab-enablement rules.
 
 export function inspectorTabEnabled(phase: Phase): boolean {
   return phase === "paused";
 }
 
 export function helpTabEnabled(phase: Phase): boolean {
-  return phase === "prep";
+  return phase === "loadout";
 }

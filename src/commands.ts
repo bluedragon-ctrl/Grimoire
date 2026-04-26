@@ -2,7 +2,7 @@
 // Target resolution goes through a single seam: `resolveTarget`.
 
 import type {
-  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef,
+  Actor, World, Pos, GameEvent, Door, Direction, Item, Chest, ItemInstance, FloorItem, ResolveFailureMode, ItemDef, RoomObject,
 } from "./types.js";
 import { hasEffect, listEffects, effectiveStats } from "./effects.js";
 import { castSpell, validateCast } from "./spells/cast.js";
@@ -12,6 +12,7 @@ import { ITEMS } from "./content/items.js";
 import { createActor, MONSTER_TEMPLATES } from "./content/monsters.js";
 import { worldRandom } from "./rng.js";
 import { hasLineOfSight } from "./los.js";
+import { doInteractCore, objectsWithin, tileBlocked } from "./dungeon/objects.js";
 
 export { hasLineOfSight };
 
@@ -32,6 +33,7 @@ export const COST = {
   drop: 5,
   summon: 15,
   notify: 0,
+  interact: 10,
 } as const;
 
 // ──────────────────────────── small helpers ────────────────────────────
@@ -220,6 +222,10 @@ export const queries = {
     if (max <= 0) return 0;
     return Math.floor(worldRandom(world) * max);
   },
+  // Phase 15: dungeon objects within Chebyshev radius 1 (self tile + 8 neighbors).
+  objects_nearby: (world: World, self: Actor): RoomObject[] => {
+    return objectsWithin(world, self.pos, 1).map(o => ({ ...o, pos: { ...o.pos } }));
+  },
 };
 
 // ──────────────────────────── command impls ────────────────────────────
@@ -260,6 +266,7 @@ function stepToward(
   for (const next of tryOrder) {
     if (!inBounds(world, next)) continue;
     if (actorAt(world, next)) continue;
+    if (tileBlocked(world, next)) continue;
     const from = { ...self.pos };
     self.pos = next;
     return [{ type: "Moved", actor: self.id, from, to: next }];
@@ -468,6 +475,12 @@ export function doExit(world: World, self: Actor, _doorRef?: unknown): GameEvent
     d => d.pos.x === self.pos.x && d.pos.y === self.pos.y,
   );
   if (!door) return [fail(self, "exit", "not on a door tile")];
+  // Phase 15: locked exit door blocks exit() until interact() unlocks it.
+  const lockedExit = (world.room.objects ?? []).find(
+    o => o.kind === "exit_door_closed" && o.locked
+        && Math.max(Math.abs(o.pos.x - self.pos.x), Math.abs(o.pos.y - self.pos.y)) <= 1,
+  );
+  if (lockedExit) return [fail(self, "exit", "the exit is sealed")];
   const events: GameEvent[] = processScrolls(self);
   events.push(...processFoundGear(self));
   events.push({ type: "HeroExited", actor: self.id, door: door.dir });
@@ -620,4 +633,16 @@ export function summonFailedCleanly(events: GameEvent[]): boolean {
 
 function fail(self: Actor, action: string, reason: string): GameEvent {
   return { type: "ActionFailed", actor: self.id, action, reason };
+}
+
+// Phase 15: interact() — adjacent dungeon objects (chest/fountain/door/exit).
+export function doInteract(world: World, self: Actor, ref: unknown): GameEvent[] {
+  const result = doInteractCore(world, self, ref);
+  return result.events;
+}
+
+export function interactFailedCleanly(events: GameEvent[]): boolean {
+  // Failure shape from doInteractCore: ObjectInteracted result:"failed:*" + ActionFailed.
+  if (events.length < 1) return false;
+  return events.some(e => e.type === "ActionFailed");
 }

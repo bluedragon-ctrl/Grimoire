@@ -6,7 +6,10 @@
 // only and is filled by mid-run pickup, not the picker.
 
 import type { Actor, ItemInstance, Slot } from "../types.js";
-import { ITEMS, BAG_SIZE, SLOTS, emptyEquipped } from "../content/items.js";
+import { ITEMS, SLOTS, emptyEquipped } from "../content/items.js";
+
+// Phase 15: inventory is uncapped; display all consumables (min 4 visible slots).
+const MIN_INVENTORY_SLOTS = 4;
 import { ITEM_DRAWS } from "../render/items.js";
 import { ITEM_VISUAL_PRESETS, FALLBACK_PRESETS, type ItemShape } from "../content/item-visuals.js";
 import { getEquipmentBonuses } from "../items/execute.js";
@@ -179,11 +182,12 @@ export function mountInventoryPanel(
     slotsCol.appendChild(equipRow);
 
     const bagH = document.createElement("h3");
-    bagH.textContent = "Bag";
+    bagH.textContent = "Inventory";
     slotsCol.appendChild(bagH);
     const bagRow = document.createElement("div");
     bagRow.className = "inv-row";
-    for (let i = 0; i < BAG_SIZE; i++) {
+    const slots = Math.max(MIN_INVENTORY_SLOTS, inv.consumables.length);
+    for (let i = 0; i < slots; i++) {
       bagRow.appendChild(renderBagSlot(i, inv.consumables[i] ?? null));
     }
     slotsCol.appendChild(bagRow);
