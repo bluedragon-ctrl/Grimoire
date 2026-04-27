@@ -4,6 +4,7 @@
 // the canvas returns to a non-running phase (loadout / death_recap / etc.).
 
 import { visualConfig } from "../config/visuals.js";
+import type { Room, RoomObjectKind } from "../types.js";
 
 export interface TypeLinesOpts {
   charMs?: number;
@@ -98,4 +99,75 @@ export function showIdlePrompt(host: HTMLElement | null, bootDone: boolean): voi
     .some(el => el.textContent === IDLE_LINE);
   if (existing) return;
   void typeLinesInCanvas(host, [IDLE_LINE], { holdMs: 0, clearOnDone: false });
+}
+
+// ──────────────────────────── scout report (loadout) ────────────────────────────
+
+// User-facing label + the exact DSL `kind` string the player needs to filter
+// for in their script (e.g. `obj.kind == "fountain_health"`).
+const OBJECT_LABELS: Record<RoomObjectKind, string> = {
+  chest:             "CHEST",
+  fountain_health:   "FOUNTAIN OF HEALTH",
+  fountain_mana:     "FOUNTAIN OF MANA",
+  door_closed:       "DOOR",
+  exit_door_closed:  "EXIT DOOR",
+};
+
+// Build scout-report lines from a Room. Groups by (kind, locked) so e.g.
+// "CHEST x2" and "CHEST x1 (locked)" appear separately. Each line ends with
+// the literal DSL `kind:"..."` token so players can copy it into their script.
+export function scoutLines(room: Room): string[] {
+  const objects = room.objects ?? [];
+  const groups = new Map<string, { kind: RoomObjectKind; locked: boolean; count: number }>();
+  for (const o of objects) {
+    if (o.kind === "door_closed") continue; // interior doors are clutter
+    const key = `${o.kind}|${o.locked ? 1 : 0}`;
+    const g = groups.get(key);
+    if (g) g.count++;
+    else groups.set(key, { kind: o.kind, locked: !!o.locked, count: 1 });
+  }
+  const lines: string[] = ["> SCAN COMPLETE"];
+  if (groups.size === 0) {
+    lines.push("> NO INTERACTABLES");
+    return lines;
+  }
+  // Stable ordering: chests, fountains, exit door.
+  const order: RoomObjectKind[] = ["chest", "fountain_health", "fountain_mana", "exit_door_closed"];
+  const sorted = [...groups.values()].sort((a, b) => {
+    const ai = order.indexOf(a.kind), bi = order.indexOf(b.kind);
+    if (ai !== bi) return ai - bi;
+    return Number(a.locked) - Number(b.locked);
+  });
+  for (const g of sorted) {
+    const label = OBJECT_LABELS[g.kind];
+    const qty = g.count > 1 ? ` x${g.count}` : "";
+    const lock = g.locked ? " [LOCKED]" : "";
+    lines.push(`> ${label}${qty}${lock}  kind:"${g.kind}"`);
+  }
+  return lines;
+}
+
+// Loadout-phase briefing: scout report followed by the idle prompt. Idempotent —
+// keyed off a sentinel class on the boot-screen so renderPhase can call this on
+// every emit without re-typing.
+export function showLoadoutBriefing(
+  host: HTMLElement | null,
+  room: Room | null | undefined,
+  bootDone: boolean,
+): void {
+  if (!host) return;
+  if (!bootDone) return;
+  const onlyChild = host.children[0];
+  if (onlyChild && !onlyChild.classList.contains("boot-screen")) return;
+  // If we've already typed the briefing for this room, bail.
+  const screen = host.querySelector<HTMLDivElement>(".boot-screen");
+  const stamp = room ? `${room.w}x${room.h}|${(room.objects ?? []).map(o => `${o.kind}:${o.locked?1:0}`).sort().join(",")}` : "empty";
+  if (screen && screen.dataset.briefingStamp === stamp) return;
+  // Different room (or first time): wipe any prior briefing/idle lines.
+  if (screen) screen.remove();
+  const lines = room ? [...scoutLines(room), IDLE_LINE] : [IDLE_LINE];
+  void typeLinesInCanvas(host, lines, { holdMs: 0, clearOnDone: false }).then(() => {
+    const s = host.querySelector<HTMLDivElement>(".boot-screen");
+    if (s) s.dataset.briefingStamp = stamp;
+  });
 }

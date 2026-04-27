@@ -19,7 +19,7 @@ import {
 import { generateRoom } from "../dungeon/generator.js";
 import { mountHelpPane } from "./help/help-pane.js";
 import { depotConsumableInstances } from "../persistence.js";
-import { showBootBanner, showIdlePrompt, typeLinesInCanvas } from "./boot-banner.js";
+import { showBootBanner, showIdlePrompt, showLoadoutBriefing, typeLinesInCanvas } from "./boot-banner.js";
 import {
   ensureQuitButton, showQuitConfirm, hideQuitConfirm,
   showFinalReview, hideFinalReview,
@@ -440,8 +440,15 @@ function renderPhase(): void {
     }
     currentHandle = null;
     applyCursor = 0;
-    // Re-type "> AWAITING RUN SIGNAL" once the canvas is idle. Idempotent.
-    showIdlePrompt(gameEl, bootDone);
+    // Loadout shows a scout report (chests, fountains, locked exit) so the
+    // player knows what interactables to plan around — and learns the DSL
+    // `kind:"..."` tokens they'd otherwise have to guess. Other idle phases
+    // (death recap, quit confirm, final review) just re-type the prompt.
+    if (phase === "loadout") {
+      showLoadoutBriefing(gameEl, s.current?.room, bootDone);
+    } else {
+      showIdlePrompt(gameEl, bootDone);
+    }
   }
 
   // Inventory pane visible ONLY in loadout (Phase 13.7-style editor + 4-slot
